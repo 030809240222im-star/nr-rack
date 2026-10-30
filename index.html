@@ -141,6 +141,16 @@ td.vn{white-space:normal;min-width:84px}
 .urlrow{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px}
 .urlrow input{flex:1 1 240px;min-width:0}
 .muted{color:var(--muted)}
+/* スマホ: 入力欄を16pxにして、タップ時にiPhoneが画面を拡大して動かさないようにする。
+   階の表は内側でスクロールさせず、ページ全体の縦スクロールだけにする */
+html{-webkit-text-size-adjust:100%;overscroll-behavior-y:none}
+body{overscroll-behavior-y:none;touch-action:manipulation}
+.tablewrap,.floors{overscroll-behavior-x:contain}
+@media (max-width:700px){
+  input,select,textarea{font-size:16px!important}
+  .floors{max-height:none;overflow:visible}
+  .floors th{top:0}
+}
 .acct{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .login{max-width:420px;margin:24px auto;display:flex;flex-direction:column;gap:12px}
 .login .lbl input{width:100%}
@@ -1018,7 +1028,7 @@ window.NR_CONFIG={
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
 import {initializeApp} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import {getAuth,onAuthStateChanged,GoogleAuthProvider,signInWithPopup,signInWithEmailAndPassword,createUserWithEmailAndPassword,sendPasswordResetEmail,sendEmailVerification,signOut} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import {getAuth,onAuthStateChanged,GoogleAuthProvider,signInWithPopup,signInWithRedirect,getRedirectResult,signInWithEmailAndPassword,createUserWithEmailAndPassword,sendPasswordResetEmail,sendEmailVerification,signOut} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {initializeFirestore,collection,doc,onSnapshot,setDoc,deleteDoc} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 var CFG=window.NR_CONFIG,app=document.getElementById("app");
@@ -1031,6 +1041,7 @@ if(!CFG.firebase.apiKey||/^YOUR_/.test(CFG.firebase.apiKey)){
 function start(){
   var fb=initializeApp(CFG.firebase),auth=getAuth(fb),fs=initializeFirestore(fb,{ignoreUndefinedProperties:true},CFG.databaseId||"(default)");
   var booted=false;
+  getRedirectResult(auth).catch(fail);
   onAuthStateChanged(auth,function(u){
     if(!u){if(booted){location.reload();return}showLogin();return}
     if(booted)return;booted=true;
@@ -1055,7 +1066,15 @@ function start(){
       +'<button class="btn primary" id="lg-go" type="button">'+(reg?'新規登録':'ログイン')+'</button>'
       +'<div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><button class="linkbtn" id="lg-mode" type="button">'+(reg?'アカウントをお持ちの方はログイン':'新規登録はこちら')+'</button>'
       +(reg?'':'<button class="linkbtn" id="lg-reset" type="button">パスワードを忘れた</button>')+'</div></section>';
-    document.getElementById("lg-google").onclick=function(){signInWithPopup(auth,new GoogleAuthProvider()).catch(fail)};
+    /* ポップアップが止められるブラウザ(一部のSafariやアプリ内ブラウザ)では、ページ移動式のログインに切り替える */
+    document.getElementById("lg-google").onclick=function(){
+      var pr=new GoogleAuthProvider();
+      signInWithPopup(auth,pr).catch(function(e){
+        var c=(e&&e.code)||"";
+        if(c==="auth/popup-blocked"||c==="auth/operation-not-supported-in-this-environment"||c==="auth/web-storage-unsupported")signInWithRedirect(auth,pr).catch(fail);
+        else fail(e);
+      });
+    };
     document.getElementById("lg-mode").onclick=function(){mode=reg?"login":"reg";msg="";showLogin()};
     var rs=document.getElementById("lg-reset");
     if(rs)rs.onclick=function(){var em=val("lg-email");if(!em){say("メールアドレスを入れてから押してください。","bad");return}
@@ -1072,7 +1091,9 @@ function start(){
   function fail(e){
     var c=(e&&e.code)||"",m={"auth/invalid-credential":"メールアドレスかパスワードが違います。","auth/wrong-password":"メールアドレスかパスワードが違います。","auth/user-not-found":"このメールアドレスのアカウントはありません。",
       "auth/email-already-in-use":"このメールアドレスは登録済みです。ログインしてください。","auth/weak-password":"パスワードは6文字以上にしてください。","auth/invalid-email":"メールアドレスの形が正しくありません。",
-      "auth/popup-closed-by-user":"ログインがキャンセルされました。","auth/too-many-requests":"試行回数が多すぎます。しばらくしてからもう一度試してください。"}[c];
+      "auth/popup-closed-by-user":"ログインがキャンセルされました。","auth/too-many-requests":"試行回数が多すぎます。しばらくしてからもう一度試してください。",
+      "auth/unauthorized-domain":"このURLはFirebaseの承認済みドメインに入っていません。管理者に連絡してください。","auth/network-request-failed":"通信できませんでした。電波の良い所で再読み込みしてください。",
+      "auth/cancelled-popup-request":"ログインがキャンセルされました。","auth/internal-error":"ログインに失敗しました。ページを再読み込みしてもう一度試してください。"}[c];
     say(m||("ログインできませんでした("+c+")"),"bad");
   }
 }
