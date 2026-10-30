@@ -20,6 +20,8 @@ def rep(old, new, count=None):
 rep("<title>NRボックス ラック調整</title>", "<title>スクラップ搬出 調整</title>", 1)
 rep("NRボックス ラック調整", "スクラップ搬出 調整")
 rep("NRボックス", "スクラップ台車")
+# スクラップは車輌1台で20台まで
+rep("var NR_DEF={perTruck:4,", "var NR_DEF={perTruck:20,", 1)
 rep('var KEY="nr-rack-planner-v3";', 'var KEY="scrap-planner-v1";', 1)
 rep("  databaseId:\"default\",", "  databaseId:\"default\",\n  prefix:\"scrap_\",", 1)
 (root / "scrap" / "index.html").write_text(s, encoding="utf-8")

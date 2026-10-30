@@ -386,6 +386,8 @@ function evCell(r){return evLabel(r.ev,r.to)+(r.to?' <span class="st warn">前�
 /* 確定行の業者名。業者は他社の登録情報を読めないので、確定時に保存した名前を使う */
 function rowName(r){return ENV.admin||r.vid===ENV.uid?vname(r.vid):(r.n||"他の業者")}
 function isPlaced(d,r){var v=D.vendors[r.vid];return !!(v&&v.placed&&v.placed[d+"|"+r.floor])}
+/* 業者が置いたエレベーター。古い記録は時刻だけなので null */
+function placedEv(d,r){var v=D.vendors[r.vid],p=v&&v.placed&&v.placed[d+"|"+r.floor];return p&&typeof p==="object"?nrNum(p.ev)||null:null}
 function myRows(){
   var out=[],from=nrDs(new Date(Date.now()-7*864e5));
   Object.keys(D.confirmed).sort().forEach(function(d){
@@ -419,7 +421,14 @@ function addRow(cf,k,vid,floor,units,skipCap){
 function placedCell(d,r){
   var on=isPlaced(d,r),can=ENV.admin||r.vid===ENV.uid;
   if(!can)return '<span class="muted">—</span>';
-  return '<label class="chk ck'+(on?' on':'')+'"><input type="checkbox" data-f="placed" data-d="'+d+'" data-vid="'+esc(r.vid)+'" data-fl="'+r.floor+'"'+(on?' checked':'')+'>'+(on?'配置済み':'配置した')+'</label>';
+  var el=((D.days[d]||{}).elev||[]).slice().sort(),pe=placedEv(d,r),cur=pe||r.ev||el[0]||1,opts=el.length?el.slice():[1,2,3,4,5];
+  if(opts.indexOf(cur)<0)opts.push(cur);
+  var h='<div class="mvbox" style="margin-bottom:4px"><select id="pe-'+d+'-'+esc(r.vid)+'-'+r.floor+'" data-keep data-f="placedev" data-d="'+d+'" data-vid="'+esc(r.vid)+'" data-fl="'+r.floor+'" aria-label="置いたエレベーター">';
+  opts.forEach(function(e){h+='<option value="'+e+'"'+(e===cur?' selected':'')+'>EV'+e+'</option>'});
+  h+='</select><span class="hint" style="margin:0">に</span></div>';
+  h+='<label class="chk ck'+(on?' on':'')+'"><input type="checkbox" data-f="placed" data-d="'+d+'" data-vid="'+esc(r.vid)+'" data-fl="'+r.floor+'"'+(on?' checked':'')+'>'+(on?'配置済み':'配置した')+'</label>';
+  if(on&&pe)h+='<div class="hint" style="margin:2px 0 0">EV'+pe+'に配置</div>';
+  return h;
 }
 function backCell(d,r,i){
   var b=r.back,el=((D.days[d]||{}).elev||[]);
@@ -497,7 +506,7 @@ function renderDayV(){
   h+='<div class="sum"><div><small>回収時間</small><b style="font-size:15px">'+esc(fmtTime(doc))+'</b></div><div><small>回収台数</small><b>'+(cf?tot+'/':'')+cap+'台</b></div><div><small>回収エレベーター</small><b style="font-size:15px">'+(el.length?el.map(function(e){return "EV"+e}).join("・"):'未指定')+'</b></div></div>';
   if(!cf)return h+'<p class="empty">回収する業者と台数は、管理者が確定すると表示されます。</p></section>';
   h+=dayRowsTable(k);
-  if(myRows().some(function(x){return x.d===k}))h+='<p class="hint">自社の行は、NRボックスを搬出エレベーター前まで運んだら「配置した」にチェックしてください。管理者に伝わります。</p>';
+  if(myRows().some(function(x){return x.d===k}))h+='<p class="hint">自社の行は、NRボックスを搬出エレベーター前まで運んだら、置いたエレベーターを選んで「配置した」にチェックしてください。管理者に伝わります。</p>';
   return h+'</section>';
 }
 function renderDay(C){
@@ -662,7 +671,7 @@ function renderMine(C){
   var mr=myRows(),h='<section class="panel"><h2 style="margin-bottom:6px">自社の搬出予定</h2>';
   if(!mr.length)h+='<p class="empty">管理者が回収を確定すると、ここに回収する日・時間・階・集積場所が表示されます。</p>';
   else{
-    h+='<p class="hint" style="margin:0 0 8px">管理者が確定した回収予定です。NRボックスを集積場所のエレベーター前まで運んだら「配置した」にチェックしてください。「前日までに移動」の行は、回収日の前日までに指定の階のEV前へ移しておきます。</p>'
+    h+='<p class="hint" style="margin:0 0 8px">管理者が確定した回収予定です。NRボックスを集積場所のエレベーター前まで運んだら、置いたエレベーターを選んで「配置した」にチェックしてください。「前日までに移動」の行は、回収日の前日までに指定の階のEV前へ移しておきます。</p>'
      +'<div class="tablewrap"><table><thead><tr><th class="l">日付・時間</th><th>階・台数</th><th class="l">集積 / 戻し階</th><th class="l">配置</th><th class="l">戻し(管理者)</th></tr></thead><tbody>';
     mr.forEach(function(x){var day=D.days[x.d]||{};
       h+='<tr><td class="l">'+fmtD(x.d)+(x.d<C.t?' <span class="st off">終了</span>':'')+'<div class="hint" style="margin:2px 0 0">'+esc(fmtTime(day))+'</div></td><td>'+x.r.floor+'階 <b>'+nrNum(x.r.units)+'台</b></td><td class="l" style="white-space:normal;min-width:96px">'+evCell(x.r)+'<div class="hint" style="margin:2px 0 0">戻し: '+retText(x.r.ret)+'</div></td><td class="l">'+placedCell(x.d,x.r)+'</td><td class="l">'+backCell(x.d,x.r,x.i)+'</td></tr>'});
@@ -990,12 +999,17 @@ function onChange(ev){
   else if(f==="ret"){var fl3=el.getAttribute("data-fl");mutVendor(vid,function(v){var e=v.floors[fl3];if(!e)return;e.r=Math.min(62,nrNum(el.value))})}
   else if(f==="placed"){
     var pd=el.getAttribute("data-d"),pv=el.getAttribute("data-vid"),pf=el.getAttribute("data-fl");
-    if(ENV.admin||pv===ENV.uid)mutVendor(pv,function(v){v.placed=v.placed||{};if(el.checked)v.placed[pd+"|"+pf]=nowIso();else delete v.placed[pd+"|"+pf]});
+    var ps=document.getElementById("pe-"+pd+"-"+pv+"-"+pf),pe=ps?nrNum(ps.value)||null:null;
+    if(ENV.admin||pv===ENV.uid)mutVendor(pv,function(v){v.placed=v.placed||{};if(el.checked)v.placed[pd+"|"+pf]={at:nowIso(),ev:pe};else delete v.placed[pd+"|"+pf]});
+  }
+  else if(f==="placedev"){
+    var qd=el.getAttribute("data-d"),qv=el.getAttribute("data-vid"),qf=el.getAttribute("data-fl"),qk=qd+"|"+qf;
+    if(ENV.admin||qv===ENV.uid)mutVendor(qv,function(v){if(!v.placed||!v.placed[qk])return;var o=v.placed[qk];v.placed[qk]={at:typeof o==="object"?o.at:o,ev:nrNum(el.value)||null}});
   }
   else if(f==="back"||f==="backev"||f==="backu"){
     var bd=el.getAttribute("data-d"),bi=Number(el.getAttribute("data-i"));
     mutConfirmed(bd,function(cf){var r=cf.rows[bi];if(!r)return;
-      if(f==="back"){if(el.checked)r.back={ev:r.ev||((D.days[bd]||{}).elev||[])[0]||1,u:nrNum(r.units),at:nowIso()};else delete r.back}
+      if(f==="back"){if(el.checked)r.back={ev:placedEv(bd,r)||r.ev||((D.days[bd]||{}).elev||[])[0]||1,u:nrNum(r.units),at:nowIso()};else delete r.back}
       else if(r.back){if(f==="backev")r.back.ev=nrNum(el.value)||1;else r.back.u=nrNum(el.value);r.back.at=nowIso()}
     });
   }
@@ -1004,7 +1018,7 @@ function onChange(ev){
     var d3=el.getAttribute("data-d"),i3=Number(el.getAttribute("data-i"));
     mutConfirmed(d3,function(cf){var r=cf.rows[i3];if(!r)return;var cap=nrNum((D.days[d3]||{}).cap),room=Math.max(0,cap-rowsTotal(cf,i3));r.units=Math.min(nrNum(el.value),room)});
   }
-  else if(f==="perTruck"||f==="wP"||f==="wW"||f==="wH"||f==="crit"){c[f]=f==="perTruck"?(nrNum(el.value)||4):f==="crit"?Math.min(100,Math.max(1,nrNum(el.value)||100)):nrW(el.value,NR_DEF[f]);putCfg(c)}
+  else if(f==="perTruck"||f==="wP"||f==="wW"||f==="wH"||f==="crit"){c[f]=f==="perTruck"?(nrNum(el.value)||NR_DEF.perTruck):f==="crit"?Math.min(100,Math.max(1,nrNum(el.value)||100)):nrW(el.value,NR_DEF[f]);putCfg(c)}
   else if(f==="evr"){var e2=el.getAttribute("data-e"),i=Number(el.getAttribute("data-k"));c.ev=c.ev||{};var r2=(c.ev[e2]||[1,62]).slice();r2[i]=Math.min(62,nrNum(el.value)||(i?62:1));c.ev[e2]=r2;putCfg(c)}
   else if(f==="ns"){var e3=el.getAttribute("data-e");c.ns=c.ns||{};c.ns[e3]=el.value.trim();putCfg(c)}
   render();
