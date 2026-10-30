@@ -211,8 +211,13 @@ function nrCfg(c){
     o.ev[e]=[Math.min(a,b),Math.max(a,b)];
     o.nsStr[e]=(c.ns&&c.ns[e])||"";o.ns[e]=nrParseFloors(o.nsStr[e]);
   }
+  /* 業者ごとの回収曜日 {業者:[0=日〜6=土]}。指定のない業者はどの曜日でも回収する */
+  o.wd={};Object.keys(c.wd||{}).forEach(function(v){var a=(c.wd[v]||[]).filter(function(x){return x>=0&&x<=6});if(a.length)o.wd[v]=a});
   return o;
 }
+function nrOnDay(vid,d,cfg){var a=cfg.wd[vid];return !a||a.indexOf(nrPd(d).getDay())>=0}
+/* 曜日外の業者で空きを埋めるときの順: 余力なし → 逼迫度が高い → 評価点 */
+function nrUrgCmp(a,b){return (b.sc.crit?1:0)-(a.sc.crit?1:0)||b.sc.pr-a.sc.pr||nrCmp(a,b)}
 function nrStops(floor,e,cfg){var r=cfg.ev[e];return !!r&&floor>=r[0]&&floor<=r[1]&&cfg.ns[e].indexOf(floor)<0}
 function nrElevFor(floor,elevs,cfg){for(var i=0;i<elevs.length;i++){if(nrStops(floor,elevs[i],cfg))return elevs[i]}return null}
 function nrAnyElev(floor,cfg){for(var e=1;e<=5;e++){if(nrStops(floor,e,cfg))return true}return false}
@@ -268,12 +273,14 @@ function nrSimulate(vendors,days,cfg,startStr,confirmed){
           else{res.excluded++;res.excl.push({vid:it.vid,floor:it.floor,rem:it.rem,since:it.since,sc:nrScore(it,d,cfg)});return}}}
       cand.push({it:it,ev:ev,to:to,vid:it.vid,floor:it.floor,since:it.since,sc:nrScore(it,d,cfg)});
     });
-    cand.sort(nrCmp);res.excl.sort(nrCmp);
-    cand.forEach(function(c){
+    /* その曜日の担当業者を先に回収し、積載に余裕が残ったら曜日外の業者を逼迫している順に入れる */
+    var mine=cand.filter(function(c){return nrOnDay(c.vid,d,cfg)}),other=cand.filter(function(c){return !nrOnDay(c.vid,d,cfg)});
+    mine.sort(nrCmp);other.sort(nrUrgCmp);res.excl.sort(nrCmp);
+    mine.concat(other).forEach(function(c){
       if(left<=0)return;
       var take=Math.min(c.it.rem,left);
       c.it.rem-=take;c.it.held-=take;left-=take;
-      res.asg.push({vid:c.vid,floor:c.floor,units:take,ev:c.ev,to:c.to,ret:c.it.ret,rank:res.asg.length+1,sc:c.sc});
+      res.asg.push({vid:c.vid,floor:c.floor,units:take,ev:c.ev,to:c.to,ret:c.it.ret,rank:res.asg.length+1,sc:c.sc,extra:!nrOnDay(c.vid,d,cfg)});
       var key=c.vid+"|"+c.floor;if(!first[key])first[key]=d;
     });
     res.left=left;byDate[d]=res;
@@ -557,7 +564,7 @@ function renderDay(C){
   if(cf)h+=dayRowsTable(k);
   else if(asg.length){
     h+='<div class="tablewrap"><table><thead><tr><th class="l">順位</th><th class="l">業者</th><th>階</th><th>台数</th><th class="l">集積</th><th class="l">戻し階</th></tr></thead><tbody>';
-    asg.forEach(function(a){h+='<tr><td class="l">'+a.rank+(a.sc&&a.sc.crit?' <span class="st bad">余力なし</span>':'')+'</td><td class="l vn"><i class="chip" style="background:'+vcolor(a.vid)+'"></i>'+esc(vname(a.vid))+'</td><td>'+a.floor+'階</td><td><b>'+a.units+'</b></td><td class="l">'+evCell(a)+'</td><td class="l">'+retText(a.ret)+'</td></tr>'});
+    asg.forEach(function(a){h+='<tr><td class="l">'+a.rank+(a.sc&&a.sc.crit?' <span class="st bad">余力なし</span>':'')+(a.extra?' <span class="st warn">曜日外</span>':'')+'</td><td class="l vn"><i class="chip" style="background:'+vcolor(a.vid)+'"></i>'+esc(vname(a.vid))+'</td><td>'+a.floor+'階</td><td><b>'+a.units+'</b></td><td class="l">'+evCell(a)+'</td><td class="l">'+retText(a.ret)+'</td></tr>'});
     h+='</tbody></table></div>';
   }else h+='<p class="empty">配分できる搬出希望がありません。</p>';
   if(!cf)h+=renderStage(C,k,s,elev);
@@ -641,6 +648,18 @@ function renderConfirmed(C){
   });
   return h+'</section>';
 }
+/* 業者ごとの回収曜日 */
+function renderWd(C){
+  var ids=Object.keys(C.am).sort(function(a,b){return vname(a)<vname(b)?-1:1}),h='<section class="panel"><h2 style="margin-bottom:8px">業者ごとの回収曜日</h2>'
+   +'<p class="hint" style="margin:0 0 8px">回収日には、その曜日に割り当てた業者を先に回収します。積載に余裕が残ったら、曜日外の業者を逼迫している順(余力なし → 逼迫度が高い順)に入れます。曜日を何も選ばない業者は、どの曜日でも回収します。</p>';
+  if(!ids.length)return h+'<p class="empty">利用中の業者がまだありません。</p></section>';
+  h+='<div class="tablewrap"><table><thead><tr><th class="l">業者</th>'+WD.map(function(w){return '<th>'+w+'</th>'}).join("")+'</tr></thead><tbody>';
+  ids.forEach(function(v){var a=C.cfg.wd[v]||[];
+    h+='<tr><td class="l vn"><i class="chip" style="background:'+vcolor(v)+'"></i>'+esc(vname(v))+'</td>';
+    for(var w=0;w<7;w++)h+='<td><input type="checkbox" data-f="wd" data-vid="'+esc(v)+'" data-w="'+w+'"'+(a.indexOf(w)>=0?' checked':'')+' aria-label="'+esc(vname(v))+' '+WD[w]+'曜日"></td>';
+    h+='</tr>'});
+  return h+'</tbody></table></div></section>';
+}
 function vendorPicker(C){
   var ids=Object.keys(C.am).sort(function(a,b){return vname(a)<vname(b)?-1:1});
   if(ui.vsel&&!C.am[ui.vsel])ui.vsel=null;
@@ -661,6 +680,7 @@ function renderVin(C){
   var admNameEdit=ENV.admin&&D.vendors[vid]&&D.vendors[vid].manual;
   if(admNameEdit)h+='<div class="vtop"><label>会社名<input type="text" id="vname" data-f="vname" value="'+esc(v.name||"")+'" placeholder="会社名を入力"></label></div>';
   else h+='<p style="margin:0 0 10px"><b>'+esc(vname(vid))+'</b></p>';
+  var wds=C.cfg.wd[vid];if(wds)h+='<p class="hint" style="margin:0 0 8px">回収曜日: <b>'+wds.map(function(w){return WD[w]}).join("・")+'</b>(積載に余裕がある日は、ほかの曜日にも回収することがあります)</p>';
   h+='<div class="sum"><div><small>保有台数(合計)</small><b>'+th+'台</b></div><div><small>搬出希望(合計)</small><b>'+tw+'台</b></div></div>'
    +'<p class="hint" style="margin:0 0 8px">各階のスクラップ台車の保有台数と、その階から出したい台数を入力します。戻してほしい階が同じ階でないときは「同じ階」のチェックを外して階を選びます。入力は自動で保存されます。</p>'
    +'<label class="chk" style="margin-bottom:8px"><input type="checkbox" id="only" data-f="only"'+(ui.only?' checked':'')+'>入力のある階だけ表示</label>'
@@ -777,7 +797,7 @@ function renderSet(C){
      +'<label class="ns"><input type="text" id="ns'+e+'" data-f="ns" data-e="'+e+'" value="'+esc(c.nsStr[e])+'" placeholder="不停止階 例: 13,14,44-46" aria-label="EV'+e+'の不停止階"></label></div>'
      +'<div class="hint" style="margin:0 0 4px 48px">'+(c.ns[e].length?'不停止: '+esc(nrFmtFloors(c.ns[e])):'不停止階なし')+'</div>';
   }
-  h+='<p class="hint">指定した日のエレベーターが停まる階だけを回収対象にします。不停止階は「13,14,44-46」のように、カンマ区切りと範囲で入力します。</p></section>'
+  h+='<p class="hint">指定した日のエレベーターが停まる階だけを回収対象にします。不停止階は「13,14,44-46」のように、カンマ区切りと範囲で入力します。</p></section>'+renderWd(C)
    +'<section class="panel"><h2 style="margin-bottom:8px">このアプリのQRコード</h2><div class="qrbox"><div class="qrimg" role="img" aria-label="このアプリを開くQRコード">'+qrSvg()+'</div><div style="flex:1 1 240px;min-width:0"><p style="margin:0 0 4px">スマートフォンで読み取ると、このアプリが開きます。</p>'
    +'<p class="hint" style="margin:0">業者はこのURLを開いて新規登録し、会社名を登録するとすぐに使えます。</p><div class="urlrow"><input type="text" id="appurl" readonly value="'+esc(APP_URL)+'" aria-label="アプリのURL"><button class="btn sm" data-act="copyurl">URLをコピー</button></div></div></div></section>'
    +'<section class="panel"><h2 style="margin-bottom:8px">サンプルデータ</h2><p class="hint" style="margin:0 0 8px">動作を試すための例です。業者名・台数・階はすべて架空の値で、実際のデータとは別に消せます。</p>'
@@ -1044,6 +1064,8 @@ function onChange(ev){
     var d3=el.getAttribute("data-d"),i3=Number(el.getAttribute("data-i"));
     mutConfirmed(d3,function(cf){var r=cf.rows[i3];if(!r)return;var cap=nrNum((D.days[d3]||{}).cap),room=Math.max(0,cap-rowsTotal(cf,i3));r.units=Math.min(nrNum(el.value),room)});
   }
+  else if(f==="wd"){var wv=el.getAttribute("data-vid"),ww=Number(el.getAttribute("data-w"));c.wd=c.wd||{};
+    var wa=(c.wd[wv]||[]).filter(function(x){return x!==ww});if(el.checked)wa.push(ww);wa.sort();if(wa.length)c.wd[wv]=wa;else delete c.wd[wv];putCfg(c)}
   else if(f==="perTruck"||f==="wP"||f==="wW"||f==="wH"||f==="crit"){c[f]=f==="perTruck"?(nrNum(el.value)||NR_DEF.perTruck):f==="crit"?Math.min(100,Math.max(1,nrNum(el.value)||100)):nrW(el.value,NR_DEF[f]);putCfg(c)}
   else if(f==="evr"){var e2=el.getAttribute("data-e"),i=Number(el.getAttribute("data-k"));c.ev=c.ev||{};var r2=(c.ev[e2]||[1,62]).slice();r2[i]=Math.min(62,nrNum(el.value)||(i?62:1));c.ev[e2]=r2;putCfg(c)}
   else if(f==="ns"){var e3=el.getAttribute("data-e");c.ns=c.ns||{};c.ns[e3]=el.value.trim();putCfg(c)}
