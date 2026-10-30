@@ -380,7 +380,9 @@ async function boot(){
     if(!ENV.uid)ENV.mode="noid";
     else subscribe();
   }else{
-    try{var raw=localStorage.getItem(KEY);if(raw){var o=JSON.parse(raw);Object.keys(D).forEach(function(k){if(o[k])D[k]=o[k]})}}catch(e){}
+    var raw=null;try{raw=localStorage.getItem(KEY);if(raw){var o=JSON.parse(raw);Object.keys(D).forEach(function(k){if(o[k])D[k]=o[k]})}}catch(e){}
+    /* お試し版は、はじめて開いたときにサンプルを入れておく */
+    if(window.NR_DEMO&&!raw){var sm=sample();Object.keys(sm.vendors).forEach(function(k){put("vendors",k,sm.vendors[k])});var sd=Object.keys(sm.days).sort();sd.forEach(function(k){put("days",k,sm.days[k])});if(sd.length){var f0=nrPd(sd[0]);ui.month=new Date(f0.getFullYear(),f0.getMonth(),1,12);ui.sel=sd[0]}}
   }
   ui.tab="cal";
   render();
@@ -882,7 +884,8 @@ function render(remote){
     tabs=[["cal","カレンダー"],["pri","優先順位"],["cnf","確定と再振り分け"],["vin","業者入力"],["rec","追加と戻し"],["mem","登録"+(pc?'<span class="cnt">'+pc+'</span>':"")],["set","設定"]];
   }else tabs=vendorOk?[["cal","カレンダー"],["vin","業者入力"]]:[["reg","登録"]];
   if(!ENV.admin&&!vendorOk)ui.tab="reg";else if(!ENV.admin&&ui.tab!=="cal"&&ui.tab!=="vin")ui.tab="cal";
-  h='<div class="top"><div><h1>NRボックス ラック調整<span class="role">'+(ENV.admin?'管理者':ENV.preview?'業者(プレビュー)':(vendorOk?'業者':'未登録'))+'</span></h1><p>業者が入力した階別の保有・搬出希望を、回収日ごとの台数・時間・エレベーター集積に合わせて自動で配分します</p>'+(window.NR_ACCOUNT?'<p class="acct">'+esc(window.NR_ACCOUNT.email||"")+' <button class="btn sm" data-act="logout">ログアウト</button> <button class="btn sm" data-act="reload">↻ 最新にする</button>'+(ui.synced?' <span class="muted" style="font-size:12px">'+p2(ui.synced.getHours())+':'+p2(ui.synced.getMinutes())+' 更新</span>':'')+'</p>':'')+'</div><div class="tabs" role="tablist">';
+  h='<div class="top"><div><h1>NRボックス ラック調整<span class="role">'+(ENV.admin?'管理者':ENV.preview?'業者(プレビュー)':(vendorOk?'業者':'未登録'))+'</span></h1><p>業者が入力した階別の保有・搬出希望を、回収日ごとの台数・時間・エレベーター集積に合わせて自動で配分します</p>'+(window.NR_ACCOUNT?'<p class="acct">'+esc(window.NR_ACCOUNT.email||"")+' <button class="btn sm" data-act="logout">ログアウト</button> <button class="btn sm" data-act="reload">↻ 最新にする</button>'+(ui.synced?' <span class="muted" style="font-size:12px">'+p2(ui.synced.getHours())+':'+p2(ui.synced.getMinutes())+' 更新</span>':'')+'</p>':'')
+   +(window.NR_DEMO?'<div class="note warn" style="margin:8px 0 0"><span><b>お試し版です。</b>データはこの端末のブラウザだけに保存され、本番のアプリとは関係ありません。業者・台数はすべて架空です。 <button class="btn sm" data-act="demoreset">最初からやり直す</button></span></div>':'')+'</div><div class="tabs" role="tablist">';
   tabs.forEach(function(t){h+='<button role="tab" aria-selected="'+(ui.tab===t[0])+'" data-act="tab" data-tab="'+t[0]+'">'+t[1]+'</button>'});
   h+='</div></div>';
   if(ENV.preview){
@@ -948,6 +951,7 @@ function onClick(ev){
   var b=ev.target.closest("[data-act]");if(!b)return;
   var act=b.getAttribute("data-act"),id=b.getAttribute("data-id"),keepConfirm=false;
   ui.msg="";
+  if(act==="demoreset"){try{localStorage.removeItem(KEY)}catch(e){}location.reload();return}
   if(act==="logout"){if(window.NR_ACCOUNT)window.NR_ACCOUNT.logout();return}
   if(act==="reload"){location.reload();return}
   if(act==="tab"){ui.tab=b.getAttribute("data-tab")}

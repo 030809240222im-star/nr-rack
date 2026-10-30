@@ -13,3 +13,11 @@ NRボックス ラック調整(Web版)。業者が入力した階別のNRボッ�
 
 `scrap/index.html` は `tools/make-scrap.py` で `index.html` から作っています。
 NRボックス版を直したら `python3 tools/make-scrap.py` を実行して作り直してください。
+
+## お試し版
+
+ログインなしで試せるお試し版が `demo/` にあります(URL の末尾に `/demo/`)。
+Firebase にはつながず、サンプルデータ入りで始まり、データは開いた端末のブラウザだけに保存されます。
+
+`demo/index.html` は `tools/make-demo.py` で `index.html` から作っています。
+NRボックス版を直したら `python3 tools/make-demo.py` も実行して作り直してください。
