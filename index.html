@@ -1175,7 +1175,8 @@ function makeUser(u,admin){
 /* 承認されたら、読めるようになったデータを読み直すために開き直す */
 function watchApproval(fs,u){
   var was=null;
-  onSnapshot(doc(fs,PFX+"approved",u.uid),function(s){var now=s.exists();if(was===false&&now)location.reload();was=now},function(){});
+  /* 自分の登録で作った許可は、サーバーに保存されてから開き直す(保存前に開き直すと書き込みが消える) */
+  onSnapshot(doc(fs,PFX+"approved",u.uid),{includeMetadataChanges:true},function(s){if(s.metadata&&s.metadata.hasPendingWrites)return;var now=s.exists();if(was===false&&now)location.reload();was=now},function(){});
 }
 </script>
 
