@@ -457,7 +457,7 @@ function renderCal(C){
     if(!cap)cls+=" off";else cls+=(s&&s.left===0&&C.sim.left.length&&!cf)?" warn":" ok";
     if(k===ui.sel)cls+=" sel";if(k===C.t)cls+=" today";
     h+='<button class="'+cls+'" data-act="sel" data-date="'+k+'" aria-label="'+(m+1)+'月'+d+'日"><span class="dn"><b>'+d+'</b>'+(cf?'<i>確定</i>':'')+'</span>';
-    if(!cap)h+='<span class="cap">回収なし</span>';
+    if(!cap)h+='<span class="cap">—</span>';
     else{var rows=cf?(cf.rows||[]).filter(function(r){return nrNum(r.units)>0}):[],u=cf?rowsTotal(cf,-1):(ENV.admin&&s?cap-s.left:0);
       h+='<span class="cap">'+(cf||ENV.admin?u+'/':'')+cap+'台'+(doc.tf?' '+esc(doc.tf):'')+'</span><span class="evs'+((doc.elev&&doc.elev.length)?'':' none')+'">'+(doc.elev&&doc.elev.length?doc.elev.map(function(e){return "EV"+e}).join("·"):"EV未指定")+'</span>';
       if(cf&&ENV.admin){var np=rows.filter(function(r){return isPlaced(k,r)}).length,nb=rows.filter(function(r){return r.back}).length;
@@ -1110,16 +1110,18 @@ function start(){
 /* アプリが使うデータベースの形(collection().onSnapshot / doc().set・delete・onSnapshot)に合わせる。
    業者は自分の文書しか読めないので、業者用の一覧は自分の1件だけを見る */
 var OWN=["vendors","members","approved","blocked","plans"];
+/* 同じFirebaseで別アプリ(スクラップ搬出など)を動かすときは、コレクション名の頭に付ける文字(NR_CONFIG.prefix)でデータを分ける */
+var PFX=CFG.prefix||"";
 function makeDb(fs,u,admin){
   /* 承認前の業者は回収日などを読めないので、その拒否だけは空として扱う。管理者の拒否はルールの設定漏れなので画面に出す */
   function quiet(cb,empty,err){return function(e){if(!admin&&e&&e.code==="permission-denied")cb(empty);else if(err)err(e)}}
   return {
     collection:function(c){return {onSnapshot:function(cb,err){
       if(!admin&&OWN.indexOf(c)>=0)
-        return onSnapshot(doc(fs,c,u.uid),function(s){cb({docs:s.exists()?[{id:s.id,data:function(){return s.data()}}]:[]})},quiet(cb,{docs:[]},err));
-      return onSnapshot(collection(fs,c),function(q){cb({docs:q.docs.map(function(d){return {id:d.id,data:function(){return d.data()}}})})},quiet(cb,{docs:[]},err));
+        return onSnapshot(doc(fs,PFX+c,u.uid),function(s){cb({docs:s.exists()?[{id:s.id,data:function(){return s.data()}}]:[]})},quiet(cb,{docs:[]},err));
+      return onSnapshot(collection(fs,PFX+c),function(q){cb({docs:q.docs.map(function(d){return {id:d.id,data:function(){return d.data()}}})})},quiet(cb,{docs:[]},err));
     }}},
-    doc:function(p){var r=doc(fs,p);return {
+    doc:function(p){var r=doc(fs,PFX+p);return {
       set:function(d){return setDoc(r,d)},
       delete:function(){return deleteDoc(r)},
       onSnapshot:function(cb,err){return onSnapshot(r,function(s){cb({exists:s.exists(),data:function(){return s.data()}})},quiet(cb,{exists:false,data:function(){}},err))}
@@ -1132,7 +1134,7 @@ function makeUser(u,admin){
 /* 承認されたら、読めるようになったデータを読み直すために開き直す */
 function watchApproval(fs,u){
   var was=null;
-  onSnapshot(doc(fs,"approved",u.uid),function(s){var now=s.exists();if(was===false&&now)location.reload();was=now},function(){});
+  onSnapshot(doc(fs,PFX+"approved",u.uid),function(s){var now=s.exists();if(was===false&&now)location.reload();was=now},function(){});
 }
 </script>
 
