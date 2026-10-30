@@ -1010,6 +1010,8 @@ window.NR_CONFIG={
     projectId:"nr-rack",
     appId:"1:338070347446:web:b039162e8258a3aac75017"
   },
+  /* Firestoreのデータベース ID(コンソールの「データベース」の横に出る名前) */
+  databaseId:"default",
   adminEmails:["kowa0371@gmail.com","030809240222im@gmail.com"]
 };
 </script>
@@ -1027,7 +1029,7 @@ if(!CFG.firebase.apiKey||/^YOUR_/.test(CFG.firebase.apiKey)){
 }else start();
 
 function start(){
-  var fb=initializeApp(CFG.firebase),auth=getAuth(fb),fs=initializeFirestore(fb,{ignoreUndefinedProperties:true});
+  var fb=initializeApp(CFG.firebase),auth=getAuth(fb),fs=initializeFirestore(fb,{ignoreUndefinedProperties:true},CFG.databaseId||"(default)");
   var booted=false;
   onAuthStateChanged(auth,function(u){
     if(!u){if(booted){location.reload();return}showLogin();return}
