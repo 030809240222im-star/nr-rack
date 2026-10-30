@@ -16,7 +16,7 @@ service cloud.firestore {
       return signedIn() && exists(/databases/$(database)/documents/approved/$(request.auth.uid));
     }
 
-    // 回収日・確定した回収・設定: 管理者と承認済みの業者が読む。書けるのは管理者だけ
+    // 回収日・確定した回収・設定: 管理者と利用中の業者が読む。書けるのは管理者だけ
     match /config/{id} {
       allow read: if isAdmin() || isApproved();
       allow write: if isAdmin();
@@ -30,13 +30,13 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // 業者の入力: 本人(承認済み)と管理者だけ
+    // 業者の入力: 本人(利用中)と管理者だけ
     match /vendors/{id} {
       allow read: if isAdmin() || isSelf(id);
       allow write: if isAdmin() || (isSelf(id) && isApproved());
     }
 
-    // 登録の申請: 本人が出し、管理者が見て承認・却下する
+    // 業者の登録内容: 本人が出し、管理者が見る
     match /members/{id} {
       allow read: if isAdmin() || isSelf(id);
       allow delete: if isAdmin();
@@ -46,7 +46,6 @@ service cloud.firestore {
         && request.resource.data.email is string && request.resource.data.email.size() <= 200);
     }
 
-    // 承認と、管理者が追加したNRボックスの記録: 本人は読むだけ
     // 利用許可: 業者は登録と同時に自分の分を作れる(利用停止された人は作れない)。変更・削除は管理者だけ
     match /approved/{id} {
       allow read: if isAdmin() || isSelf(id);
@@ -62,6 +61,7 @@ service cloud.firestore {
       allow read: if isAdmin() || isSelf(id);
       allow write: if isAdmin();
     }
+    // 管理者が追加したNRボックスの記録: 本人は読むだけ
     match /plans/{id} {
       allow read: if isAdmin() || isSelf(id);
       allow write: if isAdmin();
