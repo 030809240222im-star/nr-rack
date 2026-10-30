@@ -9,6 +9,7 @@
   --accent:#1d5fc4; --accent-fg:#ffffff;
   --ok:#1f8a54; --warn:#9a6410; --bad:#c03636;
   --okbg:#e2f3ea; --warnbg:#f9eed6; --badbg:#f8e0e0; --offbg:#e3e7ea;
+  --now:#d9661a; --now-fg:#ffffff; --nowbg:#fdebdc;
   --c0:#2f6fd6; --c1:#e07b2a; --c2:#2a9d8f; --c3:#a64fc4; --c4:#c9a227; --c5:#d1495b; --c6:#5c7a3a; --c7:#6b7a8f;
   --f-head:"Zen Kaku Gothic New","Hiragino Sans","Yu Gothic",sans-serif;
   --f-body:"BIZ UDPGothic","Hiragino Sans","Yu Gothic",sans-serif;
@@ -18,14 +19,14 @@
     --bg:#0f1a20; --surface:#16242c; --surface2:#1c2d37; --fg:#e6edf0; --muted:#93a4ad; --line:#2c3f4a;
     --accent:#5b9bf0; --accent-fg:#0b1520;
     --ok:#4cc38a; --warn:#e0aa4a; --bad:#ef7a7a;
-    --okbg:#173326; --warnbg:#3a2f15; --badbg:#3d1d1f; --offbg:#1a262d; color-scheme:dark;
+    --okbg:#173326; --warnbg:#3a2f15; --badbg:#3d1d1f; --offbg:#1a262d; --now:#f08a3c; --now-fg:#1a0e05; --nowbg:#3d2614; color-scheme:dark;
   }
 }
 :root[data-theme="dark"]{
   --bg:#0f1a20; --surface:#16242c; --surface2:#1c2d37; --fg:#e6edf0; --muted:#93a4ad; --line:#2c3f4a;
   --accent:#5b9bf0; --accent-fg:#0b1520;
   --ok:#4cc38a; --warn:#e0aa4a; --bad:#ef7a7a;
-  --okbg:#173326; --warnbg:#3a2f15; --badbg:#3d1d1f; --offbg:#1a262d; color-scheme:dark;
+  --okbg:#173326; --warnbg:#3a2f15; --badbg:#3d1d1f; --offbg:#1a262d; --now:#f08a3c; --now-fg:#1a0e05; --nowbg:#3d2614; color-scheme:dark;
 }
 *{box-sizing:border-box}
 body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:14px;line-height:1.55;
@@ -165,6 +166,14 @@ body{touch-action:manipulation}
 .cell.mine{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
 .cell.mine .cap,.cell.mine .tag,.cell.mine .dn i{color:var(--accent-fg)}
 .cell.mine.today .dn b{background:var(--accent-fg);color:var(--accent)}
+.cell.now{background:var(--now);border-color:var(--now);color:var(--now-fg)}
+.cell.now .cap,.cell.now .tag,.cell.now .evs,.cell.now .dn i{color:var(--now-fg)}
+.cell.now.today .dn b{background:var(--now-fg);color:var(--now)}
+.cell.now.sel{box-shadow:0 0 0 2px var(--surface),0 0 0 4px var(--now)}
+.todaybox{border:2px solid var(--now);background:var(--nowbg);border-radius:10px;padding:10px 12px;margin:0 0 12px}
+.todaybox h3{margin:0 0 6px;color:var(--now);font-size:15px}
+.todaybox ul{margin:0;padding-left:18px}
+.tinput{width:5.5em;text-align:center}
 .cell.mine.sel{box-shadow:0 0 0 2px var(--surface),0 0 0 4px var(--accent)}
 .cell.past{opacity:.5}
 .note.pv{background:var(--surface2);color:var(--fg);border:1px dashed var(--accent)}
@@ -218,6 +227,17 @@ function nrCfg(c){
 function nrOnDay(vid,d,cfg){var a=cfg.wd[vid];return !a||a.indexOf(nrPd(d).getDay())>=0}
 /* 曜日外の業者で空きを埋めるときの順: 余力なし → 逼迫度が高い → 評価点 */
 function nrUrgCmp(a,b){return (b.sc.crit?1:0)-(a.sc.crit?1:0)||b.sc.pr-a.sc.pr||nrCmp(a,b)}
+/* 「930」「1030」「10:30」「10」などを「09:30」の形にする。空は""、読めないときは null */
+function nrTime(v){
+  v=String(v||"").replace(/[０-９：]/g,function(c){return c==="："?":":String.fromCharCode(c.charCodeAt(0)-65248)}).trim();
+  if(!v)return "";
+  var m=/^(\d{1,2})(?::?(\d{2}))?$/.exec(v.replace(/[.時]/g,":").replace(/分$/,"").replace(/:$/,""));
+  if(!m)return null;
+  var h=+m[1],mi=m[2]?+m[2]:0;
+  if(m[1].length===1&&!m[2]&&v.length>2)return null;
+  if(h>23||mi>59)return null;
+  return (h<10?"0":"")+h+":"+(mi<10?"0":"")+mi;
+}
 function nrStops(floor,e,cfg){var r=cfg.ev[e];return !!r&&floor>=r[0]&&floor<=r[1]&&cfg.ns[e].indexOf(floor)<0}
 function nrElevFor(floor,elevs,cfg){for(var i=0;i<elevs.length;i++){if(nrStops(floor,elevs[i],cfg))return elevs[i]}return null}
 function nrAnyElev(floor,cfg){for(var e=1;e<=5;e++){if(nrStops(floor,e,cfg))return true}return false}
@@ -478,7 +498,7 @@ function dayRowsTable(d){
 function renderCal(C){
   var y=ui.month.getFullYear(),m=ui.month.getMonth();
   var first=new Date(y,m,1,12).getDay(),n=new Date(y,m+1,0).getDate();
-  var h='<div class="main"><section class="panel"><div class="mhead"><h2>'+y+'年'+(m+1)+'月</h2><div class="nav">'
+  var h='<div class="main"><section class="panel">'+todayBox(C)+'<div class="mhead"><h2>'+y+'年'+(m+1)+'月</h2><div class="nav">'
    +'<button class="btn sm" data-act="prev">‹ 前月</button><button class="btn sm" data-act="today">今日</button><button class="btn sm" data-act="next">翌月 ›</button></div></div><div class="grid">';
   WD.forEach(function(w,i){h+='<div class="wd'+(i===0?' sun':'')+'">'+w+'</div>'});
   for(var i=0;i<first;i++)h+='<div class="cell blank"></div>';
@@ -486,7 +506,7 @@ function renderCal(C){
     var k=y+"-"+p2(m+1)+"-"+p2(d),doc=D.days[k],cap=doc?nrNum(doc.cap):0,s=C.sim.byDate[k],cf=D.confirmed[k];
     if(!ENV.admin){h+=vCell(k,m,d,doc,cap,cf,C);continue}
     var cls="cell";
-    if(!cap)cls+=" off";else cls+=(s&&s.left===0&&C.sim.left.length&&!cf)?" warn":" ok";
+    if(!cap)cls+=" off";else cls+=k===C.t?" now":(s&&s.left===0&&C.sim.left.length&&!cf)?" warn":" ok";
     if(k===ui.sel)cls+=" sel";if(k===C.t)cls+=" today";
     h+='<button class="'+cls+'" data-act="sel" data-date="'+k+'" aria-label="'+(m+1)+'月'+d+'日"><span class="dn"><b>'+d+'</b>'+(cf?'<i>確定</i>':'')+'</span>';
     if(!cap)h+='<span class="cap">—</span>';
@@ -500,16 +520,25 @@ function renderCal(C){
       h+='<span class="bar"><b style="width:'+Math.round(u/cap*100)+'%"></b></span>'}
     h+='</button>';
   }
-  if(ENV.admin)h+='</div><div class="legend"><span><i style="background:var(--okbg)"></i>回収日</span><span><i style="background:var(--warnbg)"></i>満載(まだ未回収あり)</span><span><i style="background:var(--offbg)"></i>回収なし</span><span>セル: 配分/回収可能台数、開始時間、集積EV</span></div></section>';
-  else h+='</div><div class="legend"><span><i style="background:var(--accent);border-color:var(--accent)"></i>自社の搬出日(確定)</span><span><i style="background:var(--okbg);border-color:var(--ok)"></i>搬出可能日</span><span><i style="background:var(--offbg)"></i>回収なし</span><span><b class="tag2">前日移動</b> 前日までに別の階のEV前へ移す</span><span>日付をタップすると、その日の回収業者と台数が表示されます</span></div></section>';
+  if(ENV.admin)h+='</div><div class="legend"><span><i style="background:var(--now);border-color:var(--now)"></i>本日の回収日</span><span><i style="background:var(--okbg)"></i>回収日</span><span><i style="background:var(--warnbg)"></i>満載(まだ未回収あり)</span><span><i style="background:var(--offbg)"></i>回収なし</span><span>セル: 配分/回収可能台数、開始時間、集積EV</span></div></section>';
+  else h+='</div><div class="legend"><span><i style="background:var(--now);border-color:var(--now)"></i>本日の搬出日</span><span><i style="background:var(--accent);border-color:var(--accent)"></i>自社の搬出日(確定)</span><span><i style="background:var(--okbg);border-color:var(--ok)"></i>搬出可能日</span><span><i style="background:var(--offbg)"></i>回収なし</span><span><b class="tag2">前日移動</b> 前日までに別の階のEV前へ移す</span><span>日付をタップすると、その日の回収業者と台数が表示されます</span></div></section>';
   h+=(ENV.admin?renderDay(C):renderDayV())+'</div>';
   if(!ENV.admin)h+=renderMine(C);
   return h;
 }
 /* 業者のカレンダーのマス。搬出可能日と自社の搬出日を色で分ける */
+/* 当日の搬出(業者は自社の分、管理者はその日の全体) */
+function todayBox(C){
+  var t=C.t,cf=D.confirmed[t],day=D.days[t]||{},rows=cf?(cf.rows||[]).filter(function(r){return nrNum(r.units)>0&&(ENV.admin||r.vid===ENV.uid)}):[];
+  if(!rows.length)return "";
+  var h='<div class="todaybox"><h3>本日は搬出日です('+esc(fmtTime(day))+')</h3><ul>';
+  rows.forEach(function(r){var pe=placedEv(t,r);
+    h+='<li>'+(ENV.admin?esc(rowName(r))+' ':'')+r.floor+'階 <b>'+nrNum(r.units)+'台</b> → '+evLabel(r.ev,r.to)+(isPlaced(t,r)?' <span class="st ok">✅ 配置済み'+(pe?'(EV'+pe+')':'')+'</span>':'')+'</li>'});
+  return h+'</ul></div>';
+}
 function vCell(k,m,d,doc,cap,cf,C){
   var my=cf?(cf.rows||[]).filter(function(r){return r.vid===ENV.uid&&nrNum(r.units)>0}):[],cls="cell",lab;
-  if(!cap){cls+=" off";lab="回収なし"}else if(my.length){cls+=" mine";lab="自社の搬出日"}else{cls+=" can";lab="搬出可能日"}
+  if(!cap){cls+=" off";lab="回収なし"}else if(my.length){cls+=k===C.t?" now":" mine";lab=k===C.t?"本日の搬出日":"自社の搬出日"}else{cls+=" can";lab="搬出可能日"}
   if(k<C.t)cls+=" past";if(k===ui.sel)cls+=" sel";if(k===C.t)cls+=" today";
   var mu=0,allp=my.length>0,mv=false;my.forEach(function(r){mu+=nrNum(r.units);if(!isPlaced(k,r))allp=false;if(r.to)mv=true});
   var h='<button class="'+cls+'" data-act="sel" data-date="'+k+'" aria-label="'+(m+1)+'月'+d+'日 '+lab+'"><span class="dn"><b>'+d+'</b>'+(allp?'<i>✅</i>':'')+'</span>';
@@ -542,7 +571,7 @@ function renderDay(C){
   h+='<div class="field"><span>回収車輌</span><button class="btn sm" data-act="tminus" aria-label="車輌を減らす">−</button><b>'+trucks+'台</b>'
    +'<button class="btn sm" data-act="tplus" aria-label="車輌を増やす">＋</button><span>(1台につきNRボックス'+pt+'台まで)</span></div>'
    +'<div class="field"><span>回収できるNRボックス</span><input type="number" min="0" id="cap" data-f="cap" value="'+cap+'" aria-label="回収できるNRボックスの台数"><span>台</span></div>'
-   +'<div class="field"><span>回収時間</span><input type="time" id="tf" data-f="tf" value="'+esc(doc.tf||"")+'" aria-label="回収開始時間"><span>〜</span><input type="time" id="tt" data-f="tt" value="'+esc(doc.tt||"")+'" aria-label="回収終了時間"></div>'
+   +'<div class="field"><span>回収時間</span><input type="text" inputmode="numeric" maxlength="5" placeholder="10:00" class="tinput" id="tf" data-f="tf" value="'+esc(doc.tf||"")+'" aria-label="回収開始時間"><span>〜</span><input type="text" inputmode="numeric" maxlength="5" placeholder="12:00" class="tinput" id="tt" data-f="tt" value="'+esc(doc.tt||"")+'" aria-label="回収終了時間"></div>'
    +'<div class="field"><span>集積するエレベーター前</span><div class="evpick">';
   for(var e=1;e<=5;e++)h+='<label><input type="checkbox" data-f="elev" data-e="'+e+'"'+(elev.indexOf(e)>=0?' checked':'')+'>EV'+e+'</label>';
   h+='</div></div>';
@@ -832,6 +861,7 @@ function morphNode(a,b,remote){
     else{var v=b.getAttribute("value")||"";if(a.value!==v)a.value=v}
   }else if(tag==="SELECT"&&selv!==null&&a.value!==selv)a.value=selv;
 }
+var morphing=false,morphAgain=false;
 function render(remote){
   if(ui.pv&&!ENV.preview)return asVendor(function(){render(remote)});
   var C=compute(),vendorOk=ENV.admin||ENV.preview||ENV.mode==="local"||!!D.approved[ENV.uid],h,tabs;
@@ -856,7 +886,10 @@ function render(remote){
     h+=ui.tab==="cal"?renderCal(C):ui.tab==="pri"?renderPriority(C):ui.tab==="cnf"?renderConfirmed(C):ui.tab==="rec"?renderRec(C):ui.tab==="mem"?renderMem(C):ui.tab==="set"?renderSet(C):renderVin(C);
   }else h+=!vendorOk?renderReg():(ui.tab==="cal"?renderCal(C):renderVin(C));
   var box=document.createElement("div");box.innerHTML=h;
-  morphKids(document.getElementById("app"),box,remote);
+  /* 差し替え中に入力欄が外れると blur → change → render が入れ子で走るので、終わってからやり直す */
+  if(morphing){morphAgain=true;return}
+  morphing=true;try{morphKids(document.getElementById("app"),box,remote)}finally{morphing=false}
+  if(morphAgain){morphAgain=false;render(remote)}
 }
 
 /* ---- 業者ページのプレビュー(管理者が業者の画面をそのまま確認する) ---- */
@@ -1019,7 +1052,7 @@ function onChange(ev){
   if(f==="vsel"){ui.vsel=el.value||null;ui.confirm=""}
   else if(f==="only"){ui.only=el.checked}
   else if(f==="cap"){var v=nrNum(el.value);if(v===0){if(D.confirmed[ui.sel])remove("confirmed",ui.sel);remove("days",ui.sel)}else mutDay(ui.sel,function(d){d.cap=v})}
-  else if(f==="tf"||f==="tt"){mutDay(ui.sel,function(d){d[f]=el.value||""})}
+  else if(f==="tf"||f==="tt"){var tv=nrTime(el.value);if(tv===null){ui.msg="時間は「1030」や「10:30」のように入力してください。";ui.msgKind="bad"}else{el.value=tv;mutDay(ui.sel,function(d){d[f]=tv})}}
   else if(f==="elev"){var e=Number(el.getAttribute("data-e"));mutDay(ui.sel,function(d){var a=(d.elev||[]).filter(function(x){return x!==e});if(el.checked)a.push(e);a.sort();d.elev=a})}
   else if(f==="vname"){mutVendor(vid,function(v){v.name=el.value.trim()})}
   else if(f==="vnote"){mutVendor(vid,function(v){v.note=el.value.slice(0,500)})}
