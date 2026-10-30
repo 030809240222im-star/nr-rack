@@ -345,7 +345,7 @@ async function boot(){
   render();
 }
 function subscribe(){
-  var err=function(e){ui.msg="データを読み込めませんでした("+((e&&e.code)||"error")+")";ui.msgKind="bad";render(true)};
+  var err=function(e){ui.msg="データを読み込めませんでした("+((e&&e.code)||"error")+")"+(e&&e.code==="permission-denied"?"。Firebaseのセキュリティルールに、このアカウントのメールアドレスが管理者として入っているか確認してください。":"");ui.msgKind="bad";render(true)};
   var colls=["days","vendors","plans","members","approved","confirmed"];
   colls.forEach(function(c){
     ENV.db.collection(c).onSnapshot(function(snap){var m={};snap.docs.forEach(function(d){m[d.id]=d.data()});D[c]=m;LOADED[c]=true;render(true)},err);
@@ -1079,7 +1079,8 @@ function start(){
    業者は自分の文書しか読めないので、業者用の一覧は自分の1件だけを見る */
 var OWN=["vendors","members","approved","plans"];
 function makeDb(fs,u,admin){
-  function quiet(cb,empty,err){return function(e){if(e&&e.code==="permission-denied")cb(empty);else if(err)err(e)}}
+  /* 承認前の業者は回収日などを読めないので、その拒否だけは空として扱う。管理者の拒否はルールの設定漏れなので画面に出す */
+  function quiet(cb,empty,err){return function(e){if(!admin&&e&&e.code==="permission-denied")cb(empty);else if(err)err(e)}}
   return {
     collection:function(c){return {onSnapshot:function(cb,err){
       if(!admin&&OWN.indexOf(c)>=0)
