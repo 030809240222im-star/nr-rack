@@ -254,7 +254,7 @@ function nrSimulate(vendors,days,cfg,startStr,confirmed){
         var u=nrNum(r.units);if(u<=0)return;sum+=u;
         res.asg.push({vid:r.vid,floor:r.floor,units:u,ev:r.ev||null,to:r.to||null,ret:r.ret||null,rank:res.asg.length+1,sc:null});
         var key=r.vid+"|"+r.floor;if(!first[key])first[key]=d;
-        if(d>=startStr){var it=idx[key];if(it){it.rem=Math.max(0,it.rem-u);it.held=Math.max(0,it.held-u)}}
+        if(d>=startStr&&!r.back){var it=idx[key];if(it){it.rem=Math.max(0,it.rem-u);it.held=Math.max(0,it.held-u)}}
       });
       res.left=Math.max(0,cap-sum);byDate[d]=res;return;
     }
@@ -414,6 +414,22 @@ function addRow(cf,k,vid,floor,units,skipCap){
   var hit=null;cf.rows.forEach(function(r){if(r.vid===vid&&r.floor===floor&&(r.ev||null)===ev)hit=r});
   if(hit)hit.units=nrNum(hit.units)+units;else cf.rows.push({vid:vid,floor:floor,units:units,ev:ev,to:to,ret:retFor(vid,floor)});
   return units;
+}
+
+/* 戻したら業者の台数に反映する。回収した階の希望と保有から回収台数を引き、戻し先の階の保有に戻した台数を足す。
+   取り消せるように、実際に動かした量を back.adj に残す */
+function backAdj(r,u){
+  var v=D.vendors[r.vid]||{},e=(v.floors||{})[r.floor]||{},n=nrNum(r.units),adj={},to=nrNum(r.ret)||r.floor;
+  adj[r.floor]={h:-Math.min(n,nrNum(e.h)),w:-Math.min(n,nrNum(e.w))};
+  adj[to]=adj[to]||{h:0,w:0};adj[to].h+=nrNum(u);
+  return adj;
+}
+function applyAdj(vid,adj,sign){
+  mutVendor(vid,function(v){Object.keys(adj).forEach(function(f){
+    var a=adj[f],e=v.floors[f]||{h:0,w:0};
+    e.h=Math.max(0,nrNum(e.h)+sign*(Number(a.h)||0));e.w=Math.max(0,nrNum(e.w)+sign*(Number(a.w)||0));
+    if(!nrNum(e.h)&&!nrNum(e.w))delete v.floors[f];else v.floors[f]=e;
+  })});
 }
 
 /* ---- 画面 ---- */
@@ -1008,10 +1024,20 @@ function onChange(ev){
   }
   else if(f==="back"||f==="backev"||f==="backu"){
     var bd=el.getAttribute("data-d"),bi=Number(el.getAttribute("data-i"));
+    var fx=null;
     mutConfirmed(bd,function(cf){var r=cf.rows[bi];if(!r)return;
-      if(f==="back"){if(el.checked)r.back={ev:placedEv(bd,r)||r.ev||((D.days[bd]||{}).elev||[])[0]||1,u:nrNum(r.units),at:nowIso()};else delete r.back}
-      else if(r.back){if(f==="backev")r.back.ev=nrNum(el.value)||1;else r.back.u=nrNum(el.value);r.back.at=nowIso()}
+      if(f==="back"){
+        if(el.checked&&!r.back){r.back={ev:placedEv(bd,r)||r.ev||((D.days[bd]||{}).elev||[])[0]||1,u:nrNum(r.units),at:nowIso()};r.back.adj=backAdj(r,r.back.u);fx=[r.vid,r.back.adj,1]}
+        else if(!el.checked&&r.back){if(r.back.adj)fx=[r.vid,r.back.adj,-1];delete r.back}
+      }
+      else if(r.back){
+        if(f==="backev")r.back.ev=nrNum(el.value)||1;
+        else{var nu=nrNum(el.value),du=nu-nrNum(r.back.u),to=String(nrNum(r.ret)||r.floor);r.back.u=nu;
+          if(r.back.adj&&du){var one={};one[to]={h:du,w:0};r.back.adj[to]=r.back.adj[to]||{h:0,w:0};r.back.adj[to].h+=du;fx=[r.vid,one,1]}}
+        r.back.at=nowIso();
+      }
     });
+    if(fx){applyAdj(fx[0],fx[1],fx[2]);ui.msg=vname(fx[0])+"の保有台数と回収希望を"+(fx[2]>0?"更新":"元に戻")+"しました。";ui.msgKind="ok"}
   }
   else if(f==="company"){var id2=el.getAttribute("data-id"),nm=el.value.trim();if(D.approved[id2]&&nm){var a=clone(D.approved[id2]);a.company=nm;put("approved",id2,a)}}
   else if(f==="cunits"){
