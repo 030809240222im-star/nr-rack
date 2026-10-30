@@ -1,0 +1,59 @@
+rules_version = '2';
+// NRボックス ラック調整 のセキュリティルール
+// 管理者のメールアドレスは、下の adminEmails() と index.html の NR_CONFIG.adminEmails の両方に書きます。
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function adminEmails() { return ['admin@example.com']; }
+
+    function signedIn() { return request.auth != null; }
+    function isAdmin() {
+      return signedIn()
+        && request.auth.token.email_verified == true
+        && request.auth.token.email.lower() in adminEmails();
+    }
+    function isSelf(id) { return signedIn() && request.auth.uid == id; }
+    function isApproved() {
+      return signedIn() && exists(/databases/$(database)/documents/approved/$(request.auth.uid));
+    }
+
+    // 回収日・確定した回収・設定: 管理者と承認済みの業者が読む。書けるのは管理者だけ
+    match /config/{id} {
+      allow read: if isAdmin() || isApproved();
+      allow write: if isAdmin();
+    }
+    match /days/{id} {
+      allow read: if isAdmin() || isApproved();
+      allow write: if isAdmin();
+    }
+    match /confirmed/{id} {
+      allow read: if isAdmin() || isApproved();
+      allow write: if isAdmin();
+    }
+
+    // 業者の入力: 本人(承認済み)と管理者だけ
+    match /vendors/{id} {
+      allow read: if isAdmin() || isSelf(id);
+      allow write: if isAdmin() || (isSelf(id) && isApproved());
+    }
+
+    // 登録の申請: 本人が出し、管理者が見て承認・却下する
+    match /members/{id} {
+      allow read: if isAdmin() || isSelf(id);
+      allow delete: if isAdmin();
+      allow create, update: if isAdmin() || (isSelf(id)
+        && request.resource.data.keys().hasOnly(['company', 'contact', 'email', 'at'])
+        && request.resource.data.company is string && request.resource.data.company.size() <= 100
+        && request.resource.data.email is string && request.resource.data.email.size() <= 200);
+    }
+
+    // 承認と、管理者が追加したNRボックスの記録: 本人は読むだけ
+    match /approved/{id} {
+      allow read: if isAdmin() || isSelf(id);
+      allow write: if isAdmin();
+    }
+    match /plans/{id} {
+      allow read: if isAdmin() || isSelf(id);
+      allow write: if isAdmin();
+    }
+  }
+}
