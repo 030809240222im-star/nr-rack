@@ -3,7 +3,7 @@ rules_version = '2';
 // 管理者のメールアドレスは、下の adminEmails() と index.html の NR_CONFIG.adminEmails の両方に書きます。
 service cloud.firestore {
   match /databases/{database}/documents {
-    function adminEmails() { return ['admin@example.com']; }
+    function adminEmails() { return ['kowa0371@gmail.com', '030809240222im@gmail.com']; }
 
     function signedIn() { return request.auth != null; }
     function isAdmin() {
