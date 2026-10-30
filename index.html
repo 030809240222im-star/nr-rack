@@ -180,7 +180,7 @@ tr.mine td{background:var(--surface2)}
 
 <script>
 /* ---- 優先順位と日別配分のロジック(画面から独立) ---- */
-var NR_DEF={perTruck:4,wP:1,wW:15,wH:2};
+var NR_DEF={perTruck:4,wP:1,wW:15,wH:2,crit:100};
 function nrNum(v){v=parseInt(v,10);return isFinite(v)&&v>0?v:0}
 function nrW(v,d){var n=parseFloat(v);return isFinite(n)&&n>=0?n:d}
 function nrPd(s){var a=s.split("-").map(Number);return new Date(a[0],a[1]-1,a[2],12)}
@@ -205,7 +205,7 @@ function nrFmtFloors(a){
 }
 function nrCfg(c){
   c=c||{};
-  var o={perTruck:nrNum(c.perTruck)||NR_DEF.perTruck,wP:nrW(c.wP,NR_DEF.wP),wW:nrW(c.wW,NR_DEF.wW),wH:nrW(c.wH,NR_DEF.wH),ev:{},ns:{},nsStr:{}};
+  var o={perTruck:nrNum(c.perTruck)||NR_DEF.perTruck,wP:nrW(c.wP,NR_DEF.wP),wW:nrW(c.wW,NR_DEF.wW),wH:nrW(c.wH,NR_DEF.wH),crit:Math.min(100,Math.max(1,nrW(c.crit,NR_DEF.crit)||NR_DEF.crit)),ev:{},ns:{},nsStr:{}};
   for(var e=1;e<=5;e++){var r=c.ev&&c.ev[e];
     var a=r&&r.length===2?Math.min(62,nrNum(r[0])||1):1,b=r&&r.length===2?Math.min(62,nrNum(r[1])||62):62;
     o.ev[e]=[Math.min(a,b),Math.max(a,b)];
@@ -233,10 +233,11 @@ function nrItems(vendors,startStr){
 }
 function nrScore(it,date,cfg){
   var wait=Math.max(0,nrDiff(it.since,date)),pr=it.held>0?it.rem/it.held*100:0;
-  return {pr:pr,wait:wait,held:it.held,total:cfg.wP*pr+cfg.wW*wait+cfg.wH*it.held};
+  /* 余力なし: 保有台数のうち出したい台数の割合が基準(初期値100%=全部出したい)以上。評価点に関係なく最優先にする */
+  return {pr:pr,wait:wait,held:it.held,crit:it.held>0&&pr>=cfg.crit,total:cfg.wP*pr+cfg.wW*wait+cfg.wH*it.held};
 }
 function nrCmp(a,b){
-  return b.sc.total-a.sc.total||(a.since<b.since?-1:a.since>b.since?1:0)||a.floor-b.floor||(a.vid<b.vid?-1:a.vid>b.vid?1:0);
+  return (b.sc.crit?1:0)-(a.sc.crit?1:0)||b.sc.total-a.sc.total||(a.since<b.since?-1:a.since>b.since?1:0)||a.floor-b.floor||(a.vid<b.vid?-1:a.vid>b.vid?1:0);
 }
 /* confirmed: {日付:{rows:[{vid,floor,units,ev,to,ret}]}} 確定済みの日は行をそのまま使い、残りの希望から差し引く。
    days[日付].moves: {"vid|階":{ev,to}} 指定EVが停まらない階を、前日までにto階のEV前へ集積させる管理者の指示 */
@@ -531,7 +532,7 @@ function renderDay(C){
   if(cf)h+=dayRowsTable(k);
   else if(asg.length){
     h+='<div class="tablewrap"><table><thead><tr><th class="l">順位</th><th class="l">業者</th><th>階</th><th>台数</th><th class="l">集積</th><th class="l">戻し階</th></tr></thead><tbody>';
-    asg.forEach(function(a){h+='<tr><td class="l">'+a.rank+'</td><td class="l vn"><i class="chip" style="background:'+vcolor(a.vid)+'"></i>'+esc(vname(a.vid))+'</td><td>'+a.floor+'階</td><td><b>'+a.units+'</b></td><td class="l">'+evCell(a)+'</td><td class="l">'+retText(a.ret)+'</td></tr>'});
+    asg.forEach(function(a){h+='<tr><td class="l">'+a.rank+(a.sc&&a.sc.crit?' <span class="st bad">余力なし</span>':'')+'</td><td class="l vn"><i class="chip" style="background:'+vcolor(a.vid)+'"></i>'+esc(vname(a.vid))+'</td><td>'+a.floor+'階</td><td><b>'+a.units+'</b></td><td class="l">'+evCell(a)+'</td><td class="l">'+retText(a.ret)+'</td></tr>'});
     h+='</tbody></table></div>';
   }else h+='<p class="empty">配分できる搬出希望がありません。</p>';
   if(!cf)h+=renderStage(C,k,s,elev);
@@ -559,7 +560,7 @@ function renderStage(C,k,s,elev){
     h+='<div class="tablewrap" style="margin-top:8px"><table><thead><tr><th class="l">業者</th><th>階</th><th>希望</th><th>逼迫度</th><th>評価点</th><th class="l">集積先を指示</th></tr></thead><tbody>';
     ex.forEach(function(x,i){
       var e0=elev[0],near=null;elev.forEach(function(e){var n=nrNearest(x.floor,e,C.cfg);if(n!==null&&(near===null||Math.abs(n-x.floor)<Math.abs(near-x.floor))){near=n;e0=e}});
-      h+='<tr><td class="l vn"><i class="chip" style="background:'+vcolor(x.vid)+'"></i>'+esc(vname(x.vid))+'</td><td>'+x.floor+'階</td><td>'+x.rem+'</td><td>'+x.sc.pr.toFixed(0)+'%</td><td>'+x.sc.total.toFixed(0)+'</td>'
+      h+='<tr><td class="l vn"><i class="chip" style="background:'+vcolor(x.vid)+'"></i>'+esc(vname(x.vid))+'</td><td>'+x.floor+'階</td><td>'+x.rem+'</td><td>'+x.sc.pr.toFixed(0)+'%'+(x.sc.crit?' <span class="st bad">余力なし</span>':'')+'</td><td>'+x.sc.total.toFixed(0)+'</td>'
        +'<td class="l"><div class="mvbox" data-vid="'+esc(x.vid)+'" data-fl="'+x.floor+'"><select id="sg-e-'+k+'-'+i+'" data-keep data-role="ev" aria-label="集積するエレベーター">'+elev.map(function(e){return '<option value="'+e+'"'+(e===e0?' selected':'')+'>EV'+e+'</option>'}).join("")+'</select>'
        +'<input type="number" min="1" max="62" id="sg-t-'+k+'-'+i+'" data-keep data-role="to" value="'+(near||"")+'" aria-label="集積する階"><span class="hint" style="margin:0">階</span><button class="btn sm primary" data-act="stage">指示</button></div></td></tr>';
     });
@@ -570,7 +571,7 @@ function renderStage(C,k,s,elev){
 function renderPriority(C){
   var R=C.rank,h='<section class="panel"><div class="mhead"><h2>優先順位</h2></div>';
   if(!R.list.length)return h+'<p class="empty">業者の搬出希望がまだ入力されていません。</p></section>';
-  h+='<p class="hint" style="margin:0 0 10px">基準日 '+fmtD(R.ref)+' の評価です。評価点 = 逼迫度×'+C.cfg.wP+' + 待機日数×'+C.cfg.wW+' + 保有台数×'+C.cfg.wH+'(重みは設定で変更)。逼迫度は、保有台数に対する搬出希望台数の割合(%)です。</p>';
+  h+='<p class="hint" style="margin:0 0 10px">基準日 '+fmtD(R.ref)+' の評価です。評価点 = 逼迫度×'+C.cfg.wP+' + 待機日数×'+C.cfg.wW+' + 保有台数×'+C.cfg.wH+'(重みは設定で変更)。逼迫度は、保有台数に対する搬出希望台数の割合(%)です。逼迫度が'+C.cfg.crit+'%以上の階は「余力なし」として、評価点に関係なく最優先で回収します。</p>';
   var best={};R.list.forEach(function(r){if(!best[r.vid])best[r.vid]={rank:r.rank,want:0,floors:0};var b=best[r.vid];b.want+=r.rem;b.floors++});
   var vs=Object.keys(best).sort(function(a,b){return best[a].rank-best[b].rank});
   h+='<h3>業者の優先順位</h3><div class="ranklist" style="margin-top:6px">';
@@ -578,7 +579,7 @@ function renderPriority(C){
   h+='</div><h3>階ごとの優先順位</h3><div class="tablewrap"><table><thead><tr><th class="l">順位</th><th class="l">業者</th><th>階</th><th>保有</th><th>希望</th><th>待機日</th><th>評価点</th><th class="l">戻し階</th><th class="l">回収予定</th></tr></thead><tbody>';
   R.list.forEach(function(r){
     var when=r.first?fmtD(r.first):(r.noEv?'<span class="st bad">対応EVなし</span>':'<span class="st bad">日程なし</span>');
-    h+='<tr><td class="l"><b>'+r.rank+'</b></td><td class="l vn"><i class="chip" style="background:'+vcolor(r.vid)+'"></i>'+esc(vname(r.vid))+'</td><td>'+r.floor+'階</td><td>'+r.held+'</td><td>'+r.rem+'</td><td>'+r.sc.wait+'</td><td>'+r.sc.total.toFixed(0)+'</td><td class="l">'+retText(r.ret)+'</td><td class="l">'+when+'</td></tr>';
+    h+='<tr><td class="l"><b>'+r.rank+'</b>'+(r.sc.crit?' <span class="st bad">余力なし</span>':'')+'</td><td class="l vn"><i class="chip" style="background:'+vcolor(r.vid)+'"></i>'+esc(vname(r.vid))+'</td><td>'+r.floor+'階</td><td>'+r.held+'</td><td>'+r.rem+'</td><td>'+r.sc.wait+'</td><td>'+r.sc.total.toFixed(0)+'</td><td class="l">'+retText(r.ret)+'</td><td class="l">'+when+'</td></tr>';
   });
   h+='</tbody></table></div>';
   var left=C.sim.left.reduce(function(a,i){return a+i.rem},0);
@@ -645,6 +646,7 @@ function renderVin(C){
     var over=ww>hh,same=!e||e.same!==false,rt=e?nrNum(e.r):0,state='';
     if(over)state='<span class="st bad">保有を超えています</span>';
     else if(ww&&!same&&!rt)state='<span class="st warn">戻し階を選択</span>';
+    else if(ww&&hh&&ww/hh*100>=C.cfg.crit)state='<span class="st bad">余力なし・最優先</span>';
     else if(ww)state='<span class="st ok">希望あり</span>';
     h+='<tr><td class="fl">'+f+'階</td><td><input type="number" min="0" id="h-'+f+'" data-f="floor" data-fl="'+f+'" data-k="h" value="'+(hh||"")+'" aria-label="'+f+'階の保有台数"></td>'
      +'<td><input type="number" min="0" id="w-'+f+'" data-f="floor" data-fl="'+f+'" data-k="w" value="'+(ww||"")+'"'+(over?' class="bad"':'')+' aria-label="'+f+'階の出したい台数"></td>'
@@ -741,8 +743,9 @@ function renderSet(C){
    +'<label>車輌1台あたりの上限(NRボックス台数)<input type="number" min="1" id="s-pt" data-f="perTruck" value="'+c.perTruck+'"></label>'
    +'<label>逼迫度の重み<input type="number" min="0" id="s-wp" data-f="wP" value="'+c.wP+'"></label>'
    +'<label>待機日数の重み<input type="number" min="0" id="s-ww" data-f="wW" value="'+c.wW+'"></label>'
-   +'<label>保有台数の重み<input type="number" min="0" id="s-wh" data-f="wH" value="'+c.wH+'"></label></div>'
-   +'<p class="hint">評価点が高い順に回収します。逼迫度は保有台数に対する搬出希望台数の割合、待機日数は希望を登録してからの日数です。</p>'
+   +'<label>保有台数の重み<input type="number" min="0" id="s-wh" data-f="wH" value="'+c.wH+'"></label>'
+   +'<label>余力なしとみなす逼迫度(%)<input type="number" min="1" max="100" id="s-crit" data-f="crit" value="'+c.crit+'"></label></div>'
+   +'<p class="hint">逼迫度が「余力なし」の基準以上の階(初期値100%=保有している台数を全部出したい階)を最優先で回収し、その中と残りは評価点が高い順に回収します。逼迫度は保有台数に対する搬出希望台数の割合、待機日数は希望を登録してからの日数です。</p>'
    +'<h3 style="margin:16px 0 4px">エレベーターごとの停止階</h3>';
   for(var e=1;e<=5;e++){
     h+='<div class="evrow"><b>EV'+e+'</b><input type="number" min="1" max="62" id="ef'+e+'" data-f="evr" data-e="'+e+'" data-k="0" value="'+c.ev[e][0]+'" aria-label="EV'+e+'の最下階"><span>階 〜</span><input type="number" min="1" max="62" id="et'+e+'" data-f="evr" data-e="'+e+'" data-k="1" value="'+c.ev[e][1]+'" aria-label="EV'+e+'の最上階"><span>階</span>'
@@ -1000,7 +1003,7 @@ function onChange(ev){
     var d3=el.getAttribute("data-d"),i3=Number(el.getAttribute("data-i"));
     mutConfirmed(d3,function(cf){var r=cf.rows[i3];if(!r)return;var cap=nrNum((D.days[d3]||{}).cap),room=Math.max(0,cap-rowsTotal(cf,i3));r.units=Math.min(nrNum(el.value),room)});
   }
-  else if(f==="perTruck"||f==="wP"||f==="wW"||f==="wH"){c[f]=f==="perTruck"?(nrNum(el.value)||4):nrW(el.value,NR_DEF[f]);putCfg(c)}
+  else if(f==="perTruck"||f==="wP"||f==="wW"||f==="wH"||f==="crit"){c[f]=f==="perTruck"?(nrNum(el.value)||4):f==="crit"?Math.min(100,Math.max(1,nrNum(el.value)||100)):nrW(el.value,NR_DEF[f]);putCfg(c)}
   else if(f==="evr"){var e2=el.getAttribute("data-e"),i=Number(el.getAttribute("data-k"));c.ev=c.ev||{};var r2=(c.ev[e2]||[1,62]).slice();r2[i]=Math.min(62,nrNum(el.value)||(i?62:1));c.ev[e2]=r2;putCfg(c)}
   else if(f==="ns"){var e3=el.getAttribute("data-e");c.ns=c.ns||{};c.ns[e3]=el.value.trim();putCfg(c)}
   render();
