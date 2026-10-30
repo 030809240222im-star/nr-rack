@@ -192,7 +192,7 @@ tr.mine td{background:var(--surface2)}
 
 <script>
 /* ---- 優先順位と日別配分のロジック(画面から独立) ---- */
-var NR_DEF={perTruck:4,wP:1,wW:15,wH:2,crit:100};
+var NR_DEF={perTruck:4,wP:1,wW:15,wH:2,crit:100,auto:2};
 function nrNum(v){v=parseInt(v,10);return isFinite(v)&&v>0?v:0}
 function nrW(v,d){var n=parseFloat(v);return isFinite(n)&&n>=0?n:d}
 function nrPd(s){var a=s.split("-").map(Number);return new Date(a[0],a[1]-1,a[2],12)}
@@ -217,7 +217,7 @@ function nrFmtFloors(a){
 }
 function nrCfg(c){
   c=c||{};
-  var o={perTruck:nrNum(c.perTruck)||NR_DEF.perTruck,wP:nrW(c.wP,NR_DEF.wP),wW:nrW(c.wW,NR_DEF.wW),wH:nrW(c.wH,NR_DEF.wH),crit:Math.min(100,Math.max(1,nrW(c.crit,NR_DEF.crit)||NR_DEF.crit)),ev:{},ns:{},nsStr:{}};
+  var o={perTruck:nrNum(c.perTruck)||NR_DEF.perTruck,wP:nrW(c.wP,NR_DEF.wP),wW:nrW(c.wW,NR_DEF.wW),wH:nrW(c.wH,NR_DEF.wH),crit:Math.min(100,Math.max(1,nrW(c.crit,NR_DEF.crit)||NR_DEF.crit)),auto:c.auto==null||c.auto===""?NR_DEF.auto:Math.min(14,nrNum(c.auto)),ev:{},ns:{},nsStr:{}};
   for(var e=1;e<=5;e++){var r=c.ev&&c.ev[e];
     var a=r&&r.length===2?Math.min(62,nrNum(r[0])||1):1,b=r&&r.length===2?Math.min(62,nrNum(r[1])||62):62;
     o.ev[e]=[Math.min(a,b),Math.max(a,b)];
@@ -532,6 +532,32 @@ function renderCal(C){
   return h;
 }
 /* 業者のカレンダーのマス。搬出可能日と自社の搬出日を色で分ける */
+/* ---- 自動確定 ---- */
+var AUTO_WAIT=10*60*1000,autoTimer=null;
+function daysUntil(d,t){return Math.round((nrPd(d)-nrPd(t))/864e5)}
+function inAuto(d,C){return C.cfg.auto>0&&d>=C.t&&daysUntil(d,C.t)<=C.cfg.auto}
+function confirmDay(d,s,auto){
+  var rows=s.asg.map(function(a){return {vid:a.vid,floor:a.floor,units:a.units,ev:a.ev||null,to:a.to||null,ret:a.ret||null,n:vname(a.vid)}});
+  var o={rows:rows,at:nowIso()};if(auto)o.auto=true;put("confirmed",d,o);
+}
+/* 搬出日の設定日数前(初期値2日前)になった回収日を、配分どおりに確定する。書き込めるのは管理者だけなので、管理者が開いたときに行う */
+function autoConfirm(C){
+  if(!ENV.admin||ENV.preview||ui.pv)return false;
+  if(ENV.mode!=="local"&&!["config","days","vendors","confirmed","approved","blocked","members"].every(function(c){return LOADED[c]}))return false;
+  /* エレベーター未指定の日と、管理者が直前(10分以内)に設定を変えている日は、設定が終わるまで待つ */
+  var done=[],wait=0,now=Date.now();
+  Object.keys(D.days).sort().forEach(function(d){
+    var day=D.days[d],s=C.sim.byDate[d];
+    if(D.confirmed[d]||day.hold||!nrNum(day.cap)||!(day.elev||[]).length||!inAuto(d,C)||!s||!s.asg.length)return;
+    var ed=day.edited?Date.parse(day.edited):0;
+    if(ed&&now-ed<AUTO_WAIT){var w=AUTO_WAIT-(now-ed)+1000;if(!wait||w<wait)wait=w;return}
+    confirmDay(d,s,true);done.push(d);
+  });
+  if(wait){clearTimeout(autoTimer);autoTimer=setTimeout(function(){render()},wait)}
+  if(done.length){ui.msg=done.map(fmtD).join("・")+"の配分を自動で確定しました(搬出日の"+C.cfg.auto+"日前)。";ui.msgKind="ok"}
+  return done.length>0;
+}
+
 /* 当日と翌日の搬出のお知らせ(業者は自社の分、管理者はその日の全体)。カレンダーの一番上に目立つように出す */
 function todayBox(C){
   var t=C.t,tm=nrDs(new Date(nrPd(t).getTime()+864e5));
@@ -570,7 +596,7 @@ function renderDayV(){
   if(!cap)return h+'<p class="empty">この日は回収がありません。</p></section>';
   var el=doc.elev||[],tot=cf?rowsTotal(cf,-1):0;
   h+='<div class="sum"><div><small>回収時間</small><b style="font-size:15px">'+esc(fmtTime(doc))+'</b></div><div><small>回収台数</small><b>'+(cf?tot+'/':'')+cap+'台</b></div><div><small>回収エレベーター</small><b style="font-size:15px">'+(el.length?el.map(function(e){return "EV"+e}).join("・"):'未指定')+'</b></div></div>';
-  if(!cf)return h+'<p class="empty">回収する業者と台数は、管理者が確定すると表示されます。</p></section>';
+  if(!cf){var au=nrCfg(D.config).auto;return h+'<p class="empty">回収する業者と台数は、確定すると表示されます。'+(au>0?'通常は搬出日の'+au+'日前に自動で確定します。':'')+'</p></section>'}
   h+=dayRowsTable(k);
   if(myRows().some(function(x){return x.d===k}))h+='<p class="hint">自社の行は、NRボックスを搬出エレベーター前まで運んだら、置いたエレベーターを選んで「配置した」にチェックしてください。管理者に伝わります。</p>';
   return h+'</section>';
@@ -613,9 +639,13 @@ function renderDay(C){
   if(!cf)h+=renderStage(C,k,s,elev);
   h+='<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">';
   if(cf)h+='<button class="btn" data-act="goconf">確定内容の再振り分け</button><button class="btn danger" data-act="unconfirm">'+(ui.confirm==="unconfirm"?'もう一度押すと取り消し':'確定を取り消す')+'</button>';
-  else h+='<button class="btn primary" data-act="confirm"'+(asg.length?'':' disabled')+'>この日の配分を確定</button>';
+  else h+='<button class="btn primary" data-act="confirm"'+(asg.length?'':' disabled')+'>'+(doc.hold?'この日の配分を確定':'今すぐ確定')+'</button>';
   h+='<button class="btn danger sm" data-act="dayoff">'+(ui.confirm==="dayoff"?'もう一度押すと削除':'この日を回収なしに戻す')+'</button></div>';
-  if(!cf)h+='<p class="hint">確定すると、各業者の「回収予定」に日付・時間・集積場所・階が表示されます。</p>';
+  if(!cf)h+=doc.hold?'<p class="hint">確定を取り消したため、この日は自動確定を止めています。「この日の配分を確定」を押すと確定します。</p>'
+    :inAuto(k,C)?'<p class="hint"><b>自動確定の期間に入っています。</b>'+(elev.length?'設定を変えてから10分たつと、この配分で自動で確定されます。':'集積するエレベーターを選ぶと、10分後に自動で確定されます。')+'すぐ確定するときは「今すぐ確定」を押します。</p>'
+    :C.cfg.auto>0?'<p class="hint">この日は<b>'+fmtD(nrDs(new Date(nrPd(k).getTime()-C.cfg.auto*864e5)))+'('+C.cfg.auto+'日前)に自動で確定</b>されます。それより早く確定するときは「今すぐ確定」を押します。確定すると、各業者の「回収予定」に日付・時間・集積場所・階が表示されます。</p>'
+    :'<p class="hint">確定すると、各業者の「回収予定」に日付・時間・集積場所・階が表示されます。</p>';
+  else if(cf.auto)h+='<p class="hint"><span class="st ok">自動確定</span> 搬出日の'+C.cfg.auto+'日前に自動で確定しました。追加の業者や急ぎの業者は「確定内容の再振り分け」で変更できます。</p>';
   else h+='<p class="hint">「搬出EVまで配置」は業者がチェックします(管理者も代わりにチェックできます)。台車を戻したら「戻した」にチェックし、使ったエレベーターと台数を入れてください。</p>';
   return h+'</section>';
 }
@@ -832,7 +862,8 @@ function renderSet(C){
    +'<label>逼迫度の重み<input type="number" min="0" id="s-wp" data-f="wP" value="'+c.wP+'"></label>'
    +'<label>待機日数の重み<input type="number" min="0" id="s-ww" data-f="wW" value="'+c.wW+'"></label>'
    +'<label>保有台数の重み<input type="number" min="0" id="s-wh" data-f="wH" value="'+c.wH+'"></label>'
-   +'<label>余力なしとみなす逼迫度(%)<input type="number" min="1" max="100" id="s-crit" data-f="crit" value="'+c.crit+'"></label></div>'
+   +'<label>余力なしとみなす逼迫度(%)<input type="number" min="1" max="100" id="s-crit" data-f="crit" value="'+c.crit+'"></label>'
+   +'<label>自動確定(搬出日の何日前・0で自動確定しない)<input type="number" min="0" max="14" id="s-auto" data-f="auto" value="'+c.auto+'"></label></div>'
    +'<p class="hint">逼迫度が「余力なし」の基準以上の階(初期値100%=保有している台数を全部出したい階)を最優先で回収し、その中と残りは評価点が高い順に回収します。逼迫度は保有台数に対する搬出希望台数の割合、待機日数は希望を登録してからの日数です。</p>'
    +'<h3 style="margin:16px 0 4px">エレベーターごとの停止階</h3>';
   for(var e=1;e<=5;e++){
@@ -879,6 +910,7 @@ var morphing=false,morphAgain=false;
 function render(remote){
   if(ui.pv&&!ENV.preview)return asVendor(function(){render(remote)});
   var C=compute(),vendorOk=ENV.admin||ENV.preview||ENV.mode==="local"||!!D.approved[ENV.uid],h,tabs;
+  if(autoConfirm(C))C=compute();
   if(ENV.admin){
     var pc=Object.keys(D.members).filter(function(id){return !D.approved[id]}).length;
     tabs=[["cal","カレンダー"],["pri","優先順位"],["cnf","確定と再振り分け"],["vin","業者入力"],["rec","追加と戻し"],["mem","登録"+(pc?'<span class="cnt">'+pc+'</span>':"")],["set","設定"]];
@@ -926,7 +958,7 @@ function mutVendor(vid,fn){
   var v=clone(D.vendors[vid]||{floors:{}});v.floors=v.floors||{};fn(v);v.updated=nowIso();put("vendors",vid,v);
 }
 function mutDay(k,fn){
-  var d=clone(D.days[k]||{cap:0,elev:[]});fn(d);put("days",k,d);
+  var d=clone(D.days[k]||{cap:0,elev:[]});fn(d);d.edited=nowIso();put("days",k,d);
 }
 function sample(){
   var t=new Date(),out={vendors:{},days:{}},defs=[
@@ -972,13 +1004,13 @@ function onClick(ev){
   else if(act==="confirm"){
     var C=compute(),s=C.sim.byDate[ui.sel];
     if(s&&s.asg.length&&!D.confirmed[ui.sel]){
-      var rows=s.asg.map(function(a){return {vid:a.vid,floor:a.floor,units:a.units,ev:a.ev||null,to:a.to||null,ret:a.ret||null,n:vname(a.vid)}});
-      put("confirmed",ui.sel,{rows:rows,at:nowIso()});
+      confirmDay(ui.sel,s,false);
       ui.msg=fmtLong(ui.sel)+"の配分を確定しました。業者の「回収予定」に反映されます。";ui.msgKind="ok";
     }
   }
   else if(act==="unconfirm"){
-    if(ui.confirm==="unconfirm"){remove("confirmed",ui.sel);ui.confirm=""}
+    /* 自動確定の期間に入っている日は、取り消したあと勝手に確定し直さないよう止めておく */
+    if(ui.confirm==="unconfirm"){remove("confirmed",ui.sel);if(inAuto(ui.sel,compute()))mutDay(ui.sel,function(d){d.hold=true});ui.confirm=""}
     else{ui.confirm="unconfirm";keepConfirm=true}
   }
   else if(act==="cdel"){var dd=b.getAttribute("data-d"),ii=Number(b.getAttribute("data-i"));mutConfirmed(dd,function(cf){cf.rows.splice(ii,1)})}
@@ -1115,6 +1147,7 @@ function onChange(ev){
   }
   else if(f==="wd"){var wv=el.getAttribute("data-vid"),ww=Number(el.getAttribute("data-w"));c.wd=c.wd||{};
     var wa=(c.wd[wv]||[]).filter(function(x){return x!==ww});if(el.checked)wa.push(ww);wa.sort();if(wa.length)c.wd[wv]=wa;else delete c.wd[wv];putCfg(c)}
+  else if(f==="auto"){c.auto=Math.min(14,nrNum(el.value));putCfg(c)}
   else if(f==="perTruck"||f==="wP"||f==="wW"||f==="wH"||f==="crit"){c[f]=f==="perTruck"?(nrNum(el.value)||NR_DEF.perTruck):f==="crit"?Math.min(100,Math.max(1,nrNum(el.value)||100)):nrW(el.value,NR_DEF[f]);putCfg(c)}
   else if(f==="evr"){var e2=el.getAttribute("data-e"),i=Number(el.getAttribute("data-k"));c.ev=c.ev||{};var r2=(c.ev[e2]||[1,62]).slice();r2[i]=Math.min(62,nrNum(el.value)||(i?62:1));c.ev[e2]=r2;putCfg(c)}
   else if(f==="ns"){var e3=el.getAttribute("data-e");c.ns=c.ns||{};c.ns[e3]=el.value.trim();putCfg(c)}
