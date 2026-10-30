@@ -11,7 +11,7 @@ BLOCK = """
     function isApproved{S}() {{
       return signedIn() && exists(/databases/$(database)/documents/{P}approved/$(request.auth.uid));
     }}
-    // 盛替え業者: 管理者が許可した人だけ
+    // 盛替え業者: 申請して利用許可(crews)がある人
     function isCrew{S}() {{
       return signedIn() && exists(/databases/$(database)/documents/{P}crews/$(request.auth.uid));
     }}
@@ -70,7 +70,7 @@ BLOCK = """
       allow write: if isAdmin();
     }}
 
-    // 盛替え業者の申請: 本人が出し、管理者が許可する
+    // 盛替え業者の登録内容: 本人が出し、管理者が見る
     match /{P}crewreq/{{id}} {{
       allow read: if isAdmin() || isSelf(id);
       allow delete: if isAdmin();
@@ -79,8 +79,18 @@ BLOCK = """
         && request.resource.data.company is string && request.resource.data.company.size() <= 100
         && request.resource.data.email is string && request.resource.data.email.size() <= 200);
     }}
-    // 盛替え業者の許可: 管理者だけが付け外しできる
+    // 盛替え業者の利用許可: 本人は申請と同時に自分の分を作れる(利用停止された人は作れない)。変更・削除は管理者だけ
     match /{P}crews/{{id}} {{
+      allow read: if isAdmin() || isSelf(id);
+      allow create: if isAdmin() || (isSelf(id)
+        && !exists(/databases/$(database)/documents/{P}crewblocked/$(id))
+        && request.resource.data.keys().hasOnly(['company', 'email', 'at'])
+        && request.resource.data.company is string && request.resource.data.company.size() <= 100
+        && request.resource.data.email is string && request.resource.data.email.size() <= 200);
+      allow update, delete: if isAdmin();
+    }}
+    // 盛替え業者の利用停止: 管理者だけが付け外しできる
+    match /{P}crewblocked/{{id}} {{
       allow read: if isAdmin() || isSelf(id);
       allow write: if isAdmin();
     }}
