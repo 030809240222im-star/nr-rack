@@ -47,7 +47,18 @@ service cloud.firestore {
     }
 
     // 承認と、管理者が追加したNRボックスの記録: 本人は読むだけ
+    // 利用許可: 業者は登録と同時に自分の分を作れる(利用停止された人は作れない)。変更・削除は管理者だけ
     match /approved/{id} {
+      allow read: if isAdmin() || isSelf(id);
+      allow create: if isAdmin() || (isSelf(id)
+        && !exists(/databases/$(database)/documents/blocked/$(id))
+        && request.resource.data.keys().hasOnly(['company', 'email', 'at'])
+        && request.resource.data.company is string && request.resource.data.company.size() <= 100
+        && request.resource.data.email is string && request.resource.data.email.size() <= 200);
+      allow update, delete: if isAdmin();
+    }
+    // 利用停止: 管理者だけが付け外しできる
+    match /blocked/{id} {
       allow read: if isAdmin() || isSelf(id);
       allow write: if isAdmin();
     }

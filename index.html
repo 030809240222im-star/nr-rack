@@ -301,7 +301,7 @@ function qrSvg(){
 var WD=["日","月","火","水","木","金","土"];
 var COLORS=["var(--c0)","var(--c1)","var(--c2)","var(--c3)","var(--c4)","var(--c5)","var(--c6)","var(--c7)"];
 var ENV={mode:"local",uid:"local",realUid:"local",admin:true,preview:false,db:null,email:"",name:""};
-var D={config:{},days:{},vendors:{},plans:{},members:{},approved:{},confirmed:{}};
+var D={config:{},days:{},vendors:{},plans:{},members:{},approved:{},blocked:{},confirmed:{}};
 var LOADED={};
 var ui={tab:"cal",month:null,sel:null,vsel:null,only:false,confirm:"",msg:"",msgKind:""};
 var W={},busy={};
@@ -356,7 +356,7 @@ async function boot(){
 }
 function subscribe(){
   var err=function(e){ui.msg="データを読み込めませんでした("+((e&&e.code)||"error")+")"+(e&&e.code==="permission-denied"?"。Firebaseのセキュリティルールに、このアカウントのメールアドレスが管理者として入っているか確認してください。":"");ui.msgKind="bad";render(true)};
-  var colls=["days","vendors","plans","members","approved","confirmed"];
+  var colls=["days","vendors","plans","members","approved","blocked","confirmed"];
   colls.forEach(function(c){
     ENV.db.collection(c).onSnapshot(function(snap){var m={};snap.docs.forEach(function(d){m[d.id]=d.data()});D[c]=m;LOADED[c]=true;render(true)},err);
   });
@@ -569,7 +569,7 @@ function renderStage(C,k,s,elev){
 }
 function renderPriority(C){
   var R=C.rank,h='<section class="panel"><div class="mhead"><h2>優先順位</h2></div>';
-  if(!R.list.length)return h+'<p class="empty">承認済みの業者の搬出希望がまだ入力されていません。</p></section>';
+  if(!R.list.length)return h+'<p class="empty">業者の搬出希望がまだ入力されていません。</p></section>';
   h+='<p class="hint" style="margin:0 0 10px">基準日 '+fmtD(R.ref)+' の評価です。評価点 = 逼迫度×'+C.cfg.wP+' + 待機日数×'+C.cfg.wW+' + 保有台数×'+C.cfg.wH+'(重みは設定で変更)。逼迫度は、保有台数に対する搬出希望台数の割合(%)です。</p>';
   var best={};R.list.forEach(function(r){if(!best[r.vid])best[r.vid]={rank:r.rank,want:0,floors:0};var b=best[r.vid];b.want+=r.rem;b.floors++});
   var vs=Object.keys(best).sort(function(a,b){return best[a].rank-best[b].rank});
@@ -628,7 +628,7 @@ function renderVin(C){
   var vid=ENV.admin?ui.vsel:ENV.uid,h='<section class="panel"><h2 style="margin-bottom:10px">搬出の入力</h2>';
   if(ENV.admin){h+=vendorPicker(C);vid=ui.vsel}
   if(!vid){
-    return h+'<p class="empty">承認済みの業者がまだありません。業者の登録を承認するか、「業者を追加」から作成してください。</p></section>';
+    return h+'<p class="empty">利用中の業者がまだありません。業者にURLから登録してもらうか、「業者を追加」から作成してください。</p></section>';
   }
   var v=D.vendors[vid]||{floors:{}},fl=v.floors||{},th=0,tw=0;
   Object.keys(fl).forEach(function(k){th+=nrNum(fl[k].h);tw+=Math.min(nrNum(fl[k].w),nrNum(fl[k].h))});
@@ -710,28 +710,29 @@ function renderRec(C){
 }
 function renderReg(){
   var m=D.members[ENV.uid],h='<section class="panel reg"><h2>業者登録</h2>';
-  if(!LOADED.members||!LOADED.approved)return h+'<p class="empty">確認しています…</p></section>';
-  if(m)h+='<div class="note"><span>登録を受け付けました。管理者が承認すると、入力できるようになります。</span></div>'
-   +'<p class="hint" style="margin:0">会社名 '+esc(m.company)+' / 連絡先 '+esc(m.email)+'</p><p class="hint" style="margin:0">内容を直す場合は、下のフォームから送り直してください。</p>';
-  else h+='<p class="hint" style="margin:0">このアプリを使うには、会社名とメールアドレスを登録し、管理者の承認を受けてください。</p>';
+  if(!LOADED.members||!LOADED.approved||!LOADED.blocked)return h+'<p class="empty">確認しています…</p></section>';
+  if(D.blocked[ENV.uid])return h+'<div class="note bad"><span>このアカウントは管理者により利用が停止されています。心当たりがない場合は管理者に連絡してください。</span></div></section>';
+  if(m)h+='<div class="note"><span>登録を受け付けました。まもなく使えるようになります。画面が切り替わらないときは再読み込みしてください。</span></div>'
+   +'<p class="hint" style="margin:0">会社名 '+esc(m.company)+' / 連絡先 '+esc(m.email)+'</p>';
+  else h+='<p class="hint" style="margin:0">会社名とメールアドレスを登録すると、すぐに使えるようになります。</p>';
   var em=(m&&m.email)||ENV.email||"";
   h+='<div class="lbl"><label for="reg-company">会社名(必須)</label><input type="text" id="reg-company" data-keep value="'+esc((m&&m.company)||"")+'" autocomplete="organization"></div>'
    +'<div class="lbl"><label for="reg-contact">ご担当者名</label><input type="text" id="reg-contact" data-keep value="'+esc((m&&m.contact)||ENV.name||"")+'" autocomplete="name"></div>'
    +'<div class="lbl"><label for="reg-email">メールアドレス(必須)</label><input type="email" id="reg-email" data-keep value="'+esc(em)+'" autocomplete="email"></div>'
-   +'<div><button class="btn primary" data-act="regsubmit">'+(m?'登録内容を送り直す':'登録を申請する')+'</button></div></section>';
+   +'<div><button class="btn primary" data-act="regsubmit">'+(m?'登録内容を送り直す':'登録する')+'</button></div></section>';
   return h;
 }
 function renderMem(C){
   var pend=Object.keys(D.members).filter(function(id){return !D.approved[id]}),ap=Object.keys(D.approved);
-  var h='<section class="panel"><h2 style="margin-bottom:6px">登録の承認</h2><p class="hint" style="margin:0 0 10px">業者が会社名とメールアドレスを登録すると、ここに承認待ちとして並びます。承認した業者だけが入力でき、優先順位の計算に入ります。</p><h3>承認待ち('+pend.length+')</h3>';
-  if(!pend.length)h+='<p class="empty">承認待ちの登録はありません。</p>';
+  var h='<section class="panel"><h2 style="margin-bottom:6px">業者の登録</h2><p class="hint" style="margin:0 0 10px">業者はURLから会社名とメールアドレスを登録すると、すぐに使えるようになります。心当たりのない登録は「利用を停止」してください。</p><h3>利用停止中・未完了('+pend.length+')</h3>';
+  if(!pend.length)h+='<p class="empty">ありません。</p>';
   else{h+='<div class="tablewrap"><table><thead><tr><th class="l">会社名</th><th class="l">担当者</th><th class="l">メールアドレス</th><th class="l">申請日時</th><th></th></tr></thead><tbody>';
-    pend.forEach(function(id){var m=D.members[id];h+='<tr><td class="l vn">'+esc(m.company)+'</td><td class="l">'+esc(m.contact||"")+'</td><td class="l">'+esc(m.email)+'</td><td class="l">'+esc((m.at||"").slice(0,16).replace("T"," "))+'</td><td><button class="btn sm primary" data-act="approve" data-id="'+esc(id)+'">承認</button> <button class="btn sm danger" data-act="reject" data-id="'+esc(id)+'">却下</button></td></tr>'});
+    pend.forEach(function(id){var m=D.members[id];h+='<tr><td class="l vn">'+esc(m.company)+'</td><td class="l">'+esc(m.contact||"")+'</td><td class="l">'+esc(m.email)+'</td><td class="l">'+esc((m.at||"").slice(0,16).replace("T"," "))+'</td><td><button class="btn sm primary" data-act="approve" data-id="'+esc(id)+'">'+(D.blocked[id]?'利用を再開':'利用を許可')+'</button> <button class="btn sm danger" data-act="reject" data-id="'+esc(id)+'">却下</button></td></tr>'});
     h+='</tbody></table></div>'}
-  h+='<h3 style="margin-top:16px">承認済みの業者('+ap.length+')</h3>';
-  if(!ap.length)h+='<p class="empty">承認済みの業者はまだありません。</p>';
+  h+='<h3 style="margin-top:16px">利用中の業者('+ap.length+')</h3>';
+  if(!ap.length)h+='<p class="empty">まだ登録した業者はいません。</p>';
   else{h+='<div class="tablewrap"><table><thead><tr><th class="l">会社名</th><th class="l">メールアドレス</th><th></th></tr></thead><tbody>';
-    ap.forEach(function(id){var a=D.approved[id];h+='<tr><td class="l"><input type="text" id="co-'+esc(id)+'" data-f="company" data-id="'+esc(id)+'" value="'+esc(a.company)+'" aria-label="会社名"></td><td class="l">'+esc(a.email||"")+'</td><td><button class="btn sm danger" data-act="unapprove" data-id="'+esc(id)+'">'+(ui.confirm==="un-"+id?'もう一度押すと解除':'承認を解除')+'</button></td></tr>'});
+    ap.forEach(function(id){var a=D.approved[id];h+='<tr><td class="l"><input type="text" id="co-'+esc(id)+'" data-f="company" data-id="'+esc(id)+'" value="'+esc(a.company)+'" aria-label="会社名"></td><td class="l">'+esc(a.email||"")+'</td><td><button class="btn sm danger" data-act="unapprove" data-id="'+esc(id)+'">'+(ui.confirm==="un-"+id?'もう一度押すと停止':'利用を停止')+'</button></td></tr>'});
     h+='</tbody></table></div>'}
   return h+'<p class="hint" style="margin-top:12px">管理者を増やすときは、Firebaseのセキュリティルールと設定(NR_CONFIG.adminEmails)の両方にメールアドレスを追加します。</p></section>';
 }
@@ -750,7 +751,7 @@ function renderSet(C){
   }
   h+='<p class="hint">指定した日のエレベーターが停まる階だけを回収対象にします。不停止階は「13,14,44-46」のように、カンマ区切りと範囲で入力します。</p></section>'
    +'<section class="panel"><h2 style="margin-bottom:8px">このアプリのQRコード</h2><div class="qrbox"><div class="qrimg" role="img" aria-label="このアプリを開くQRコード">'+qrSvg()+'</div><div style="flex:1 1 240px;min-width:0"><p style="margin:0 0 4px">スマートフォンで読み取ると、このアプリが開きます。</p>'
-   +'<p class="hint" style="margin:0">業者はこのURLを開いて新規登録し、管理者が承認すると使えるようになります。</p><div class="urlrow"><input type="text" id="appurl" readonly value="'+esc(APP_URL)+'" aria-label="アプリのURL"><button class="btn sm" data-act="copyurl">URLをコピー</button></div></div></div></section>'
+   +'<p class="hint" style="margin:0">業者はこのURLを開いて新規登録し、会社名を登録するとすぐに使えます。</p><div class="urlrow"><input type="text" id="appurl" readonly value="'+esc(APP_URL)+'" aria-label="アプリのURL"><button class="btn sm" data-act="copyurl">URLをコピー</button></div></div></div></section>'
    +'<section class="panel"><h2 style="margin-bottom:8px">サンプルデータ</h2><p class="hint" style="margin:0 0 8px">動作を試すための例です。業者名・台数・階はすべて架空の値で、実際のデータとは別に消せます。</p>'
    +'<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" data-act="sampleon">サンプルを入れる</button><button class="btn danger" data-act="sampleoff">'+(ui.confirm==="sampleoff"?'もう一度押すと消去':'サンプルを消す')+'</button></div></section>';
   return h;
@@ -933,12 +934,17 @@ function onClick(ev){
   else if(act==="regsubmit"){
     var co=document.getElementById("reg-company").value.trim(),em=document.getElementById("reg-email").value.trim(),ct=document.getElementById("reg-contact").value.trim();
     if(!co||!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)){ui.msg="会社名と正しいメールアドレスを入力してください。";ui.msgKind="bad"}
-    else{put("members",ENV.uid,{company:co,contact:ct,email:em,at:nowIso()});ui.msg="登録を申請しました。管理者の承認をお待ちください。";ui.msgKind="ok"}
+    else{
+      /* 承認なしで使えるように、登録と同時に自分の利用許可も作る(停止された人はルールで拒否される) */
+      put("members",ENV.uid,{company:co,contact:ct,email:em,at:nowIso()});
+      if(!D.approved[ENV.uid])put("approved",ENV.uid,{company:co,email:em,at:nowIso()});
+      ui.msg="登録しました。すぐに使えます。";ui.msgKind="ok";
+    }
   }
-  else if(act==="approve"){var m=D.members[id];if(m)put("approved",id,{company:m.company,email:m.email,at:nowIso()})}
+  else if(act==="approve"){var m=D.members[id];if(m){if(D.blocked[id])remove("blocked",id);put("approved",id,{company:m.company,email:m.email,at:nowIso()})}}
   else if(act==="reject"){remove("members",id)}
   else if(act==="unapprove"){
-    if(ui.confirm==="un-"+id){remove("approved",id);ui.confirm=""}else{ui.confirm="un-"+id;keepConfirm=true}
+    if(ui.confirm==="un-"+id){put("blocked",id,{at:nowIso()});remove("approved",id);ui.confirm=""}else{ui.confirm="un-"+id;keepConfirm=true}
   }
   else if(act==="copyurl"){
     var inp=document.getElementById("appurl");
@@ -1057,7 +1063,7 @@ function start(){
   function showLogin(){
     var reg=mode==="reg";
     app.innerHTML='<section class="panel login"><h1>NRボックス ラック調整</h1>'
-      +'<p class="hint" style="margin:0">'+(reg?'業者の方は、ここでアカウントを作ってから会社名を登録し、管理者の承認を受けてください。':'ログインしてください。初めての業者の方は「新規登録」から始めます。')+'</p>'
+      +'<p class="hint" style="margin:0">'+(reg?'業者の方は、ここでアカウントを作ってから会社名を登録すると、すぐに使えます。':'ログインしてください。初めての業者の方は「新規登録」から始めます。')+'</p>'
       +(msg?'<div class="note '+kind+'"><span>'+esc(msg)+'</span></div>':'')
       +'<button class="btn" id="lg-google" type="button">Googleアカウントでログイン</button>'
       +'<div class="sep">またはメールアドレス</div>'
@@ -1100,7 +1106,7 @@ function start(){
 
 /* アプリが使うデータベースの形(collection().onSnapshot / doc().set・delete・onSnapshot)に合わせる。
    業者は自分の文書しか読めないので、業者用の一覧は自分の1件だけを見る */
-var OWN=["vendors","members","approved","plans"];
+var OWN=["vendors","members","approved","blocked","plans"];
 function makeDb(fs,u,admin){
   /* 承認前の業者は回収日などを読めないので、その拒否だけは空として扱う。管理者の拒否はルールの設定漏れなので画面に出す */
   function quiet(cb,empty,err){return function(e){if(!admin&&e&&e.code==="permission-denied")cb(empty);else if(err)err(e)}}
