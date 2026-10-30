@@ -170,9 +170,12 @@ body{touch-action:manipulation}
 .cell.now .cap,.cell.now .tag,.cell.now .evs,.cell.now .dn i{color:var(--now-fg)}
 .cell.now.today .dn b{background:var(--now-fg);color:var(--now)}
 .cell.now.sel{box-shadow:0 0 0 2px var(--surface),0 0 0 4px var(--now)}
-.todaybox{border:2px solid var(--now);background:var(--nowbg);border-radius:10px;padding:10px 12px;margin:0 0 12px}
-.todaybox h3{margin:0 0 6px;color:var(--now);font-size:15px}
-.todaybox ul{margin:0;padding-left:18px}
+.todaybox{border:3px solid var(--now);background:var(--nowbg);border-radius:12px;margin:0 0 12px;overflow:hidden}
+.todaybox h3{margin:0;padding:10px 14px;background:var(--now);color:var(--now-fg);font-size:18px;line-height:1.35}
+.todaybox ul{margin:0;padding:10px 14px 10px 32px;font-size:17px;line-height:1.6}
+.todaybox p{margin:0;padding:0 14px 10px;font-size:13px;color:var(--fg)}
+.todaybox.next{border-color:var(--accent);background:var(--surface2)}
+.todaybox.next h3{background:var(--accent);color:var(--accent-fg)}
 .tinput{width:5.5em;text-align:center}
 .cell.mine.sel{box-shadow:0 0 0 2px var(--surface),0 0 0 4px var(--accent)}
 .cell.past{opacity:.5}
@@ -527,14 +530,23 @@ function renderCal(C){
   return h;
 }
 /* 業者のカレンダーのマス。搬出可能日と自社の搬出日を色で分ける */
-/* 当日の搬出(業者は自社の分、管理者はその日の全体) */
+/* 当日と翌日の搬出のお知らせ(業者は自社の分、管理者はその日の全体)。カレンダーの一番上に目立つように出す */
 function todayBox(C){
-  var t=C.t,cf=D.confirmed[t],day=D.days[t]||{},rows=cf?(cf.rows||[]).filter(function(r){return nrNum(r.units)>0&&(ENV.admin||r.vid===ENV.uid)}):[];
+  var t=C.t,tm=nrDs(new Date(nrPd(t).getTime()+864e5));
+  return dayNotice(t,true)+dayNotice(tm,false);
+}
+function dayNotice(d,isToday){
+  var cf=D.confirmed[d],day=D.days[d]||{},rows=cf?(cf.rows||[]).filter(function(r){return nrNum(r.units)>0&&(ENV.admin||r.vid===ENV.uid)}):[];
   if(!rows.length)return "";
-  var h='<div class="todaybox"><h3>本日は搬出日です('+esc(fmtTime(day))+')</h3><ul>';
-  rows.forEach(function(r){var pe=placedEv(t,r);
-    h+='<li>'+(ENV.admin?esc(rowName(r))+' ':'')+r.floor+'階 <b>'+nrNum(r.units)+'台</b> → '+evLabel(r.ev,r.to)+(isPlaced(t,r)?' <span class="st ok">✅ 配置済み'+(pe?'(EV'+pe+')':'')+'</span>':'')+'</li>'});
-  return h+'</ul></div>';
+  var tot=0,left=0,mv=false;rows.forEach(function(r){tot+=nrNum(r.units);if(!isPlaced(d,r))left++;if(r.to)mv=true});
+  var h='<div class="todaybox'+(isToday?'':' next')+'" role="status"><h3>'+(isToday?'🔔 本日は搬出日です':'📅 明日は搬出日です')+' '+fmtD(d)+' '+esc(fmtTime(day))+'・計'+tot+'台</h3><ul>';
+  rows.forEach(function(r){var pe=placedEv(d,r);
+    h+='<li>'+(ENV.admin?esc(rowName(r))+' ':'')+'<b>'+r.floor+'階 '+nrNum(r.units)+'台</b> → <b>'+evLabel(r.ev,r.to)+'</b>'+(r.to&&!isToday?' <span class="st warn">今日中に移動</span>':'')
+      +(isToday&&isPlaced(d,r)?' <span class="st ok">✅ 配置済み'+(pe?'(EV'+pe+')':'')+'</span>':'')+'</li>'});
+  h+='</ul>';
+  if(isToday&&!ENV.admin&&left)h+='<p>運び終えたら、下の「自社の搬出予定」で置いたエレベーターを選び「配置した」にチェックしてください。</p>';
+  if(!isToday&&mv)h+='<p>「今日中に移動」の分は、今日のうちに指定の階のエレベーター前へ移しておいてください。</p>';
+  return h+'</div>';
 }
 function vCell(k,m,d,doc,cap,cf,C){
   var my=cf?(cf.rows||[]).filter(function(r){return r.vid===ENV.uid&&nrNum(r.units)>0}):[],cls="cell",lab;
