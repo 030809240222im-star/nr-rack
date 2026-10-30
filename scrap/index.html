@@ -174,6 +174,14 @@ body{touch-action:manipulation}
 .todaybox h3{margin:0;padding:10px 14px;background:var(--now);color:var(--now-fg);font-size:18px;line-height:1.35}
 .todaybox ul{margin:0;padding:10px 14px 10px 32px;font-size:17px;line-height:1.6}
 .todaybox p{margin:0;padding:0 14px 10px;font-size:13px;color:var(--fg)}
+.ccards{display:grid;gap:10px}
+.ccard{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--surface)}
+.cc-h{font-size:16px;margin-bottom:6px}
+.cc-r{display:flex;gap:10px;align-items:flex-start;padding:6px 0;border-top:1px dashed var(--line)}
+.cc-r>span{flex:0 0 76px;color:var(--muted);font-size:13px;padding-top:3px}
+.cc-r .mvbox input{width:5em}
+.todaybox.alert{border-color:var(--bad);background:var(--badbg)}
+.todaybox.alert h3{background:var(--bad);color:#fff}
 .todaybox.next{border-color:var(--accent);background:var(--surface2)}
 .todaybox.next h3{background:var(--accent);color:var(--accent-fg)}
 .tinput{width:5.5em;text-align:center}
@@ -331,8 +339,8 @@ function qrSvg(){
 }
 var WD=["日","月","火","水","木","金","土"];
 var COLORS=["var(--c0)","var(--c1)","var(--c2)","var(--c3)","var(--c4)","var(--c5)","var(--c6)","var(--c7)"];
-var ENV={mode:"local",uid:"local",realUid:"local",admin:true,preview:false,db:null,email:"",name:""};
-var D={config:{},days:{},vendors:{},plans:{},members:{},approved:{},blocked:{},confirmed:{}};
+var ENV={crew:false,mode:"local",uid:"local",realUid:"local",admin:true,preview:false,db:null,email:"",name:""};
+var D={config:{},days:{},vendors:{},plans:{},members:{},approved:{},blocked:{},confirmed:{},crews:{},crewreq:{}};
 var LOADED={};
 var ui={tab:"cal",month:null,sel:null,vsel:null,only:false,confirm:"",msg:"",msgKind:""};
 var W={},busy={};
@@ -376,7 +384,7 @@ async function boot(){
     ENV.mode="db";ENV.db=db;
     var me=null;try{me=await user.me()}catch(e){}
     ENV.uid=(me&&me.id)||await user.id();ENV.email=(me&&me.email)||"";ENV.name=(me&&me.name)||"";
-    ENV.admin=!!(await user.canEdit());ENV.realUid=ENV.uid;
+    ENV.admin=!!(await user.canEdit());ENV.realUid=ENV.uid;ENV.crew=!!window.NR_CREW&&!ENV.admin;
     if(!ENV.uid)ENV.mode="noid";
     else subscribe();
   }else{
@@ -389,7 +397,7 @@ async function boot(){
 }
 function subscribe(){
   var err=function(e){ui.msg="データを読み込めませんでした("+((e&&e.code)||"error")+")"+(e&&e.code==="permission-denied"?"。Firebaseのセキュリティルールに、このアカウントのメールアドレスが管理者として入っているか確認してください。":"");ui.msgKind="bad";render(true)};
-  var colls=["days","vendors","plans","members","approved","blocked","confirmed"];
+  var colls=["days","vendors","plans","members","approved","blocked","confirmed","crews","crewreq"];
   colls.forEach(function(c){
     ENV.db.collection(c).onSnapshot(function(snap){var m={};snap.docs.forEach(function(d){m[d.id]=d.data()});D[c]=m;LOADED[c]=true;ui.synced=new Date();render(true)},err);
   });
@@ -417,6 +425,27 @@ function evLabel(e,to){return e?(to?to+"階 EV"+e+"前":"EV"+e+"前"):"—"}
 function evCell(r){return evLabel(r.ev,r.to)+(r.to?' <span class="st warn">前日までに移動</span>':'')}
 /* 確定行の業者名。業者は他社の登録情報を読めないので、確定時に保存した名前を使う */
 function rowName(r){return ENV.admin||r.vid===ENV.uid?vname(r.vid):(r.n||"他の業者")}
+/* 盛替え業者の搬出確認。chk:{k:"ok"|"none"|"short",got:実際の台数,at} */
+function chkBadge(r){var c=r.chk;if(!c)return '<span class="st off">未確認</span>';
+  if(c.k==="ok")return '<span class="st ok">✅ 揃っている</span>';
+  if(c.k==="none")return '<span class="st bad">⚠ 無い</span>';
+  return '<span class="st bad">⚠ 不足 '+nrNum(c.got)+'/'+nrNum(r.units)+'台</span>';}
+function chkCell(d,r,i){
+  if(!ENV.crew&&!ENV.admin)return chkBadge(r);
+  var c=r.chk||{};
+  return '<div>'+chkBadge(r)+'</div><div class="mvbox" style="margin-top:4px;flex-wrap:wrap">'
+    +'<button class="btn sm" data-act="chk" data-k="ok" data-d="'+d+'" data-i="'+i+'">揃っている</button>'
+    +'<button class="btn sm danger" data-act="chk" data-k="none" data-d="'+d+'" data-i="'+i+'">無い</button>'
+    +'<input type="number" min="0" id="ck-'+d+'-'+i+'" data-keep value="'+(c.k==="short"?nrNum(c.got):"")+'" placeholder="実数" aria-label="実際にあった台数"><button class="btn sm danger" data-act="chk" data-k="short" data-d="'+d+'" data-i="'+i+'">不足</button>'
+    +(r.chk?'<button class="btn sm" data-act="chk" data-k="" data-d="'+d+'" data-i="'+i+'">取消</button>':'')+'</div>';
+}
+/* 盛替え業者から「無い・不足」の連絡が出ていて、まだ戻していない行 */
+function problemRows(){
+  var out=[],from=nrDs(new Date(Date.now()-7*864e5));
+  Object.keys(D.confirmed).sort().forEach(function(d){if(d<from)return;
+    (D.confirmed[d].rows||[]).forEach(function(r,i){if(nrNum(r.units)>0&&r.chk&&r.chk.k!=="ok"&&!r.back&&(ENV.admin||ENV.crew||r.vid===ENV.uid))out.push({d:d,i:i,r:r})})});
+  return out;
+}
 function isPlaced(d,r){var v=D.vendors[r.vid];return !!(v&&v.placed&&v.placed[d+"|"+r.floor])}
 /* 業者が置いたエレベーター。古い記録は時刻だけなので null */
 function placedEv(d,r){var v=D.vendors[r.vid],p=v&&v.placed&&v.placed[d+"|"+r.floor];return p&&typeof p==="object"?nrNum(p.ev)||null:null}
@@ -433,7 +462,7 @@ function myRows(){
 function mutConfirmed(k,fn){
   var cf=clone(D.confirmed[k]||{rows:[]});cf.rows=cf.rows||[];fn(cf);
   cf.rows=cf.rows.filter(function(r){return nrNum(r.units)>0});
-  cf.rows.forEach(function(r){r.n=vname(r.vid)});
+  if(ENV.admin)cf.rows.forEach(function(r){r.n=vname(r.vid)});
   if(!cf.rows.length)remove("confirmed",k);else{cf.at=nowIso();put("confirmed",k,cf)}
 }
 function rowsTotal(cf,skip){var s=0;(cf.rows||[]).forEach(function(r,i){if(i!==skip)s+=nrNum(r.units)});return s}
@@ -468,6 +497,7 @@ function applyAdj(vid,adj,sign){
 /* 配置(業者)と戻し(管理者)のチェック欄 */
 function placedCell(d,r){
   var on=isPlaced(d,r),can=ENV.admin||r.vid===ENV.uid;
+  if(ENV.crew){var pe0=placedEv(d,r);return on?'<span class="st ok">✅ 配置済み'+(pe0?'(EV'+pe0+')':'')+'</span>':'<span class="st off">未配置</span>'}
   if(!can)return '<span class="muted">—</span>';
   var el=((D.days[d]||{}).elev||[]).slice().sort(),pe=placedEv(d,r),cur=pe||r.ev||el[0]||1,opts=el.length?el.slice():[1,2,3,4,5];
   if(opts.indexOf(cur)<0)opts.push(cur);
@@ -480,7 +510,7 @@ function placedCell(d,r){
 }
 function backCell(d,r,i){
   var b=r.back,el=((D.days[d]||{}).elev||[]);
-  if(!ENV.admin)return b?'<span class="st ok">✅ 戻し済み</span><div class="hint" style="margin:2px 0 0">EV'+b.ev+'で'+nrNum(b.u)+'台</div>':'<span class="st off">未</span>';
+  if(!ENV.admin&&!ENV.crew)return b?'<span class="st ok">✅ 戻し済み</span><div class="hint" style="margin:2px 0 0">EV'+b.ev+'で'+nrNum(b.u)+'台</div>':'<span class="st off">未</span>';
   var h='<label class="chk ck'+(b?' on':'')+'"><input type="checkbox" data-f="back" data-d="'+d+'" data-i="'+i+'"'+(b?' checked':'')+'>'+(b?'戻し済み':'戻した')+'</label>';
   if(b){
     h+='<div class="mvbox" style="margin-top:4px"><select id="be-'+d+'-'+i+'" data-f="backev" data-d="'+d+'" data-i="'+i+'" aria-label="戻しに使ったエレベーター">';
@@ -490,13 +520,25 @@ function backCell(d,r,i){
   return h;
 }
 /* 日別の回収一覧(確定済み)。管理者と業者の両方で使う */
+/* 盛替え業者用: スマホで操作しやすいよう1行ずつカードで並べる */
+function crewCards(d){
+  var cf=D.confirmed[d],h='<div class="ccards">';
+  ((cf&&cf.rows)||[]).forEach(function(r,i){
+    if(nrNum(r.units)<=0)return;
+    h+='<div class="ccard"><div class="cc-h"><b>'+esc(rowName(r))+'</b> '+r.floor+'階 <b>'+nrNum(r.units)+'台</b> → <b>'+evLabel(r.ev,r.to)+'</b></div>'
+      +'<div class="cc-r"><span>配置</span>'+placedCell(d,r)+'</div>'
+      +'<div class="cc-r"><span>搬出確認</span><div>'+chkCell(d,r,i)+'</div></div>'
+      +'<div class="cc-r"><span>戻し '+(nrNum(r.ret)||r.floor)+'階</span><div>'+backCell(d,r,i)+'</div></div></div>';
+  });
+  return h+'</div>';
+}
 function dayRowsTable(d){
   var cf=D.confirmed[d],rows=(cf&&cf.rows)||[];
-  var h='<div class="tablewrap"><table><thead><tr><th class="l">業者</th><th>階・台数</th><th class="l">集積 / 戻し階</th><th class="l">配置(業者)</th><th class="l">戻し(管理者)</th></tr></thead><tbody>';
+  var h='<div class="tablewrap"><table><thead><tr><th class="l">業者</th><th>階・台数</th><th class="l">集積 / 戻し階</th><th class="l">配置(業者)</th><th class="l">搬出確認(盛替え)</th><th class="l">戻し(盛替え・管理者)</th></tr></thead><tbody>';
   rows.forEach(function(r,i){
     if(nrNum(r.units)<=0)return;
     var mine=r.vid===ENV.uid&&!ENV.admin;
-    h+='<tr'+(mine?' class="mine"':'')+'><td class="l vn"><i class="chip" style="background:'+(ENV.admin?vcolor(r.vid):(mine?'var(--accent)':'var(--line)'))+'"></i>'+esc(rowName(r))+'</td><td>'+r.floor+'階 <b>'+nrNum(r.units)+'台</b></td><td class="l" style="white-space:normal;min-width:96px">'+evCell(r)+'<div class="hint" style="margin:2px 0 0">戻し: '+retText(r.ret)+'</div></td><td class="l">'+placedCell(d,r)+'</td><td class="l">'+backCell(d,r,i)+'</td></tr>';
+    h+='<tr'+(mine?' class="mine"':'')+'><td class="l vn"><i class="chip" style="background:'+(ENV.admin?vcolor(r.vid):(mine?'var(--accent)':'var(--line)'))+'"></i>'+esc(rowName(r))+'</td><td>'+r.floor+'階 <b>'+nrNum(r.units)+'台</b></td><td class="l" style="white-space:normal;min-width:96px">'+evCell(r)+'<div class="hint" style="margin:2px 0 0">戻し: '+retText(r.ret)+'</div></td><td class="l">'+placedCell(d,r)+'</td><td class="l">'+chkCell(d,r,i)+'</td><td class="l">'+backCell(d,r,i)+'</td></tr>';
   });
   return h+'</tbody></table></div>';
 }
@@ -509,7 +551,7 @@ function renderCal(C){
   for(var i=0;i<first;i++)h+='<div class="cell blank"></div>';
   for(var d=1;d<=n;d++){
     var k=y+"-"+p2(m+1)+"-"+p2(d),doc=D.days[k],cap=doc?nrNum(doc.cap):0,s=C.sim.byDate[k],cf=D.confirmed[k];
-    if(!ENV.admin){h+=vCell(k,m,d,doc,cap,cf,C);continue}
+    if(!ENV.admin&&!ENV.crew){h+=vCell(k,m,d,doc,cap,cf,C);continue}
     var cls="cell";
     if(!cap)cls+=" off";else cls+=k===C.t?" now":(s&&s.left===0&&C.sim.left.length&&!cf)?" warn":" ok";
     if(k===ui.sel)cls+=" sel";if(k===C.t)cls+=" today";
@@ -517,7 +559,7 @@ function renderCal(C){
     if(!cap)h+='<span class="cap">—</span>';
     else{var rows=cf?(cf.rows||[]).filter(function(r){return nrNum(r.units)>0}):[],u=cf?rowsTotal(cf,-1):(ENV.admin&&s?cap-s.left:0);
       h+='<span class="cap">'+(cf||ENV.admin?u+'/':'')+cap+'台'+(doc.tf?' '+esc(doc.tf):'')+'</span><span class="evs'+((doc.elev&&doc.elev.length)?'':' none')+'">'+(doc.elev&&doc.elev.length?doc.elev.map(function(e){return "EV"+e}).join("·"):"EV未指定")+'</span>';
-      if(cf&&ENV.admin){var np=rows.filter(function(r){return isPlaced(k,r)}).length,nb=rows.filter(function(r){return r.back}).length;
+      if(cf&&(ENV.admin||ENV.crew)){var np=rows.filter(function(r){return isPlaced(k,r)}).length,nb=rows.filter(function(r){return r.back}).length;
         h+='<span class="cap">配置'+np+'/'+rows.length+' 戻し'+nb+'/'+rows.length+'</span>'}
       else if(cf){var my=rows.filter(function(r){return r.vid===ENV.uid});
         if(my.length){var mu=0,allp=true;my.forEach(function(r){mu+=nrNum(r.units);if(!isPlaced(k,r))allp=false});
@@ -525,10 +567,10 @@ function renderCal(C){
       h+='<span class="bar"><b style="width:'+Math.round(u/cap*100)+'%"></b></span>'}
     h+='</button>';
   }
-  if(ENV.admin)h+='</div><div class="legend"><span><i style="background:var(--now);border-color:var(--now)"></i>本日の回収日</span><span><i style="background:var(--okbg)"></i>回収日</span><span><i style="background:var(--warnbg)"></i>満載(まだ未回収あり)</span><span><i style="background:var(--offbg)"></i>回収なし</span><span>セル: 配分/回収可能台数、開始時間、集積EV</span></div></section>';
+  if(ENV.admin||ENV.crew)h+='</div><div class="legend"><span><i style="background:var(--now);border-color:var(--now)"></i>本日の回収日</span><span><i style="background:var(--okbg)"></i>回収日</span><span><i style="background:var(--warnbg)"></i>満載(まだ未回収あり)</span><span><i style="background:var(--offbg)"></i>回収なし</span><span>セル: 配分/回収可能台数、開始時間、集積EV</span></div></section>';
   else h+='</div><div class="legend"><span><i style="background:var(--now);border-color:var(--now)"></i>本日の搬出日</span><span><i style="background:var(--accent);border-color:var(--accent)"></i>自社の搬出日(確定)</span><span><i style="background:var(--okbg);border-color:var(--ok)"></i>搬出可能日</span><span><i style="background:var(--offbg)"></i>回収なし</span><span><b class="tag2">前日移動</b> 前日までに別の階のEV前へ移す</span><span>日付をタップすると、その日の回収業者と台数が表示されます</span></div></section>';
   h+=(ENV.admin?renderDay(C):renderDayV())+'</div>';
-  if(!ENV.admin)h+=renderMine(C);
+  if(!ENV.admin&&!ENV.crew)h+=renderMine(C);
   return h;
 }
 /* 業者のカレンダーのマス。搬出可能日と自社の搬出日を色で分ける */
@@ -561,18 +603,27 @@ function autoConfirm(C){
 /* 当日と翌日の搬出のお知らせ(業者は自社の分、管理者はその日の全体)。カレンダーの一番上に目立つように出す */
 function todayBox(C){
   var t=C.t,tm=nrDs(new Date(nrPd(t).getTime()+864e5));
-  return dayNotice(t,true)+dayNotice(tm,false);
+  return problemBox()+dayNotice(t,true)+dayNotice(tm,false);
+}
+function problemBox(){
+  var pr=problemRows();if(!pr.length)return "";
+  var h='<div class="todaybox alert" role="alert"><h3>⚠ 盛替え業者からの連絡('+pr.length+'件)</h3><ul>';
+  pr.forEach(function(x){var r=x.r,c=r.chk;
+    h+='<li>'+fmtD(x.d)+' '+(ENV.admin||ENV.crew?esc(rowName(r))+' ':'')+'<b>'+r.floor+'階 → '+evLabel(r.ev,r.to)+'</b>: '+(c.k==="none"?'<b>'+nrNum(r.units)+'台が見当たりません</b>':'<b>'+nrNum(r.units)+'台のうち'+nrNum(c.got)+'台しかありません(不足'+Math.max(0,nrNum(r.units)-nrNum(c.got))+'台)</b>')+'</li>'});
+  h+='</ul>';
+  if(!ENV.admin&&!ENV.crew)h+='<p>至急、指定のエレベーター前へ運んでください。運んだら盛替え業者が確認し直します。</p>';
+  return h+'</div>';
 }
 function dayNotice(d,isToday){
-  var cf=D.confirmed[d],day=D.days[d]||{},rows=cf?(cf.rows||[]).filter(function(r){return nrNum(r.units)>0&&(ENV.admin||r.vid===ENV.uid)}):[];
+  var cf=D.confirmed[d],day=D.days[d]||{},rows=cf?(cf.rows||[]).filter(function(r){return nrNum(r.units)>0&&(ENV.admin||ENV.crew||r.vid===ENV.uid)}):[];
   if(!rows.length)return "";
   var tot=0,left=0,mv=false;rows.forEach(function(r){tot+=nrNum(r.units);if(!isPlaced(d,r))left++;if(r.to)mv=true});
   var h='<div class="todaybox'+(isToday?'':' next')+'" role="status"><h3>'+(isToday?'🔔 本日は搬出日です':'📅 明日は搬出日です')+' '+fmtD(d)+' '+esc(fmtTime(day))+'・計'+tot+'台</h3><ul>';
   rows.forEach(function(r){var pe=placedEv(d,r);
-    h+='<li>'+(ENV.admin?esc(rowName(r))+' ':'')+'<b>'+r.floor+'階 '+nrNum(r.units)+'台</b> → <b>'+evLabel(r.ev,r.to)+'</b>'+(r.to&&!isToday?' <span class="st warn">今日中に移動</span>':'')
+    h+='<li>'+(ENV.admin||ENV.crew?esc(rowName(r))+' ':'')+'<b>'+r.floor+'階 '+nrNum(r.units)+'台</b> → <b>'+evLabel(r.ev,r.to)+'</b>'+(r.to&&!isToday?' <span class="st warn">今日中に移動</span>':'')
       +(isToday&&isPlaced(d,r)?' <span class="st ok">✅ 配置済み'+(pe?'(EV'+pe+')':'')+'</span>':'')+'</li>'});
   h+='</ul>';
-  if(isToday&&!ENV.admin&&left)h+='<p>運び終えたら、下の「自社の搬出予定」で置いたエレベーターを選び「配置した」にチェックしてください。</p>';
+  if(isToday&&!ENV.admin&&!ENV.crew&&left)h+='<p>運び終えたら、下の「自社の搬出予定」で置いたエレベーターを選び「配置した」にチェックしてください。</p>';
   if(!isToday&&mv)h+='<p>「今日中に移動」の分は、今日のうちに指定の階のエレベーター前へ移しておいてください。</p>';
   return h+'</div>';
 }
@@ -597,7 +648,8 @@ function renderDayV(){
   var el=doc.elev||[],tot=cf?rowsTotal(cf,-1):0;
   h+='<div class="sum"><div><small>回収時間</small><b style="font-size:15px">'+esc(fmtTime(doc))+'</b></div><div><small>回収台数</small><b>'+(cf?tot+'/':'')+cap+'台</b></div><div><small>回収エレベーター</small><b style="font-size:15px">'+(el.length?el.map(function(e){return "EV"+e}).join("・"):'未指定')+'</b></div></div>';
   if(!cf){var au=nrCfg(D.config).auto;return h+'<p class="empty">回収する業者と台数は、確定すると表示されます。'+(au>0?'通常は搬出日の'+au+'日前に自動で確定します。':'')+'</p></section>'}
-  h+=dayRowsTable(k);
+  h+=ENV.crew?crewCards(k):dayRowsTable(k);
+  if(ENV.crew)h+='<p class="hint">搬出エレベーター前で台数を確かめ、揃っていれば「揃っている」、無ければ「無い」、足りなければ実際の台数を入れて「不足」を押します。「無い」「不足」はその業者のアプリにすぐ表示されます。戻したら「戻した」にチェックし、使ったエレベーターと台数を確かめてください。</p>';
   if(myRows().some(function(x){return x.d===k}))h+='<p class="hint">自社の行は、スクラップ台車を搬出エレベーター前まで運んだら、置いたエレベーターを選んで「配置した」にチェックしてください。管理者に伝わります。</p>';
   return h+'</section>';
 }
@@ -828,6 +880,32 @@ function renderRec(C){
     h+='</tbody></table></div>'}
   return h+'</section>';
 }
+/* 盛替え業者の登録(管理者の許可が要る) */
+function renderCrewReg(){
+  var m=D.crewreq[ENV.uid],h='<section class="panel reg"><h2>盛替え業者の登録</h2>';
+  if(!LOADED.crewreq||!LOADED.crews)return h+'<p class="empty">確認しています…</p></section>';
+  if(m)h+='<div class="note"><span>申請を受け付けました。管理者が許可すると使えるようになります。許可されたら自動で切り替わります。</span></div>';
+  else h+='<p class="hint">会社名とメールアドレスを登録して、管理者の許可を待ってください。</p>';
+  h+='<div class="lbl"><label for="reg-company">会社名(必須)</label><input type="text" id="reg-company" data-keep value="'+esc(m?m.company:"")+'"></div>'
+   +'<div class="lbl"><label for="reg-contact">ご担当者名</label><input type="text" id="reg-contact" data-keep value="'+esc(m?m.contact||"":"")+'"></div>'
+   +'<div class="lbl"><label for="reg-email">メールアドレス(必須)</label><input type="email" id="reg-email" data-keep value="'+esc(m?m.email:(ENV.email||""))+'"></div>'
+   +'<button class="btn primary" data-act="cregsubmit">'+(m?'登録内容を送り直す':'許可を申請する')+'</button>';
+  return h+'</section>';
+}
+/* 戻し一覧(盛替え業者・管理者)。この1週間から今日までの確定分で、戻していないものを先に並べる */
+function renderRet(C){
+  var list=[],from=nrDs(new Date(Date.now()-7*864e5));
+  Object.keys(D.confirmed).sort().forEach(function(d){if(d<from||d>C.t)return;
+    (D.confirmed[d].rows||[]).forEach(function(r,i){if(nrNum(r.units)>0)list.push({d:d,i:i,r:r})})});
+  list.sort(function(a,b){return (a.r.back?1:0)-(b.r.back?1:0)||(a.d<b.d?-1:a.d>b.d?1:0)||nrNum(a.r.ret||a.r.floor)-nrNum(b.r.ret||b.r.floor)});
+  var left=list.filter(function(x){return !x.r.back}).length;
+  var h='<section class="panel"><h2 style="margin-bottom:6px">戻し一覧</h2><p class="hint" style="margin:0 0 10px">この1週間から今日までに搬出した分です。戻したら「戻した」にチェックすると完了✅になり、その業者の台数にも反映されます。未完了 '+left+'件。</p>';
+  if(!list.length)return h+'<p class="empty">戻すものはありません。</p></section>';
+  h+='<div class="tablewrap"><table><thead><tr><th>戻し階</th><th class="l">業者・台数</th><th class="l">完了</th></tr></thead><tbody>';
+  list.forEach(function(x){var r=x.r;
+    h+='<tr'+(r.back?' style="opacity:.6"':'')+'><td><b style="font-size:18px">'+(nrNum(r.ret)||r.floor)+'階</b>'+(r.ret?'':'<div class="hint" style="margin:0">同じ階</div>')+'</td><td class="l" style="white-space:normal"><b>'+esc(rowName(r))+' '+nrNum(r.units)+'台</b><div class="hint" style="margin:0">'+fmtD(x.d)+' '+r.floor+'階から・'+evLabel(r.ev,r.to)+'</div></td><td class="l">'+backCell(x.d,r,x.i)+'</td></tr>'});
+  return h+'</tbody></table></div></section>';
+}
 function renderReg(){
   var m=D.members[ENV.uid],h='<section class="panel reg"><h2>業者登録</h2>';
   if(!LOADED.members||!LOADED.approved||!LOADED.blocked)return h+'<p class="empty">確認しています…</p></section>';
@@ -854,6 +932,17 @@ function renderMem(C){
   else{h+='<div class="tablewrap"><table><thead><tr><th class="l">会社名</th><th class="l">メールアドレス</th><th></th></tr></thead><tbody>';
     ap.forEach(function(id){var a=D.approved[id];h+='<tr><td class="l"><input type="text" id="co-'+esc(id)+'" data-f="company" data-id="'+esc(id)+'" value="'+esc(a.company)+'" aria-label="会社名"></td><td class="l">'+esc(a.email||"")+'</td><td><button class="btn sm danger" data-act="unapprove" data-id="'+esc(id)+'">'+(ui.confirm==="un-"+id?'もう一度押すと停止':'利用を停止')+'</button></td></tr>'});
     h+='</tbody></table></div>'}
+  var cq=Object.keys(D.crewreq).filter(function(id){return !D.crews[id]}),cw=Object.keys(D.crews);
+  h+='<h2 style="margin:22px 0 6px">盛替え業者</h2><p class="hint" style="margin:0 0 10px">盛替え業者は専用のURL('+esc(APP_URL)+'crew/)から申請し、ここで「許可」すると使えるようになります。許可した業者は、全業者の搬出予定を見て、搬出の確認と戻しの完了を入力できます。</p><h3>許可待ち('+cq.length+')</h3>';
+  if(!cq.length)h+='<p class="empty">ありません。</p>';
+  else{h+='<div class="tablewrap"><table><thead><tr><th class="l">会社名</th><th class="l">担当者</th><th class="l">メールアドレス</th><th></th></tr></thead><tbody>';
+    cq.forEach(function(id){var q=D.crewreq[id];h+='<tr><td class="l vn">'+esc(q.company)+'</td><td class="l">'+esc(q.contact||"")+'</td><td class="l">'+esc(q.email)+'</td><td><button class="btn sm primary" data-act="crewok" data-id="'+esc(id)+'">許可</button> <button class="btn sm" data-act="crewno" data-id="'+esc(id)+'">却下</button></td></tr>'});
+    h+='</tbody></table></div>'}
+  h+='<h3 style="margin-top:16px">許可した盛替え業者('+cw.length+')</h3>';
+  if(!cw.length)h+='<p class="empty">まだいません。</p>';
+  else{h+='<div class="tablewrap"><table><thead><tr><th class="l">会社名</th><th class="l">メールアドレス</th><th></th></tr></thead><tbody>';
+    cw.forEach(function(id){var w=D.crews[id];h+='<tr><td class="l vn">'+esc(w.company)+'</td><td class="l">'+esc(w.email||"")+'</td><td><button class="btn sm danger" data-act="crewoff" data-id="'+esc(id)+'">'+(ui.confirm==="co-"+id?'もう一度押すと停止':'利用を停止')+'</button></td></tr>'});
+    h+='</tbody></table></div>'}
   return h+'<p class="hint" style="margin-top:12px">管理者を増やすときは、Firebaseのセキュリティルールと設定(NR_CONFIG.adminEmails)の両方にメールアドレスを追加します。</p></section>';
 }
 function renderSet(C){
@@ -873,7 +962,7 @@ function renderSet(C){
   }
   h+='<p class="hint">指定した日のエレベーターが停まる階だけを回収対象にします。不停止階は「13,14,44-46」のように、カンマ区切りと範囲で入力します。</p></section>'+renderWd(C)
    +'<section class="panel"><h2 style="margin-bottom:8px">このアプリのQRコード</h2><div class="qrbox"><div class="qrimg" role="img" aria-label="このアプリを開くQRコード">'+qrSvg()+'</div><div style="flex:1 1 240px;min-width:0"><p style="margin:0 0 4px">スマートフォンで読み取ると、このアプリが開きます。</p>'
-   +'<p class="hint" style="margin:0">業者はこのURLを開いて新規登録し、会社名を登録するとすぐに使えます。</p><div class="urlrow"><input type="text" id="appurl" readonly value="'+esc(APP_URL)+'" aria-label="アプリのURL"><button class="btn sm" data-act="copyurl">URLをコピー</button></div></div></div></section>'
+   +'<p class="hint" style="margin:0">業者はこのURLを開いて新規登録し、会社名を登録するとすぐに使えます。</p><p class="hint" style="margin:6px 0 0">盛替え業者用のURL: <b>'+esc(APP_URL)+'crew/</b>(申請後、「登録」タブで許可します)</p><div class="urlrow"><input type="text" id="appurl" readonly value="'+esc(APP_URL)+'" aria-label="アプリのURL"><button class="btn sm" data-act="copyurl">URLをコピー</button></div></div></div></section>'
    +'<section class="panel"><h2 style="margin-bottom:8px">サンプルデータ</h2><p class="hint" style="margin:0 0 8px">動作を試すための例です。業者名・台数・階はすべて架空の値で、実際のデータとは別に消せます。</p>'
    +'<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" data-act="sampleon">サンプルを入れる</button><button class="btn danger" data-act="sampleoff">'+(ui.confirm==="sampleoff"?'もう一度押すと消去':'サンプルを消す')+'</button></div></section>';
   return h;
@@ -914,9 +1003,11 @@ function render(remote){
   if(ENV.admin){
     var pc=Object.keys(D.members).filter(function(id){return !D.approved[id]}).length;
     tabs=[["cal","カレンダー"],["pri","優先順位"],["cnf","確定と再振り分け"],["vin","業者入力"],["rec","追加と戻し"],["mem","登録"+(pc?'<span class="cnt">'+pc+'</span>':"")],["set","設定"]];
+  }else if(ENV.crew){var crewOk=!!D.crews[ENV.uid];tabs=crewOk?[["cal","カレンダー"],["ret","戻し一覧"]]:[["creg","登録"]];
+    if(!crewOk)ui.tab="creg";else if(ui.tab!=="cal"&&ui.tab!=="ret")ui.tab="cal";
   }else tabs=vendorOk?[["cal","カレンダー"],["vin","業者入力"]]:[["reg","登録"]];
-  if(!ENV.admin&&!vendorOk)ui.tab="reg";else if(!ENV.admin&&ui.tab!=="cal"&&ui.tab!=="vin")ui.tab="cal";
-  h='<div class="top"><div><h1>スクラップ搬出 調整<span class="role">'+(ENV.admin?'管理者':ENV.preview?'業者(プレビュー)':(vendorOk?'業者':'未登録'))+'</span></h1><p>業者が入力した階別の保有・搬出希望を、回収日ごとの台数・時間・エレベーター集積に合わせて自動で配分します</p>'+(window.NR_ACCOUNT?'<p class="acct">'+esc(window.NR_ACCOUNT.email||"")+' <button class="btn sm" data-act="logout">ログアウト</button> <button class="btn sm" data-act="reload">↻ 最新にする</button>'+(ui.synced?' <span class="muted" style="font-size:12px">'+p2(ui.synced.getHours())+':'+p2(ui.synced.getMinutes())+' 更新</span>':'')+'</p>':'')
+  if(!ENV.crew){if(!ENV.admin&&!vendorOk)ui.tab="reg";else if(!ENV.admin&&ui.tab!=="cal"&&ui.tab!=="vin")ui.tab="cal";}
+  h='<div class="top"><div><h1>スクラップ搬出 調整<span class="role">'+(ENV.admin?'管理者':ENV.crew?(D.crews[ENV.uid]?'盛替え業者':'未登録'):ENV.preview?'業者(プレビュー)':(vendorOk?'業者':'未登録'))+'</span></h1><p>業者が入力した階別の保有・搬出希望を、回収日ごとの台数・時間・エレベーター集積に合わせて自動で配分します</p>'+(window.NR_ACCOUNT?'<p class="acct">'+esc(window.NR_ACCOUNT.email||"")+' <button class="btn sm" data-act="logout">ログアウト</button> <button class="btn sm" data-act="reload">↻ 最新にする</button>'+(ui.synced?' <span class="muted" style="font-size:12px">'+p2(ui.synced.getHours())+':'+p2(ui.synced.getMinutes())+' 更新</span>':'')+'</p>':'')
    +(window.NR_DEMO?'<div class="note warn" style="margin:8px 0 0"><span><b>お試し版です。</b>データはこの端末のブラウザだけに保存され、本番のアプリとは関係ありません。業者・台数はすべて架空です。 <button class="btn sm" data-act="demoreset">最初からやり直す</button></span></div>':'')+'</div><div class="tabs" role="tablist">';
   tabs.forEach(function(t){h+='<button role="tab" aria-selected="'+(ui.tab===t[0])+'" data-act="tab" data-tab="'+t[0]+'">'+t[1]+'</button>'});
   h+='</div></div>';
@@ -931,7 +1022,8 @@ function render(remote){
   if(ENV.mode==="noid")h+='';
   else if(ENV.admin){
     h+=ui.tab==="cal"?renderCal(C):ui.tab==="pri"?renderPriority(C):ui.tab==="cnf"?renderConfirmed(C):ui.tab==="rec"?renderRec(C):ui.tab==="mem"?renderMem(C):ui.tab==="set"?renderSet(C):renderVin(C);
-  }else h+=!vendorOk?renderReg():(ui.tab==="cal"?renderCal(C):renderVin(C));
+  }else if(ENV.crew)h+=ui.tab==="creg"?renderCrewReg():ui.tab==="ret"?renderRet(C):renderCal(C);
+  else h+=!vendorOk?renderReg():(ui.tab==="cal"?renderCal(C):renderVin(C));
   var box=document.createElement("div");box.innerHTML=h;
   /* 差し替え中に入力欄が外れると blur → change → render が入れ子で走るので、終わってからやり直す */
   if(morphing){morphAgain=true;return}
@@ -1061,6 +1153,20 @@ function onClick(ev){
     if(ui.confirm==="vdel"){var del=ui.vsel;if(D.vendors[del]&&D.vendors[del].manual){remove("vendors",del)}ui.vsel=null;ui.confirm=""}
     else{ui.confirm="vdel";keepConfirm=true}
   }
+  else if(act==="cregsubmit"){
+    var cco=document.getElementById("reg-company").value.trim(),cem=document.getElementById("reg-email").value.trim(),cct=document.getElementById("reg-contact").value.trim();
+    if(!cco||!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(cem)){ui.msg="会社名と正しいメールアドレスを入力してください。";ui.msgKind="bad"}
+    else{put("crewreq",ENV.uid,{company:cco,contact:cct,email:cem,at:nowIso()});ui.msg="申請しました。管理者の許可を待ってください。";ui.msgKind="ok"}
+  }
+  else if(act==="chk"){
+    var kd=b.getAttribute("data-d"),ki=Number(b.getAttribute("data-i")),kk=b.getAttribute("data-k"),kin=document.getElementById("ck-"+kd+"-"+ki),kg=kin?nrNum(kin.value):0;
+    var kr=((D.confirmed[kd]||{}).rows||[])[ki];
+    if(kk==="short"&&kr&&!(kin&&kin.value!==""&&kg<nrNum(kr.units))){ui.msg="不足のときは、実際にあった台数(回収台数より少ない数)を入れてから「不足」を押してください。";ui.msgKind="bad"}
+    else mutConfirmed(kd,function(cf){var r=cf.rows[ki];if(!r)return;if(!kk)delete r.chk;else{r.chk={k:kk,at:nowIso()};if(kk==="short")r.chk.got=kg}});
+  }
+  else if(act==="crewok"){var q=D.crewreq[id];if(q)put("crews",id,{company:q.company,email:q.email,at:nowIso()})}
+  else if(act==="crewno"){remove("crewreq",id)}
+  else if(act==="crewoff"){if(ui.confirm==="co-"+id){remove("crews",id);ui.confirm=""}else{ui.confirm="co-"+id;keepConfirm=true}}
   else if(act==="regsubmit"){
     var co=document.getElementById("reg-company").value.trim(),em=document.getElementById("reg-email").value.trim(),ct=document.getElementById("reg-contact").value.trim();
     if(!co||!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)){ui.msg="会社名と正しいメールアドレスを入力してください。";ui.msgKind="bad"}
@@ -1089,7 +1195,7 @@ function onClick(ev){
       ui.confirm=""}
     else{ui.confirm="sampleoff";keepConfirm=true}
   }
-  if(!keepConfirm&&act!=="vdel"&&act!=="unconfirm"&&act!=="dayoff"&&act!=="sampleoff"&&act!=="unapprove"&&act!=="recdel")ui.confirm="";
+  if(!keepConfirm&&act!=="crewoff"&&act!=="vdel"&&act!=="unconfirm"&&act!=="dayoff"&&act!=="sampleoff"&&act!=="unapprove"&&act!=="recdel")ui.confirm="";
   render();
 }
 function onChange(ev){
@@ -1138,7 +1244,7 @@ function onChange(ev){
         r.back.at=nowIso();
       }
     });
-    if(fx){applyAdj(fx[0],fx[1],fx[2]);ui.msg=vname(fx[0])+"の保有台数と回収希望を"+(fx[2]>0?"更新":"元に戻")+"しました。";ui.msgKind="ok"}
+    if(fx){applyAdj(fx[0],fx[1],fx[2]);ui.msg=(ENV.admin?vname(fx[0]):"業者")+"の保有台数と回収希望を"+(fx[2]>0?"更新":"元に戻")+"しました。";ui.msgKind="ok"}
   }
   else if(f==="company"){var id2=el.getAttribute("data-id"),nm=el.value.trim();if(D.approved[id2]&&nm){var a=clone(D.approved[id2]);a.company=nm;put("approved",id2,a)}}
   else if(f==="cunits"){
@@ -1190,7 +1296,7 @@ var CFG=window.NR_CONFIG,app=document.getElementById("app");
 function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
 
 if(!CFG.firebase.apiKey||/^YOUR_/.test(CFG.firebase.apiKey)){
-  app.innerHTML='<section class="panel login"><h1>スクラップ搬出 調整</h1><div class="note bad"><span>Firebaseの設定がまだ入っていません。index.html の NR_CONFIG にFirebaseの設定を入れてください。</span></div></section>';
+  app.innerHTML='<section class="panel login"><h1>スクラップ搬出 調整'+(window.NR_CREW?'<br><small>盛替え業者用</small>':'')+'</h1><div class="note bad"><span>Firebaseの設定がまだ入っていません。index.html の NR_CONFIG にFirebaseの設定を入れてください。</span></div></section>';
 }else start();
 
 function start(){
@@ -1211,7 +1317,7 @@ function start(){
   var mode="login",msg="",kind="";
   function showLogin(){
     var reg=mode==="reg";
-    app.innerHTML='<section class="panel login"><h1>スクラップ搬出 調整</h1>'
+    app.innerHTML='<section class="panel login"><h1>スクラップ搬出 調整'+(window.NR_CREW?'<br><small>盛替え業者用</small>':'')+'</h1>'
       +'<p class="hint" style="margin:0">'+(reg?'業者の方は、ここでアカウントを作ってから会社名を登録すると、すぐに使えます。':'ログインしてください。初めての業者の方は「新規登録」から始めます。')+'</p>'
       +(msg?'<div class="note '+kind+'"><span>'+esc(msg)+'</span></div>':'')
       +'<button class="btn" id="lg-google" type="button">Googleアカウントでログイン</button>'
@@ -1255,7 +1361,9 @@ function start(){
 
 /* アプリが使うデータベースの形(collection().onSnapshot / doc().set・delete・onSnapshot)に合わせる。
    業者は自分の文書しか読めないので、業者用の一覧は自分の1件だけを見る */
-var OWN=["vendors","members","approved","blocked","plans"];
+var OWN=["vendors","members","approved","blocked","plans","crews","crewreq"];
+/* 盛替え業者のページでは、業者の入力・回収日・確定は全体を読み、登録まわりは自分の分だけ読む */
+var CREW_OWN=["members","approved","blocked","plans","crews","crewreq"];
 /* 同じFirebaseで別アプリ(スクラップ搬出など)を動かすときは、コレクション名の頭に付ける文字(NR_CONFIG.prefix)でデータを分ける */
 var PFX=CFG.prefix||"";
 function makeDb(fs,u,admin){
@@ -1263,7 +1371,7 @@ function makeDb(fs,u,admin){
   function quiet(cb,empty,err){return function(e){if(!admin&&e&&e.code==="permission-denied")cb(empty);else if(err)err(e)}}
   return {
     collection:function(c){return {onSnapshot:function(cb,err){
-      if(!admin&&OWN.indexOf(c)>=0)
+      if(!admin&&(window.NR_CREW?CREW_OWN:OWN).indexOf(c)>=0)
         return onSnapshot(doc(fs,PFX+c,u.uid),function(s){cb({docs:s.exists()?[{id:s.id,data:function(){return s.data()}}]:[]})},quiet(cb,{docs:[]},err));
       return onSnapshot(collection(fs,PFX+c),function(q){cb({docs:q.docs.map(function(d){return {id:d.id,data:function(){return d.data()}}})})},quiet(cb,{docs:[]},err));
     }}},
@@ -1281,7 +1389,7 @@ function makeUser(u,admin){
 function watchApproval(fs,u){
   var was=null;
   /* 自分の登録で作った許可は、サーバーに保存されてから開き直す(保存前に開き直すと書き込みが消える) */
-  onSnapshot(doc(fs,PFX+"approved",u.uid),{includeMetadataChanges:true},function(s){if(s.metadata&&s.metadata.hasPendingWrites)return;var now=s.exists();if(was===false&&now)location.reload();was=now},function(){});
+  onSnapshot(doc(fs,PFX+(window.NR_CREW?"crews":"approved"),u.uid),{includeMetadataChanges:true},function(s){if(s.metadata&&s.metadata.hasPendingWrites)return;var now=s.exists();if(was===false&&now)location.reload();was=now},function(){});
 }
 </script>
 
