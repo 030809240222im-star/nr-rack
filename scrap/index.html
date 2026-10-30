@@ -143,8 +143,8 @@ td.vn{white-space:normal;min-width:84px}
 .muted{color:var(--muted)}
 /* スマホ: 入力欄を16pxにして、タップ時にiPhoneが画面を拡大して動かさないようにする。
    階の表は内側でスクロールさせず、ページ全体の縦スクロールだけにする */
-html{-webkit-text-size-adjust:100%;overscroll-behavior-y:none}
-body{overscroll-behavior-y:none;touch-action:manipulation}
+html{-webkit-text-size-adjust:100%}
+body{touch-action:manipulation}
 .tablewrap,.floors{overscroll-behavior-x:contain}
 @media (max-width:700px){
   input,select,textarea{font-size:16px!important}
@@ -359,9 +359,9 @@ function subscribe(){
   var err=function(e){ui.msg="データを読み込めませんでした("+((e&&e.code)||"error")+")"+(e&&e.code==="permission-denied"?"。Firebaseのセキュリティルールに、このアカウントのメールアドレスが管理者として入っているか確認してください。":"");ui.msgKind="bad";render(true)};
   var colls=["days","vendors","plans","members","approved","blocked","confirmed"];
   colls.forEach(function(c){
-    ENV.db.collection(c).onSnapshot(function(snap){var m={};snap.docs.forEach(function(d){m[d.id]=d.data()});D[c]=m;LOADED[c]=true;render(true)},err);
+    ENV.db.collection(c).onSnapshot(function(snap){var m={};snap.docs.forEach(function(d){m[d.id]=d.data()});D[c]=m;LOADED[c]=true;ui.synced=new Date();render(true)},err);
   });
-  ENV.db.doc("config/main").onSnapshot(function(s){D.config=s.exists?s.data():{};LOADED.config=true;render(true)},err);
+  ENV.db.doc("config/main").onSnapshot(function(s){D.config=s.exists?s.data():{};LOADED.config=true;ui.synced=new Date();render(true)},err);
 }
 
 /* ---- 計算 ---- */
@@ -795,7 +795,7 @@ function render(remote){
     tabs=[["cal","カレンダー"],["pri","優先順位"],["cnf","確定と再振り分け"],["vin","業者入力"],["rec","追加と戻し"],["mem","登録"+(pc?'<span class="cnt">'+pc+'</span>':"")],["set","設定"]];
   }else tabs=vendorOk?[["cal","カレンダー"],["vin","業者入力"]]:[["reg","登録"]];
   if(!ENV.admin&&!vendorOk)ui.tab="reg";else if(!ENV.admin&&ui.tab!=="cal"&&ui.tab!=="vin")ui.tab="cal";
-  h='<div class="top"><div><h1>スクラップ搬出 調整<span class="role">'+(ENV.admin?'管理者':ENV.preview?'業者(プレビュー)':(vendorOk?'業者':'未登録'))+'</span></h1><p>業者が入力した階別の保有・搬出希望を、回収日ごとの台数・時間・エレベーター集積に合わせて自動で配分します</p>'+(window.NR_ACCOUNT?'<p class="acct">'+esc(window.NR_ACCOUNT.email||"")+' <button class="btn sm" data-act="logout">ログアウト</button></p>':'')+'</div><div class="tabs" role="tablist">';
+  h='<div class="top"><div><h1>スクラップ搬出 調整<span class="role">'+(ENV.admin?'管理者':ENV.preview?'業者(プレビュー)':(vendorOk?'業者':'未登録'))+'</span></h1><p>業者が入力した階別の保有・搬出希望を、回収日ごとの台数・時間・エレベーター集積に合わせて自動で配分します</p>'+(window.NR_ACCOUNT?'<p class="acct">'+esc(window.NR_ACCOUNT.email||"")+' <button class="btn sm" data-act="logout">ログアウト</button> <button class="btn sm" data-act="reload">↻ 最新にする</button>'+(ui.synced?' <span class="muted" style="font-size:12px">'+p2(ui.synced.getHours())+':'+p2(ui.synced.getMinutes())+' 更新</span>':'')+'</p>':'')+'</div><div class="tabs" role="tablist">';
   tabs.forEach(function(t){h+='<button role="tab" aria-selected="'+(ui.tab===t[0])+'" data-act="tab" data-tab="'+t[0]+'">'+t[1]+'</button>'});
   h+='</div></div>';
   if(ENV.preview){
@@ -859,6 +859,7 @@ function onClick(ev){
   var act=b.getAttribute("data-act"),id=b.getAttribute("data-id"),keepConfirm=false;
   ui.msg="";
   if(act==="logout"){if(window.NR_ACCOUNT)window.NR_ACCOUNT.logout();return}
+  if(act==="reload"){location.reload();return}
   if(act==="tab"){ui.tab=b.getAttribute("data-tab")}
   else if(act==="prev"){ui.month=new Date(ui.month.getFullYear(),ui.month.getMonth()-1,1,12)}
   else if(act==="next"){ui.month=new Date(ui.month.getFullYear(),ui.month.getMonth()+1,1,12)}
