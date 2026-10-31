@@ -183,6 +183,8 @@ body{touch-action:manipulation}
 .cc-r .mvbox input[type=date]{width:auto;min-width:10em}
 .todaybox.alert{border-color:var(--bad);background:var(--badbg)}
 .todaybox.alert h3{background:var(--bad);color:#fff}
+.todaybox.back{border-color:var(--ok);background:var(--okbg)}
+.todaybox.back h3{background:var(--ok);color:#fff}
 .todaybox.next{border-color:var(--accent);background:var(--surface2)}
 .todaybox.next h3{background:var(--accent);color:var(--accent-fg)}
 .tinput{width:5.5em;text-align:center}
@@ -353,6 +355,8 @@ function fmtD(s){var d=nrPd(s);return (d.getMonth()+1)+"/"+d.getDate()+"("+WD[d.
 function fmtLong(s){var d=nrPd(s);return (d.getMonth()+1)+"月"+d.getDate()+"日("+WD[d.getDay()]+")"}
 function fmtTime(d){return d&&d.tf?(d.tf+"〜"+(d.tt||"")):"時間未定"}
 function nowIso(){return new Date().toISOString()}
+/* 保存した時刻(UTC)を、見ている端末の時刻で「10/31 9:05」の形にする */
+function fmtAt(iso){var d=iso?new Date(iso):null;return d&&!isNaN(d)?(d.getMonth()+1)+"/"+d.getDate()+" "+d.getHours()+":"+p2(d.getMinutes()):""}
 ui.month=(function(){var t=new Date();return new Date(t.getFullYear(),t.getMonth(),1,12)})();
 ui.sel=today();
 
@@ -604,7 +608,18 @@ function autoConfirm(C){
 /* 当日と翌日の搬出のお知らせ(業者は自社の分、管理者はその日の全体)。カレンダーの一番上に目立つように出す */
 function todayBox(C){
   var t=C.t,tm=nrDs(new Date(nrPd(t).getTime()+864e5));
-  return problemBox()+orderBox(C)+dayNotice(t,true)+dayNotice(tm,false);
+  return problemBox()+backBox()+orderBox(C)+dayNotice(t,true)+dayNotice(tm,false);
+}
+/* 業者向け: 揚重(盛替え)業者や管理者が戻した分のお知らせ(3日以内) */
+function backBox(){
+  if(ENV.admin||ENV.crew)return "";
+  var from=nrDs(new Date(Date.now()-3*864e5)),list=[];
+  Object.keys(D.confirmed).sort().forEach(function(d){if(d<from)return;
+    (D.confirmed[d].rows||[]).forEach(function(r){if(r.vid===ENV.uid&&r.back)list.push({d:d,r:r})})});
+  if(!list.length)return "";
+  var h='<div class="todaybox back" role="status"><h3>↩ 戻しのお知らせ</h3><ul>';
+  list.forEach(function(x){var r=x.r,b=r.back;h+='<li>'+fmtD(x.d)+'に搬出した<b>'+r.floor+'階の'+nrNum(r.units)+'台</b> → <b>'+(nrNum(r.ret)||r.floor)+'階へ'+nrNum(b.u)+'台戻しました</b>'+(b.ev?'(EV'+b.ev+')':'')+(b.at?' <span class="hint" style="margin:0">'+esc(fmtAt(b.at))+'</span>':'')+'</li>'});
+  return h+'</ul><p>保有台数は自動で更新されています。</p></div>';
 }
 function problemBox(){
   var pr=problemRows();if(!pr.length)return "";
@@ -621,7 +636,7 @@ function dayNotice(d,isToday){
   if(!rows.length&&!adds.length)return "";
   if(!rows.length){var ha='<div class="todaybox'+(isToday?'':' next')+'" role="status"><h3>'+(isToday?'🔔 本日は追加の搬入があります':'📅 明日は追加の搬入があります')+' '+fmtD(d)+'</h3><ul>';
     adds.forEach(function(x){ha+='<li>📦 '+(ENV.admin||ENV.crew?esc(x.o.n||vname(x.vid))+' ':'')+'<b>'+x.o.f+'階に'+nrNum(x.o.u)+'台</b>を上げる</li>'});return ha+'</ul></div>'}
-  var tot=0,left=0,mv=false;rows.forEach(function(r){tot+=nrNum(r.units);if(!isPlaced(d,r))left++;if(r.to)mv=true});
+  var tot=0,left=0,mv=false;rows.forEach(function(r){tot+=nrNum(r.units);if(!isPlaced(d,r)&&!r.back)left++;if(r.to)mv=true});
   var h='<div class="todaybox'+(isToday?'':' next')+'" role="status"><h3>'+(isToday?'🔔 本日は搬出日です':'📅 明日は搬出日です')+' '+fmtD(d)+' '+esc(fmtTime(day))+'・計'+tot+'台</h3><ul>';
   rows.forEach(function(r){var pe=placedEv(d,r);
     h+='<li>'+(ENV.admin||ENV.crew?esc(rowName(r))+' ':'')+'<b>'+r.floor+'階 '+nrNum(r.units)+'台</b> → <b>'+evLabel(r.ev,r.to)+'</b>'+(r.to&&!isToday?' <span class="st warn">今日中に移動</span>':'')
@@ -812,18 +827,21 @@ function renderVin(C){
   else h+='<p style="margin:0 0 10px"><b>'+esc(vname(vid))+'</b></p>';
   var wds=C.cfg.wd[vid];if(wds)h+='<p class="hint" style="margin:0 0 8px">回収曜日: <b>'+wds.map(function(w){return WD[w]}).join("・")+'</b>(積載に余裕がある日は、ほかの曜日にも回収することがあります)</p>';
   h+='<div class="sum"><div><small>保有台数(合計)</small><b>'+th+'台</b></div><div><small>搬出希望(合計)</small><b>'+tw+'台</b></div></div>'
-   +'<p class="hint" style="margin:0 0 8px">各階のスクラップ台車の保有台数と、その階から出したい台数を入力します。戻してほしい階が同じ階でないときは「同じ階」のチェックを外して階を選びます。入力は自動で保存されます。</p>'
+   +'<p class="hint" style="margin:0 0 8px">各階のスクラップ台車の保有台数と、その階から出したい台数を入力します。追加で欲しい階は「追加希望数」に台数を入れると注文になり、追加する日が決まると「備考(追加)」に出ます。戻してほしい階が同じ階でないときは「同じ階」のチェックを外して階を選びます。入力は自動で保存されます。</p>'
    +'<label class="chk" style="margin-bottom:8px"><input type="checkbox" id="only" data-f="only"'+(ui.only?' checked':'')+'>入力のある階だけ表示</label>'
-   +'<div class="floors"><table><thead><tr><th class="l">階</th><th>保有台数</th><th>出したい台数</th><th class="l">戻してほしい階</th><th class="l">状態</th></tr></thead><tbody>';
+   +'<div class="floors"><table><thead><tr><th class="l">階</th><th>保有台数</th><th>追加希望数</th><th class="l">備考(追加)</th><th>出したい台数</th><th class="l">戻してほしい階</th><th class="l">状態</th></tr></thead><tbody>';
+  var fo=floorOrders(vid);
   for(var f=62;f>=1;f--){
-    var e=fl[f],hh=e?nrNum(e.h):0,ww=e?nrNum(e.w):0;
-    if(ui.only&&!hh&&!ww)continue;
+    var e=fl[f],hh=e?nrNum(e.h):0,ww=e?nrNum(e.w):0,fx=fo[f]||{req:0,notes:[]};
+    if(ui.only&&!hh&&!ww&&!fx.req&&!fx.notes.length)continue;
     var over=ww>hh,same=!e||e.same!==false,rt=e?nrNum(e.r):0,state='';
     if(over)state='<span class="st bad">保有を超えています</span>';
     else if(ww&&!same&&!rt)state='<span class="st warn">戻し階を選択</span>';
     else if(ww&&hh&&ww/hh*100>=C.cfg.crit)state='<span class="st bad">余力なし・最優先</span>';
     else if(ww)state='<span class="st ok">希望あり</span>';
     h+='<tr><td class="fl">'+f+'階</td><td><input type="number" min="0" id="h-'+f+'" data-f="floor" data-fl="'+f+'" data-k="h" value="'+(hh||"")+'" aria-label="'+f+'階の保有台数"></td>'
+     +'<td><input type="number" min="0" id="a-'+f+'" data-f="addreq" data-fl="'+f+'" value="'+(fx.req||"")+'" aria-label="'+f+'階の追加希望数"></td>'
+     +'<td class="l" style="white-space:normal;min-width:120px;font-size:12px">'+fx.notes.join("<br>")+'</td>'
      +'<td><input type="number" min="0" id="w-'+f+'" data-f="floor" data-fl="'+f+'" data-k="w" value="'+(ww||"")+'"'+(over?' class="bad"':'')+' aria-label="'+f+'階の出したい台数"></td>'
      +'<td class="l">'+(ww?'<label class="chk"><input type="checkbox" id="s-'+f+'" data-f="same" data-fl="'+f+'"'+(same?' checked':'')+'>同じ階</label>'+(same?'':' <input type="number" min="1" max="62" id="r-'+f+'" data-f="ret" data-fl="'+f+'" value="'+(rt||"")+'" aria-label="'+f+'階から出す分を戻してほしい階"> 階'):'')+'</td>'
      +'<td class="l">'+state+'</td></tr>';
@@ -891,6 +909,16 @@ function orderList(){
     Object.keys(it).forEach(function(id){if(ENV.admin||ENV.crew||vid===ENV.uid)out.push({vid:vid,id:id,o:it[id]})})});
   return out.sort(function(a,b){return (a.o.at||"")<(b.o.at||"")?-1:1});
 }
+/* 業者入力の表用: 階ごとの追加希望数(受付中の合計)と、備考に出す手配・追加済みのお知らせ */
+function floorOrders(vid){
+  var out={},since=nrDs(new Date(Date.now()-14*864e5)),t=today();
+  orderList().forEach(function(x){if(x.vid!==vid)return;var o=x.o,r=out[o.f]=out[o.f]||{req:0,notes:[]};
+    if(o.st==="new"){r.req+=nrNum(o.u);r.notes.push('<span class="st warn">受付中</span> '+nrNum(o.u)+'台')}
+    else if(o.st==="plan")r.notes.push('<span class="st ok">追加予定</span> '+fmtD(o.plan.d)+'に'+nrNum(o.u)+'台'+(o.plan.d===t?'(本日)':''));
+    else if(o.st==="done"&&o.done.d>=since)r.notes.push('<span class="st ok">✅ 追加済み</span> '+fmtD(o.done.d)+'に'+nrNum(o.done.u)+'台');
+  });
+  return out;
+}
 function newOrders(){return orderList().filter(function(x){return x.o.st==="new"}).length}
 function mutOrder(vid,fn){var o=clone(D.orders[vid]||{items:{}});o.items=o.items||{};fn(o);o.at=nowIso();put("orders",vid,o)}
 function ordStatus(o){
@@ -926,7 +954,7 @@ function renderOrders(C){
     h+='<div class="ccards">';
     list.forEach(function(x){var o=x.o,k=esc(x.vid)+'-'+esc(x.id),da=' data-vid="'+esc(x.vid)+'" data-id="'+esc(x.id)+'"';
       h+='<div class="ccard"><div class="cc-h"><b>'+esc(o.n||vname(x.vid))+'</b> '+o.f+'階 <b>'+nrNum(o.u)+'台</b></div>'
-        +'<div class="cc-r"><span>注文</span><div>'+esc((o.at||"").slice(5,16).replace("T"," ").replace("-","/"))+(o.want?' 希望 '+fmtD(o.want):'')+(o.memo?'<div class="hint" style="margin:0">'+esc(o.memo)+'</div>':'')+'</div></div>'
+        +'<div class="cc-r"><span>注文</span><div>'+esc(fmtAt(o.at))+(o.want?' 希望 '+fmtD(o.want):'')+(o.memo?'<div class="hint" style="margin:0">'+esc(o.memo)+'</div>':'')+'</div></div>'
         +'<div class="cc-r"><span>状況</span><div>'+ordStatus(o)+'</div></div>';
       if(o.st==="new")h+='<div class="cc-r"><span>搬出車</span><div class="mvbox" style="flex-wrap:wrap">'+(days.length?'<select id="op-'+k+'" data-keep aria-label="用意する搬出車">'+opts+'</select><button class="btn sm primary" data-act="ordplan"'+da+'>手配する</button>':'<span class="hint" style="margin:0">これからの回収日がありません</span>')+(ENV.admin?'<button class="btn sm" data-act="ordcancel"'+da+'>却下</button>':'')+'</div></div>';
       if(o.st==="plan")h+='<div class="cc-r"><span>上げた</span><div class="mvbox" style="flex-wrap:wrap"><input type="date" id="odd-'+k+'" data-keep value="'+(o.plan.d<=C.t?C.t:o.plan.d)+'" aria-label="上げた日"><select id="ode-'+k+'" data-keep aria-label="使ったエレベーター"><option value="">EV指定なし</option>'+[1,2,3,4,5].map(function(e){return '<option value="'+e+'">EV'+e+'</option>'}).join("")+'</select><input type="number" min="1" id="odu-'+k+'" data-keep value="'+nrNum(o.u)+'" aria-label="上げた台数"><button class="btn sm primary" data-act="orddone"'+da+'>上げた</button><button class="btn sm" data-act="ordunplan"'+da+'>手配を戻す</button></div></div>';
@@ -990,7 +1018,7 @@ function renderMem(C){
   var h='<section class="panel"><h2 style="margin-bottom:6px">業者の登録</h2><p class="hint" style="margin:0 0 10px">業者はURLから会社名とメールアドレスを登録すると、すぐに使えるようになります。心当たりのない登録は「利用を停止」してください。</p><h3>利用停止中・未完了('+pend.length+')</h3>';
   if(!pend.length)h+='<p class="empty">ありません。</p>';
   else{h+='<div class="tablewrap"><table><thead><tr><th class="l">会社名</th><th class="l">担当者</th><th class="l">メールアドレス</th><th class="l">申請日時</th><th></th></tr></thead><tbody>';
-    pend.forEach(function(id){var m=D.members[id];h+='<tr><td class="l vn">'+esc(m.company)+'</td><td class="l">'+esc(m.contact||"")+'</td><td class="l">'+esc(m.email)+'</td><td class="l">'+esc((m.at||"").slice(0,16).replace("T"," "))+'</td><td><button class="btn sm primary" data-act="approve" data-id="'+esc(id)+'">'+(D.blocked[id]?'利用を再開':'利用を許可')+'</button> <button class="btn sm danger" data-act="reject" data-id="'+esc(id)+'">却下</button></td></tr>'});
+    pend.forEach(function(id){var m=D.members[id];h+='<tr><td class="l vn">'+esc(m.company)+'</td><td class="l">'+esc(m.contact||"")+'</td><td class="l">'+esc(m.email)+'</td><td class="l">'+esc(fmtAt(m.at))+'</td><td><button class="btn sm primary" data-act="approve" data-id="'+esc(id)+'">'+(D.blocked[id]?'利用を再開':'利用を許可')+'</button> <button class="btn sm danger" data-act="reject" data-id="'+esc(id)+'">却下</button></td></tr>'});
     h+='</tbody></table></div>'}
   h+='<h3 style="margin-top:16px">利用中の業者('+ap.length+')</h3>';
   if(!ap.length)h+='<p class="empty">まだ登録した業者はいません。</p>';
@@ -1313,6 +1341,15 @@ function onChange(ev){
       if(k==="w"&&val>0&&!(old>0))e.s=today();
       if(!nrNum(e.h)&&!nrNum(e.w))delete v.floors[fl];else v.floors[fl]=e;
     });
+  }
+  else if(f==="addreq"){
+    /* 追加希望数: その階の受付中の注文を1件にまとめて台数を合わせる。0にすると受付中の注文を取り消す */
+    var af=Number(el.getAttribute("data-fl")),an=nrNum(el.value);
+    if(vid)mutOrder(vid,function(o){var open=Object.keys(o.items).filter(function(k){var x=o.items[k];return x.f===af&&x.st==="new"});
+      open.slice(1).forEach(function(k){o.items[k].st="cancel"});
+      if(open.length){var x0=o.items[open[0]];if(an>0)x0.u=an;else x0.st="cancel"}
+      else if(an>0)o.items["o"+Date.now().toString(36)+Math.floor(Math.random()*1e3).toString(36)]={f:af,u:an,want:"",memo:"",n:vname(vid),at:nowIso(),st:"new"}});
+    if(an>0){ui.msg=af+"階に"+an+"台の追加を希望しました。手配されると備考欄とカレンダーに日付が出ます。";ui.msgKind="ok"}
   }
   else if(f==="same"){var fl2=el.getAttribute("data-fl");mutVendor(vid,function(v){var e=v.floors[fl2];if(!e)return;e.same=el.checked;if(el.checked)delete e.r})}
   else if(f==="ret"){var fl3=el.getAttribute("data-fl");mutVendor(vid,function(v){var e=v.floors[fl3];if(!e)return;e.r=Math.min(62,nrNum(el.value))})}
