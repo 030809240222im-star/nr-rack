@@ -150,6 +150,27 @@ body{touch-action:manipulation}
 @media (max-width:700px){
   input,select,textarea{font-size:16px!important}
   .floors{max-height:none;overflow:visible}
+  /* 横長の表は1行ずつカードにして、右側の欄が見切れないようにする */
+  table.rtable thead{display:none}
+  table.rtable,table.rtable tbody{display:block;width:100%;min-width:0}
+  table.rtable tr{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;padding:12px 10px;border-bottom:1px solid var(--line)}
+  table.rtable td{display:flex;flex-wrap:wrap;align-items:center;align-content:flex-start;gap:3px 6px;padding:0!important;border:0!important;text-align:left;white-space:normal!important;min-width:0!important}
+  table.rtable td::before{content:attr(data-label);flex-basis:100%;font-size:12px;color:var(--muted);font-weight:400}
+  table.rtable td>input[type=number]{flex:0 0 auto}
+  table.rtable td:first-child{grid-column:1/-1;font-size:17px;font-weight:700}
+  table.rtable td:first-child::before{content:none}
+  table.rtable td:empty{display:none}
+  table.rtable input[type=number]{width:6em}
+  /* 階の表は 階 | 保有 | 追加希望 | 出したい を1段に並べ、備考・戻し階・状態は入っているときだけ下に出す */
+  .floors table.rtable tr{grid-template-columns:3.2em 1fr 1fr 1fr;gap:4px 8px;padding:8px 8px;align-items:end}
+  .floors table.rtable td:first-child{grid-column:auto;font-size:16px;align-self:center}
+  .floors table.rtable td:nth-child(2){grid-column:2}
+  .floors table.rtable td:nth-child(3){grid-column:3}
+  .floors table.rtable td:nth-child(5){grid-column:4;grid-row:1}
+  .floors table.rtable td:nth-child(4),.floors table.rtable td:nth-child(6),.floors table.rtable td:nth-child(7){grid-column:2/-1}
+  .floors table.rtable td::before{font-size:11px}
+  .floors table.rtable td:nth-child(-n+5) input[type=number]{width:100%}
+  .floors table.rtable td:nth-child(6) input[type=number]{width:5em}
   .floors th{top:0}
 }
 .acct{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
@@ -539,7 +560,7 @@ function crewCards(d){
 }
 function dayRowsTable(d){
   var cf=D.confirmed[d],rows=(cf&&cf.rows)||[];
-  var h='<div class="tablewrap"><table><thead><tr><th class="l">業者</th><th>階・台数</th><th class="l">集積 / 戻し階</th><th class="l">配置(業者)</th><th class="l">搬出確認(盛替え)</th><th class="l">戻し(盛替え・管理者)</th></tr></thead><tbody>';
+  var h='<div class="tablewrap"><table class="rtable"><thead><tr><th class="l">業者</th><th>階・台数</th><th class="l">集積 / 戻し階</th><th class="l">配置(業者)</th><th class="l">搬出確認(盛替え)</th><th class="l">戻し(盛替え・管理者)</th></tr></thead><tbody>';
   rows.forEach(function(r,i){
     if(nrNum(r.units)<=0)return;
     var mine=r.vid===ENV.uid&&!ENV.admin;
@@ -829,7 +850,7 @@ function renderVin(C){
   h+='<div class="sum"><div><small>保有台数(合計)</small><b>'+th+'台</b></div><div><small>搬出希望(合計)</small><b>'+tw+'台</b></div></div>'
    +'<p class="hint" style="margin:0 0 8px">各階のスクラップ台車の保有台数と、その階から出したい台数を入力します。追加で欲しい階は「追加希望数」に台数を入れると注文になり、追加する日が決まると「備考(追加)」に出ます。戻してほしい階が同じ階でないときは「同じ階」のチェックを外して階を選びます。入力は自動で保存されます。</p>'
    +'<label class="chk" style="margin-bottom:8px"><input type="checkbox" id="only" data-f="only"'+(ui.only?' checked':'')+'>入力のある階だけ表示</label>'
-   +'<div class="floors"><table><thead><tr><th class="l">階</th><th>保有台数</th><th>追加希望数</th><th class="l">備考(追加)</th><th>出したい台数</th><th class="l">戻してほしい階</th><th class="l">状態</th></tr></thead><tbody>';
+   +'<div class="floors"><table class="rtable"><thead><tr><th class="l">階</th><th>保有台数</th><th>追加希望数</th><th class="l">備考(追加)</th><th>出したい台数</th><th class="l">戻してほしい階</th><th class="l">状態</th></tr></thead><tbody>';
   var fo=floorOrders(vid);
   for(var f=62;f>=1;f--){
     var e=fl[f],hh=e?nrNum(e.h):0,ww=e?nrNum(e.w):0,fx=fo[f]||{req:0,notes:[]};
@@ -856,7 +877,7 @@ function renderMine(C){
   if(!mr.length)h+='<p class="empty">管理者が回収を確定すると、ここに回収する日・時間・階・集積場所が表示されます。</p>';
   else{
     h+='<p class="hint" style="margin:0 0 8px">管理者が確定した回収予定です。スクラップ台車を集積場所のエレベーター前まで運んだら、置いたエレベーターを選んで「配置した」にチェックしてください。「前日までに移動」の行は、回収日の前日までに指定の階のEV前へ移しておきます。</p>'
-     +'<div class="tablewrap"><table><thead><tr><th class="l">日付・時間</th><th>階・台数</th><th class="l">集積 / 戻し階</th><th class="l">配置</th><th class="l">戻し(管理者)</th></tr></thead><tbody>';
+     +'<div class="tablewrap"><table class="rtable"><thead><tr><th class="l">日付・時間</th><th>階・台数</th><th class="l">集積 / 戻し階</th><th class="l">配置</th><th class="l">戻し</th></tr></thead><tbody>';
     mr.forEach(function(x){var day=D.days[x.d]||{};
       h+='<tr><td class="l">'+fmtD(x.d)+(x.d<C.t?' <span class="st off">終了</span>':'')+'<div class="hint" style="margin:2px 0 0">'+esc(fmtTime(day))+'</div></td><td>'+x.r.floor+'階 <b>'+nrNum(x.r.units)+'台</b></td><td class="l" style="white-space:normal;min-width:96px">'+evCell(x.r)+'<div class="hint" style="margin:2px 0 0">戻し: '+retText(x.r.ret)+'</div></td><td class="l">'+placedCell(x.d,x.r)+'</td><td class="l">'+backCell(x.d,x.r,x.i)+'</td></tr>'});
     h+='</tbody></table></div>';
@@ -1118,6 +1139,11 @@ function render(remote){
   }else if(ENV.crew)h+=ui.tab==="creg"?renderCrewReg():ui.tab==="ret"?renderRet(C):ui.tab==="ord"?renderOrders(C):renderCal(C);
   else h+=!vendorOk?renderReg():(ui.tab==="cal"?renderCal(C):renderVin(C));
   var box=document.createElement("div");box.innerHTML=h;
+  /* スマホでは横長の表をカードにするので、各セルに見出しを付けておく */
+  Array.prototype.forEach.call(box.querySelectorAll("table.rtable"),function(t){
+    var lab=t.tHead?Array.prototype.map.call(t.tHead.rows[0].cells,function(c){return c.textContent}):[];
+    Array.prototype.forEach.call(t.tBodies[0]?t.tBodies[0].rows:[],function(r){Array.prototype.forEach.call(r.cells,function(c,i){if(lab[i])c.setAttribute("data-label",lab[i])})});
+  });
   /* 差し替え中に入力欄が外れると blur → change → render が入れ子で走るので、終わってからやり直す */
   if(morphing){morphAgain=true;return}
   morphing=true;try{morphKids(document.getElementById("app"),box,remote)}finally{morphing=false}
