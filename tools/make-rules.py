@@ -64,10 +64,17 @@ BLOCK = """
       allow read: if isAdmin() || isSelf(id);
       allow write: if isAdmin();
     }}
-    // 管理者が追加した台数の記録: 本人は読むだけ
+    // 追加した台数の記録: 本人は読むだけ。揚重(盛替え)業者は追加注文を上げたときに記録を足せる
     match /{P}plans/{{id}} {{
-      allow read: if isAdmin() || isSelf(id);
+      allow read: if isAdmin() || isSelf(id) || isCrew{S}();
       allow write: if isAdmin();
+      allow create, update: if isCrew{S}() && request.resource.data.keys().hasOnly(['logs', 'at']);
+    }}
+    // 追加注文: 業者が自分の分を出し、管理者と揚重(盛替え)業者が手配と上げた日を書き込む
+    match /{P}orders/{{id}} {{
+      allow read: if isAdmin() || isSelf(id) || isCrew{S}();
+      allow write: if isAdmin() || (isSelf(id) && isApproved{S}());
+      allow update: if isCrew{S}() && request.resource.data.keys().hasOnly(['items', 'at']);
     }}
 
     // 盛替え業者の登録内容: 本人が出し、管理者が見る
