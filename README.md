@@ -34,3 +34,8 @@ NRボックス版を直したら `python3 tools/make-demo.py` も実行して作
 ## セキュリティルール
 
 `firestore.rules` は `tools/make-rules.py` で作っています。管理者のメールアドレスもこのスクリプトに書きます。
+
+## 毎朝の自動処理
+
+`.github/workflows/daily.yml` が毎朝6:15(日本時間)に `server/daily.mjs` を動かし、自動確定・LINE通知・暗号化バックアップを行います。
+設定のしかたは「毎朝の自動処理の設定.md」を見てください。振り分けの計算は index.html の最初の `<script>` をそのまま読み込んで使うので、index.html を直せば自動処理にも反映されます。

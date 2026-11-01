@@ -1,0 +1,37 @@
+# 毎朝 6:15(日本時間)に、自動確定・LINE通知・暗号化バックアップを行う。
+# 必要な設定(リポジトリの Settings → Secrets and variables → Actions):
+#   FIREBASE_SERVICE_ACCOUNT  Firebase のサービスアカウントの鍵(JSON をそのまま貼る)
+#   LINE_CHANNEL_TOKEN        LINE 公式アカウントのチャネルアクセストークン(なければ LINE は送らない)
+#   LINE_TO                   送り先のグループ・ユーザーID(なければ友だち全員に送る)
+#   BACKUP_PASSWORD           バックアップを暗号化するパスワード(なければバックアップしない)
+name: daily
+on:
+  schedule:
+    - cron: "15 21 * * *"
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  daily:
+    runs-on: ubuntu-latest
+    env:
+      TZ: Asia/Tokyo
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install --no-audit --no-fund
+        working-directory: server
+      - run: node server/daily.mjs
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          LINE_CHANNEL_TOKEN: ${{ secrets.LINE_CHANNEL_TOKEN }}
+          LINE_TO: ${{ secrets.LINE_TO }}
+          BACKUP_PASSWORD: ${{ secrets.BACKUP_PASSWORD }}
+      - uses: actions/upload-artifact@v4
+        if: hashFiles('backup-out/*') != ''
+        with:
+          name: backup
+          path: backup-out/
+          retention-days: 30

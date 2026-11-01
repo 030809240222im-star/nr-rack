@@ -25,11 +25,11 @@ BLOCK = """
       allow read: if isAdmin() || isApproved{S}() || isCrew{S}();
       allow write: if isAdmin();
     }}
-    // 確定した回収: 盛替え業者は行(搬出の確認と戻し)だけ書き換えられる
+    // 確定した回収: 行(rows)は管理者だけ。盛替え業者は行ごとの搬出確認・戻し(st)と履歴(hist)だけ書き換えられる
     match /{P}confirmed/{{id}} {{
       allow read: if isAdmin() || isApproved{S}() || isCrew{S}();
       allow write: if isAdmin();
-      allow update: if isCrew{S}() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['rows', 'at']);
+      allow update: if isCrew{S}() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['st', 'at', 'hist']);
     }}
 
     // 業者の入力: 本人(利用中)と管理者。盛替え業者は戻したときの台数(floors)だけ書き換えられる
@@ -75,6 +75,15 @@ BLOCK = """
       allow read: if isAdmin() || isSelf(id) || isCrew{S}();
       allow write: if isAdmin() || (isSelf(id) && isApproved{S}());
       allow update: if isCrew{S}() && request.resource.data.keys().hasOnly(['items', 'at']);
+    }}
+
+    // 業者へのお知らせ: 管理者と盛替え業者が出し、業者本人は「確認した」(ack)だけ書ける
+    match /{P}notices/{{id}} {{
+      allow read: if isAdmin() || isSelf(id) || isCrew{S}();
+      allow write: if isAdmin();
+      allow create: if isCrew{S}() && request.resource.data.keys().hasOnly(['items']);
+      allow update: if isCrew{S}() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['items']);
+      allow update: if isSelf(id) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ack']);
     }}
 
     // 盛替え業者の登録内容: 本人が出し、管理者が見る
