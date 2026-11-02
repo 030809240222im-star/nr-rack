@@ -162,12 +162,13 @@ body{touch-action:manipulation}
   table.rtable td:empty{display:none}
   table.rtable input[type=number]{width:6em}
   /* 階の表は 階 | 保有 | 追加希望 | 出したい を1段に並べ、備考・戻し階・状態は入っているときだけ下に出す */
-  .floors table.rtable tr{grid-template-columns:3.2em 1fr 1fr 1fr;gap:4px 8px;padding:8px 8px;align-items:end}
-  .floors table.rtable td:first-child{grid-column:auto;font-size:16px;align-self:center}
-  .floors table.rtable td:nth-child(2){grid-column:2}
-  .floors table.rtable td:nth-child(3){grid-column:3}
-  .floors table.rtable td:nth-child(5){grid-column:4;grid-row:1}
-  .floors table.rtable td:nth-child(4),.floors table.rtable td:nth-child(6),.floors table.rtable td:nth-child(7){grid-column:2/-1}
+  .floors table.rtable tr{grid-template-columns:1fr 1fr 1fr;gap:4px 8px;padding:8px 8px;align-items:end}
+  .floors table.rtable td:first-child{grid-column:1/-1;font-size:16px}
+  .floors table.rtable td:nth-child(2){grid-column:1;grid-row:2}
+  .floors table.rtable td:nth-child(3){grid-column:2;grid-row:2}
+  .floors table.rtable td:nth-child(5){grid-column:3;grid-row:2}
+  .floors table.rtable td:nth-child(4),.floors table.rtable td:nth-child(6),.floors table.rtable td:nth-child(7){grid-column:1/-1}
+  .floors .stepper input{padding:0 2px!important;font-size:17px!important}
   .floors table.rtable td::before{font-size:11px}
   .floors table.rtable td:nth-child(-n+5) input[type=number]{width:100%}
   .floors table.rtable td:nth-child(6) input[type=number]{width:5em}
@@ -202,6 +203,15 @@ body{touch-action:manipulation}
 .cc-r>span{flex:0 0 76px;color:var(--muted);font-size:13px;padding-top:3px}
 .cc-r .mvbox input{width:5em}
 .cc-r .mvbox input[type=date]{width:auto;min-width:10em}
+.stepper{display:inline-flex!important;flex-direction:row!important;flex-wrap:nowrap!important;align-items:stretch;max-width:100%;vertical-align:middle;gap:0!important}
+.stepper::before{content:none!important}
+.stepper input{border-radius:0!important;text-align:center;min-width:0}
+.stp{flex:0 0 auto;width:auto!important;min-width:34px;margin:0!important;padding:0 6px;border:1px solid var(--line);background:var(--surface2);color:var(--fg);font-size:18px;line-height:1;cursor:pointer;touch-action:manipulation}
+.stp:first-child{border-radius:8px 0 0 8px;border-right:0}.stp:last-child{border-radius:0 8px 8px 0;border-left:0}
+.stp:active{background:var(--line)}
+.floors .stepper{width:100%}
+.cc-r>div{min-width:0;flex:1 1 auto}.cc-r .mvbox .stepper{width:9.5em;max-width:100%}
+@media (max-width:700px){.floors .stp{min-width:28px;padding:0 4px}}.floors .stepper input,.cc-r .stepper input{flex:1 1 auto;width:auto!important;min-width:2.5em}
 .todaybox.alert{border-color:var(--bad);background:var(--badbg)}
 .todaybox.alert h3{background:var(--bad);color:#fff}
 .hist{margin:6px 0 0;padding-left:18px;font-size:13px}.hist li{margin:4px 0}
@@ -1317,6 +1327,14 @@ function render(remote){
   }else if(ENV.crew)h+=ui.tab==="creg"?renderCrewReg():ui.tab==="ret"?renderRet(C):ui.tab==="ord"?renderOrders(C):renderCal(C);
   else h+=!vendorOk?renderReg():(ui.tab==="cal"?renderCal(C):renderVin(C));
   var box=document.createElement("div");box.innerHTML=h;
+  /* 数字の欄には −/＋ のボタンを付ける(押すと1ずつ増減して、手で打ったときと同じように保存される) */
+  Array.prototype.forEach.call(box.querySelectorAll('input[type="number"]'),function(inp){
+    var w=document.createElement("span");w.className="stepper";inp.parentNode.insertBefore(w,inp);
+    var lab=inp.getAttribute("aria-label")||"";
+    w.innerHTML='<button type="button" class="stp" data-act="step" data-n="-1" aria-label="'+esc(lab)+'を1減らす">−</button>';
+    w.appendChild(inp);
+    w.insertAdjacentHTML("beforeend",'<button type="button" class="stp" data-act="step" data-n="1" aria-label="'+esc(lab)+'を1増やす">＋</button>');
+  });
   /* スマホでは横長の表をカードにするので、各セルに見出しを付けておく */
   Array.prototype.forEach.call(box.querySelectorAll("table.rtable"),function(t){
     var lab=t.tHead?Array.prototype.map.call(t.tHead.rows[0].cells,function(c){return c.textContent}):[];
@@ -1372,6 +1390,12 @@ function onClick(ev){
   var b=ev.target.closest("[data-act]");if(!b)return;
   var act=b.getAttribute("data-act"),id=b.getAttribute("data-id"),keepConfirm=false;
   ui.msg="";
+  if(act==="step"){
+    var si=b.parentNode.querySelector('input[type="number"]');if(!si)return;
+    var mn=si.getAttribute("min"),mx=si.getAttribute("max"),sv=(Number(si.value)||0)+Number(b.getAttribute("data-n"));
+    if(mn!=null&&mn!==""&&sv<Number(mn))sv=Number(mn);if(mx!=null&&mx!==""&&sv>Number(mx))sv=Number(mx);
+    si.value=String(sv);si.dispatchEvent(new Event("change",{bubbles:true}));return;
+  }
   if(act==="demoreset"){try{localStorage.removeItem(KEY)}catch(e){}location.reload();return}
   if(act==="logout"){if(window.NR_ACCOUNT)window.NR_ACCOUNT.logout();return}
   if(act==="reload"){location.reload();return}
