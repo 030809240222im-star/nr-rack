@@ -162,13 +162,16 @@ body{touch-action:manipulation}
   table.rtable td:empty{display:none}
   table.rtable input[type=number]{width:6em}
   /* 階の表は 階 | 保有 | 追加希望 | 出したい を1段に並べ、備考・戻し階・状態は入っているときだけ下に出す */
-  .floors table.rtable tr{grid-template-columns:1fr 1fr 1fr;gap:4px 8px;padding:8px 8px;align-items:end}
+  .floors table.rtable tr{grid-template-columns:repeat(3,minmax(0,1fr));gap:4px 12px;padding:8px 8px;align-items:end}
   .floors table.rtable td:first-child{grid-column:1/-1;font-size:16px}
   .floors table.rtable td:nth-child(2){grid-column:1;grid-row:2}
   .floors table.rtable td:nth-child(3){grid-column:2;grid-row:2}
   .floors table.rtable td:nth-child(5){grid-column:3;grid-row:2}
   .floors table.rtable td:nth-child(4),.floors table.rtable td:nth-child(6),.floors table.rtable td:nth-child(7){grid-column:1/-1}
   .floors .stepper input{padding:0 2px!important;font-size:17px!important}
+  .floors .stp{min-width:26px;padding:0 2px;font-size:16px}
+  .floors .stepper input{min-width:1.8em!important}
+  .floors table.rtable td{overflow:hidden}
   .floors table.rtable td::before{font-size:11px}
   .floors table.rtable td:nth-child(-n+5) input[type=number]{width:100%}
   .floors table.rtable td:nth-child(6) input[type=number]{width:5em}
@@ -205,12 +208,9 @@ body{touch-action:manipulation}
 .cc-r .mvbox input[type=date]{width:auto;min-width:10em}
 .stepper{display:inline-flex!important;flex-direction:row!important;flex-wrap:nowrap!important;align-items:stretch;max-width:100%;vertical-align:middle;gap:0!important}
 .stepper::before{content:none!important}
-.stepper input{border-top-right-radius:0!important;border-bottom-right-radius:0!important;border-right:0!important;min-width:0}
-.stepper input[type=number]{-moz-appearance:textfield;appearance:textfield}
-.stepper input[type=number]::-webkit-inner-spin-button,.stepper input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
-.spin{display:flex;flex-direction:column;flex:0 0 auto;width:30px}
-.stp{flex:1 1 0;width:30px!important;min-height:0;margin:0!important;padding:0;border:1px solid var(--line);background:var(--surface2);color:var(--muted);font-size:10px;line-height:1;cursor:pointer;touch-action:none;-webkit-user-select:none;user-select:none}
-.stp:first-child{border-radius:0 8px 0 0;border-bottom-width:0}.stp:last-child{border-radius:0 0 8px 0}
+.stepper input{border-radius:0!important;text-align:center;min-width:0}
+.stp{flex:0 0 auto;width:auto!important;min-width:36px;margin:0!important;padding:0 6px;border:1px solid var(--line);background:var(--surface2);color:var(--fg);font-size:18px;line-height:1;cursor:pointer;touch-action:none;-webkit-user-select:none;user-select:none}
+.stp:first-child{border-radius:8px 0 0 8px;border-right:0}.stp:last-child{border-radius:0 8px 8px 0;border-left:0}
 .stp:active{background:var(--line);color:var(--fg)}
 .floors .stepper{width:100%}
 .cc-r>div{min-width:0;flex:1 1 auto}.cc-r .mvbox .stepper{width:9.5em;max-width:100%}
@@ -1330,11 +1330,13 @@ function render(remote){
   }else if(ENV.crew)h+=ui.tab==="creg"?renderCrewReg():ui.tab==="ret"?renderRet(C):ui.tab==="ord"?renderOrders(C):renderCal(C);
   else h+=!vendorOk?renderReg():(ui.tab==="cal"?renderCal(C):renderVin(C));
   var box=document.createElement("div");box.innerHTML=h;
-  /* 数字の欄の右に ▲▼ のスピンボタンを付ける。押すと1ずつ、押し続けると続けて増減し、離したときに保存する */
+  /* 数字の欄の左に −、右に ＋ を付ける。押すと1ずつ、押し続けると続けて増減し、離したときに保存する */
   Array.prototype.forEach.call(box.querySelectorAll('input[type="number"]'),function(inp){
-    var w=document.createElement("span");w.className="stepper";inp.parentNode.insertBefore(w,inp);w.appendChild(inp);
+    var w=document.createElement("span");w.className="stepper";inp.parentNode.insertBefore(w,inp);
     var lab=esc(inp.getAttribute("aria-label")||"");
-    w.insertAdjacentHTML("beforeend",'<span class="spin"><button type="button" class="stp" data-step="1" aria-label="'+lab+'を1増やす">▲</button><button type="button" class="stp" data-step="-1" aria-label="'+lab+'を1減らす">▼</button></span>');
+    w.innerHTML='<button type="button" class="stp" data-step="-1" aria-label="'+lab+'を1減らす">−</button>';
+    w.appendChild(inp);
+    w.insertAdjacentHTML("beforeend",'<button type="button" class="stp" data-step="1" aria-label="'+lab+'を1増やす">＋</button>');
   });
   /* スマホでは横長の表をカードにするので、各セルに見出しを付けておく */
   Array.prototype.forEach.call(box.querySelectorAll("table.rtable"),function(t){
@@ -1642,7 +1644,7 @@ function onChange(ev){
   render();
 }
 var app=document.getElementById("app");
-/* スピンボタン: 押した瞬間に1つ動かし、0.4秒押し続けると連続で動かす。保存は離したとき1回だけ */
+/* −/＋: 押した瞬間に1つ動かし、0.4秒押し続けると連続で動かす。保存は離したとき1回だけ */
 var spin=null;
 function spinInput(b){return b.closest(".stepper").querySelector('input[type="number"]')}
 function spinStep(inp,n){
