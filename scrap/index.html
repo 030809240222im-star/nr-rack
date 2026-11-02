@@ -381,8 +381,8 @@ function qrSvg(){
 }
 var WD=["日","月","火","水","木","金","土"];
 var COLORS=["var(--c0)","var(--c1)","var(--c2)","var(--c3)","var(--c4)","var(--c5)","var(--c6)","var(--c7)"];
-var ENV={crew:false,mode:"local",uid:"local",realUid:"local",admin:true,preview:false,db:null,email:"",name:""};
-var D={config:{},days:{},vendors:{},plans:{},members:{},approved:{},blocked:{},confirmed:{},crews:{},crewreq:{},crewblocked:{},orders:{},notices:{}};
+var ENV={vid:"local",crew:false,mode:"local",uid:"local",realUid:"local",admin:true,preview:false,db:null,email:"",name:""};
+var D={config:{},days:{},vendors:{},plans:{},members:{},approved:{},blocked:{},confirmed:{},crews:{},crewreq:{},crewblocked:{},orders:{},notices:{},codes:{}};
 var LOADED={};
 var ui={tab:"cal",month:null,sel:null,vsel:null,only:false,confirm:"",msg:"",msgKind:""};
 
@@ -469,20 +469,64 @@ async function boot(){
   ui.tab="cal";
   render();
 }
+/* 業者は、会社(vid)の文書を読む。会社が変わったら(管理者がまとめたとき)読み直す */
+var VSUB={vid:null,off:[]};
+var VCOLLS=["vendors","plans","orders","notices"];
+function watchVid(){
+  if(VSUB.vid===ENV.vid||!LOADED.approved)return;
+  VSUB.off.forEach(function(f){try{f()}catch(e){}});VSUB.off=[];VSUB.vid=ENV.vid;
+  VCOLLS.forEach(function(c){D[c]={};LOADED[c]=false;
+    VSUB.off.push(ENV.db.doc(c+"/"+ENV.vid).onSnapshot(function(s){var m={};if(s.exists)m[ENV.vid]=s.data();D[c]=m;LOADED[c]=true;ui.synced=new Date();render(true)},function(){LOADED[c]=true}));
+  });
+}
 function subscribe(){
   var err=function(e){ui.msg="データを読み込めませんでした("+((e&&e.code)||"error")+")"+(e&&e.code==="permission-denied"?"。Firebaseのセキュリティルールに、このアカウントのメールアドレスが管理者として入っているか確認してください。":"");ui.msgKind="bad";render(true)};
   var colls=["days","vendors","plans","members","approved","blocked","confirmed","crews","crewreq","crewblocked","orders","notices"];
   colls.forEach(function(c){
+    if(!ENV.admin&&!ENV.crew&&VCOLLS.indexOf(c)>=0)return;
     ENV.db.collection(c).onSnapshot(function(snap){var m={};snap.docs.forEach(function(d){m[d.id]=c==="confirmed"?hydrate(d.data()):d.data()});D[c]=m;LOADED[c]=true;ui.synced=new Date();render(true)},err);
   });
   ENV.db.doc("config/main").onSnapshot(function(s){D.config=s.exists?s.data():{};LOADED.config=true;ui.synced=new Date();render(true)},err);
 }
 
 /* ---- 計算 ---- */
+/* 会社(vid)に属する利用中の人。approved/{人}.vid が会社ID(無ければ本人のIDが会社ID) */
+/* 会社Xを会社Tにまとめる(管理者)。メンバー・台数・置いた記録・注文・追加記録・お知らせ・確定の行をTへ移し、Xの文書を消す */
+var SILENT=false;
+function mergeCompany(x,t){
+  var tn=vname(t);SILENT=true;try{mergeCompany2(x,t,tn)}finally{SILENT=false}
+}
+function mergeCompany2(x,t,tn){
+  companyMembers(x).forEach(function(u){patch("approved",u,{vid:t,company:tn})});
+  var vx=D.vendors[x]||{},vt=D.vendors[t]||{},fl={},pl={};
+  Object.keys(vx.floors||{}).forEach(function(f){var a=vx.floors[f],b2=(vt.floors||{})[f];
+    fl[f]=b2?{h:{$op:"inc",n:Number(a.h)||0},w:{$op:"inc",n:Number(a.w)||0}}:clone(a)});
+  Object.keys(vx.placed||{}).forEach(function(k){pl[k]=vx.placed[k]});
+  var pv={updated:nowIso()};if(Object.keys(fl).length)pv.floors=fl;if(Object.keys(pl).length)pv.placed=pl;if(vx.note&&!vt.note)pv.note=vx.note;
+  patch("vendors",t,pv);
+  var ox=(D.orders[x]||{}).items||{};if(Object.keys(ox).length){var oi={};Object.keys(ox).forEach(function(k){oi[k]=clone(ox[k]);oi[k].n=tn});patch("orders",t,{items:oi,at:nowIso()})}
+  var lx=(D.plans[x]||{}).logs||[];if(lx.length)patch("plans",t,{logs:{$op:"union",v:lx},at:nowIso()});
+  var nx=D.notices[x]||{};if(nx.items)patch("notices",t,{items:nx.items,ack:nx.ack||{}});
+  Object.keys(D.confirmed).forEach(function(d){if(((D.confirmed[d]||{}).rows||[]).some(function(r){return r.vid===x}))
+    mutConfirmed(d,function(cf){var out=[];cf.rows.forEach(function(r){if(r.vid===x)r.vid=t;var hit=out.filter(function(o){return o.vid===r.vid&&o.floor===r.floor&&(o.ev||null)===(r.ev||null)})[0];
+      if(hit)hit.units=nrNum(hit.units)+nrNum(r.units);else out.push(r)});cf.rows=out})});
+  if(D.vendors[x])remove("vendors",x);if(D.orders[x])remove("orders",x);if(D.plans[x])remove("plans",x);if(D.notices[x])remove("notices",x);
+  if(vx.code)remove("codes",vx.code);
+  var wd=(D.config.wd||{})[x];if(wd){var c2=clone(D.config||{});c2.wd=c2.wd||{};if(!c2.wd[t])c2.wd[t]=wd;delete c2.wd[x];putCfg(c2)}
+}
+/* 参加コード: 紛らわしい文字(0,O,1,I)を除いた6文字。codes/{コード} と vendors/{会社}.code に入れる */
+function newCode(){var a="ABCDEFGHJKLMNPQRSTUVWXYZ23456789",c="";for(var i=0;i<6;i++)c+=a.charAt(Math.floor(Math.random()*a.length));return c}
+function makeCode(vid,company){var c=newCode();put("codes",c,{vid:vid,company:company,at:nowIso()});patch("vendors",vid,{code:c});return c}
+function getDoc(coll,id){
+  if(ENV.mode==="local")return Promise.resolve((D[coll]||{})[id]||null);
+  return ENV.db.doc(coll+"/"+id).get();
+}
+function vidOf(uid){var a=D.approved[uid];return (a&&a.vid)||uid}
+function companyMembers(vid){return Object.keys(D.approved).filter(function(u){return vidOf(u)===vid})}
 function isActive(id){
   var v=D.vendors[id];if(!v)return false;
   if(ENV.mode==="local")return true;
-  return !!(D.approved[id]||v.manual||v.sample);
+  return !!(D.approved[id]||companyMembers(id).length||v.manual||v.sample);
 }
 function activeMap(){var m={};Object.keys(D.vendors).forEach(function(id){if(isActive(id))m[id]=D.vendors[id]});return m}
 /* 画面で使う建物の設定(最下階・最上階・エレベーターの台数) */
@@ -493,7 +537,8 @@ function compute(){
   return {cfg:cfg,t:t,am:am,sim:sim,rank:nrRank(am,sim,cfg,t)};
 }
 function vname(id){
-  return (D.approved[id]&&D.approved[id].company)||(D.vendors[id]&&D.vendors[id].name)||(D.members[id]&&D.members[id].company)||"名称未設定";
+  var mem=D.approved[id]?id:companyMembers(id)[0];
+  return (mem&&D.approved[mem].company)||(D.vendors[id]&&D.vendors[id].name)||(D.members[id]&&D.members[id].company)||"名称未設定";
 }
 function vcolor(id){var ids=Object.keys(D.vendors).sort(),i=ids.indexOf(id);return COLORS[(i<0?0:i)%COLORS.length]}
 function retText(r){return r?(r+"階"):"同じ階"}
@@ -501,7 +546,7 @@ function retText(r){return r?(r+"階"):"同じ階"}
 function evLabel(e,to){return e?(to?to+"階 EV"+e+"前":"EV"+e+"前"):"—"}
 function evCell(r){return evLabel(r.ev,r.to)+(r.to?' <span class="st warn">前日までに移動</span>':'')}
 /* 確定行の業者名。業者は他社の登録情報を読めないので、確定時に保存した名前を使う */
-function rowName(r){return ENV.admin||r.vid===ENV.uid?vname(r.vid):(r.n||"他の業者")}
+function rowName(r){return ENV.admin||r.vid===ENV.vid?vname(r.vid):(r.n||"他の業者")}
 /* 盛替え業者の搬出確認。chk:{k:"ok"|"none"|"short",got:実際の台数,at} */
 function chkBadge(r){var c=r.chk;if(!c)return '<span class="st off">未確認</span>';
   var by=c.by&&(ENV.admin||ENV.crew)?'<div class="hint" style="margin:0">'+esc(c.by)+' '+esc(fmtAt(c.at))+'</div>':'';
@@ -521,7 +566,7 @@ function chkCell(d,r,i){
 function problemRows(){
   var out=[],from=nrDs(new Date(Date.now()-7*864e5));
   Object.keys(D.confirmed).sort().forEach(function(d){if(d<from)return;
-    (D.confirmed[d].rows||[]).forEach(function(r,i){if(nrNum(r.units)>0&&r.chk&&r.chk.k!=="ok"&&!r.back&&(ENV.admin||ENV.crew||r.vid===ENV.uid))out.push({d:d,i:i,r:r})})});
+    (D.confirmed[d].rows||[]).forEach(function(r,i){if(nrNum(r.units)>0&&r.chk&&r.chk.k!=="ok"&&!r.back&&(ENV.admin||ENV.crew||r.vid===ENV.vid))out.push({d:d,i:i,r:r})})});
   return out;
 }
 function isPlaced(d,r){var v=D.vendors[r.vid];return !!(v&&v.placed&&v.placed[d+"|"+r.floor])}
@@ -531,7 +576,7 @@ function myRows(){
   var out=[],from=nrDs(new Date(Date.now()-7*864e5));
   Object.keys(D.confirmed).sort().forEach(function(d){
     if(d<from)return;
-    (D.confirmed[d].rows||[]).forEach(function(r,i){if(r.vid===ENV.uid&&nrNum(r.units)>0)out.push({d:d,i:i,r:r})});
+    (D.confirmed[d].rows||[]).forEach(function(r,i){if(r.vid===ENV.vid&&nrNum(r.units)>0)out.push({d:d,i:i,r:r})});
   });
   return out;
 }
@@ -565,7 +610,7 @@ function mutConfirmed(k,fn){
   var before=D.confirmed[k],cf=clone(before||{rows:[]});cf.rows=cf.rows||[];fn(cf);
   cf.rows=cf.rows.filter(function(r){return nrNum(r.units)>0});
   if(ENV.admin)cf.rows.forEach(function(r){r.n=vname(r.vid)});
-  if(ENV.admin&&before)notifyChanges(k,before,cf);
+  if(ENV.admin&&before&&!SILENT)notifyChanges(k,before,cf);
   if(!cf.rows.length){remove("confirmed",k);return}
   /* 行に入っている確認・戻しは st に移してから行を保存する(古いデータの引き継ぎも兼ねる) */
   var st={},rows=cf.rows.map(function(r){var o=clone(r),x={};if(o.chk)x.chk=o.chk;if(o.back)x.back=o.back;delete o.chk;delete o.back;
@@ -604,12 +649,17 @@ function applyAdj(vid,adj,sign){addFloors(vid,adj,sign)}
 function addLog(vid,l){patch("plans",vid,{logs:{$op:"union",v:[l]},at:nowIso()})}
 function delLog(vid,l){patch("plans",vid,{logs:{$op:"rm",v:[l]},at:nowIso()})}
 /* 操作した人(記録用) */
-function who(){return ENV.crew?((D.crews[ENV.uid]||{}).company||ENV.email||"盛替え業者"):ENV.admin?(ENV.email||"管理者"):(vname(ENV.uid)||ENV.email||"")}
+function who(){
+  if(ENV.admin)return ENV.email||"管理者";
+  var a=ENV.crew?(D.crews[ENV.uid]||{}):(D.approved[ENV.uid]||{}),nm=a.name||(ENV.crew?((D.crewreq[ENV.uid]||{}).contact):((D.members[ENV.uid]||{}).contact))||ENV.name||ENV.email||"";
+  var co=ENV.crew?(a.company||"盛替え業者"):(vname(ENV.vid)||"");
+  return co+(nm&&nm!==co?" "+nm:"");
+}
 
 /* ---- 画面 ---- */
 /* 配置(業者)と戻し(管理者)のチェック欄 */
 function placedCell(d,r){
-  var on=isPlaced(d,r),can=ENV.admin||r.vid===ENV.uid;
+  var on=isPlaced(d,r),can=ENV.admin||r.vid===ENV.vid;
   if(ENV.crew){var pe0=placedEv(d,r);return on?'<span class="st ok">✅ 配置済み'+(pe0?'(EV'+pe0+')':'')+'</span>':'<span class="st off">未配置</span>'}
   if(!can)return '<span class="muted">—</span>';
   var el=((D.days[d]||{}).elev||[]).slice().sort(),pe=placedEv(d,r),cur=pe||r.ev||el[0]||1,opts=el.length?el.slice():evList();
@@ -652,7 +702,7 @@ function dayRowsTable(d){
   var h='<div class="tablewrap"><table class="rtable"><thead><tr><th class="l">業者</th><th>階・台数</th><th class="l">集積 / 戻し階</th><th class="l">配置(業者)</th><th class="l">搬出確認(盛替え)</th><th class="l">戻し(盛替え・管理者)</th></tr></thead><tbody>';
   rows.forEach(function(r,i){
     if(nrNum(r.units)<=0)return;
-    var mine=r.vid===ENV.uid&&!ENV.admin;
+    var mine=r.vid===ENV.vid&&!ENV.admin;
     h+='<tr'+(mine?' class="mine"':'')+'><td class="l vn"><i class="chip" style="background:'+(ENV.admin?vcolor(r.vid):(mine?'var(--accent)':'var(--line)'))+'"></i>'+esc(rowName(r))+'</td><td>'+r.floor+'階 <b>'+nrNum(r.units)+'台</b></td><td class="l" style="white-space:normal;min-width:96px">'+evCell(r)+'<div class="hint" style="margin:2px 0 0">戻し: '+retText(r.ret)+'</div></td><td class="l">'+placedCell(d,r)+'</td><td class="l">'+chkCell(d,r,i)+'</td><td class="l">'+backCell(d,r,i)+'</td></tr>';
   });
   return h+'</tbody></table></div>';
@@ -676,7 +726,7 @@ function renderCal(C){
       h+='<span class="cap">'+(cf||ENV.admin?u+'/':'')+cap+'台'+(doc.tf?' '+esc(doc.tf):'')+'</span><span class="evs'+((doc.elev&&doc.elev.length)?'':' none')+'">'+(doc.elev&&doc.elev.length?doc.elev.map(function(e){return "EV"+e}).join("·"):"EV未指定")+'</span>';
       if(cf&&(ENV.admin||ENV.crew)){var np=rows.filter(function(r){return isPlaced(k,r)}).length,nb=rows.filter(function(r){return r.back}).length;
         h+='<span class="cap">配置'+np+'/'+rows.length+' 戻し'+nb+'/'+rows.length+'</span>'}
-      else if(cf){var my=rows.filter(function(r){return r.vid===ENV.uid});
+      else if(cf){var my=rows.filter(function(r){return r.vid===ENV.vid});
         if(my.length){var mu=0,allp=true;my.forEach(function(r){mu+=nrNum(r.units);if(!isPlaced(k,r))allp=false});
           h+='<span class="evs">自社'+mu+'台'+(allp?' ✅':'')+'</span>'}}
       h+='<span class="bar"><b style="width:'+Math.round(u/cap*100)+'%"></b></span>'}
@@ -734,7 +784,7 @@ var NK={confirm:["📋","確定"],change:["⚠","変更"],cancel:["✖","取り�
 /* 業者: まだ「確認した」を押していないお知らせ */
 function noticeBox(){
   if(ENV.admin||ENV.crew)return "";
-  var list=noticeList(ENV.uid).filter(function(x){return !x.ack});if(!list.length)return "";
+  var list=noticeList(ENV.vid).filter(function(x){return !x.ack});if(!list.length)return "";
   var bad=list.some(function(x){return x.o.kind!=="confirm"});
   var h='<div class="todaybox '+(bad?'alert':'next')+'" role="alert"><h3>'+(bad?'⚠ 予定の変更・連絡があります':'📋 予定が確定しました')+'('+list.length+'件)</h3><ul>';
   list.forEach(function(x){var k=NK[x.o.kind]||NK.trouble;h+='<li><b>'+k[0]+' '+k[1]+'</b> '+esc(x.o.msg)+' <span class="hint" style="margin:0">'+esc(fmtAt(x.o.at))+'</span> <button class="btn sm primary" data-act="ack" data-id="'+esc(x.id)+'">確認した</button></li>'});
@@ -799,7 +849,7 @@ function backBox(){
   if(ENV.admin||ENV.crew)return "";
   var from=nrDs(new Date(Date.now()-3*864e5)),list=[];
   Object.keys(D.confirmed).sort().forEach(function(d){if(d<from)return;
-    (D.confirmed[d].rows||[]).forEach(function(r){if(r.vid===ENV.uid&&r.back)list.push({d:d,r:r})})});
+    (D.confirmed[d].rows||[]).forEach(function(r){if(r.vid===ENV.vid&&r.back)list.push({d:d,r:r})})});
   if(!list.length)return "";
   var h='<div class="todaybox back" role="status"><h3>↩ 戻しのお知らせ</h3><ul>';
   list.forEach(function(x){var r=x.r,b=r.back;h+='<li>'+fmtD(x.d)+'に搬出した<b>'+r.floor+'階の'+nrNum(r.units)+'台</b> → <b>'+(nrNum(r.ret)||r.floor)+'階へ'+nrNum(b.u)+'台戻しました</b>'+(b.ev?'(EV'+b.ev+')':'')+(b.at?' <span class="hint" style="margin:0">'+esc(fmtAt(b.at))+'</span>':'')+'</li>'});
@@ -809,7 +859,7 @@ function backBox(){
 function noteBox(t,tm){
   if(ENV.admin)return "";
   var items=[];[t,tm].forEach(function(d){var cf=D.confirmed[d];if(!cf)return;
-    if(!ENV.crew&&!(cf.rows||[]).some(function(r){return r.vid===ENV.uid}))return;
+    if(!ENV.crew&&!(cf.rows||[]).some(function(r){return r.vid===ENV.vid}))return;
     dayNotes(d).forEach(function(x){items.push({d:d,x:x})})});
   if(!items.length)return "";
   return '<div class="todaybox next" role="status"><h3>📝 連絡(備考)</h3><ul>'+items.map(function(i){return '<li>'+fmtD(i.d)+' <b>'+esc(i.x.t)+'</b> <span class="hint" style="margin:0">'+esc(fmtAt(i.x.at))+' '+esc(i.x.by||"")+'</span></li>'}).join("")+'</ul></div>';
@@ -824,7 +874,7 @@ function problemBox(){
   return h+'</div>';
 }
 function dayNotice(d,isToday){
-  var cf=D.confirmed[d],day=D.days[d]||{},rows=cf?(cf.rows||[]).filter(function(r){return nrNum(r.units)>0&&(ENV.admin||ENV.crew||r.vid===ENV.uid)}):[];
+  var cf=D.confirmed[d],day=D.days[d]||{},rows=cf?(cf.rows||[]).filter(function(r){return nrNum(r.units)>0&&(ENV.admin||ENV.crew||r.vid===ENV.vid)}):[];
   var adds=orderList().filter(function(x){return x.o.st==="plan"&&x.o.plan&&x.o.plan.d===d});
   if(!rows.length&&!adds.length)return "";
   if(!rows.length){var ha='<div class="todaybox'+(isToday?'':' next')+'" role="status"><h3>'+(isToday?'🔔 本日は追加の搬入があります':'📅 明日は追加の搬入があります')+' '+fmtD(d)+'</h3><ul>';
@@ -841,7 +891,7 @@ function dayNotice(d,isToday){
   return h+'</div>';
 }
 function vCell(k,m,d,doc,cap,cf,C){
-  var my=cf?(cf.rows||[]).filter(function(r){return r.vid===ENV.uid&&nrNum(r.units)>0}):[],cls="cell",lab;
+  var my=cf?(cf.rows||[]).filter(function(r){return r.vid===ENV.vid&&nrNum(r.units)>0}):[],cls="cell",lab;
   if(!cap){cls+=" off";lab="回収なし"}else if(my.length){cls+=k===C.t?" now":" mine";lab=k===C.t?"本日の搬出日":"自社の搬出日"}else{cls+=" can";lab="搬出可能日"}
   if(k<C.t)cls+=" past";if(k===ui.sel)cls+=" sel";if(k===C.t)cls+=" today";
   var mu=0,allp=my.length>0,mv=false;my.forEach(function(r){mu+=nrNum(r.units);if(!isPlaced(k,r))allp=false;if(r.to)mv=true});
@@ -1010,7 +1060,7 @@ function vendorPicker(C){
   return h;
 }
 function renderVin(C){
-  var vid=ENV.admin?ui.vsel:ENV.uid,h='<section class="panel"><h2 style="margin-bottom:10px">搬出の入力</h2>';
+  var vid=ENV.admin?ui.vsel:ENV.vid,h='<section class="panel"><h2 style="margin-bottom:10px">搬出の入力</h2>';
   if(ENV.admin){h+=vendorPicker(C);vid=ui.vsel}
   if(!vid){
     return h+'<p class="empty">利用中の業者がまだありません。業者にURLから登録してもらうか、「業者を追加」から作成してください。</p></section>';
@@ -1020,6 +1070,8 @@ function renderVin(C){
   var admNameEdit=ENV.admin&&D.vendors[vid]&&D.vendors[vid].manual;
   if(admNameEdit)h+='<div class="vtop"><label>会社名<input type="text" id="vname" data-f="vname" value="'+esc(v.name||"")+'" placeholder="会社名を入力"></label></div>';
   else h+='<p style="margin:0 0 10px"><b>'+esc(vname(vid))+'</b></p>';
+  var vcode=(D.vendors[vid]||{}).code;
+  if(!ENV.preview)h+='<div class="note" style="margin:0 0 10px"><span>'+(vcode?'参加コード <b style="font-size:18px;letter-spacing:.15em">'+esc(vcode)+'</b> 同じ会社の人は、登録のときに「参加コードで入る」でこのコードを入れると、同じ画面で一緒に使えます。':'同じ会社の人と一緒に使うには、参加コードを作って伝えます。')+(ENV.admin||!vcode?' <button class="btn sm" data-act="mkcode" data-vid="'+esc(vid)+'">'+(vcode?'コードを作り直す':'参加コードを作る')+'</button>':'')+'</span></div>';
   var wds=C.cfg.wd[vid];if(wds)h+='<p class="hint" style="margin:0 0 8px">回収曜日: <b>'+wds.map(function(w){return WD[w]}).join("・")+'</b>(積載に余裕がある日は、ほかの曜日にも回収することがあります)</p>';
   h+='<div class="sum"><div><small>保有台数(合計)</small><b>'+th+'台</b></div><div><small>搬出希望(合計)</small><b>'+tw+'台</b></div></div>'
    +'<p class="hint" style="margin:0 0 8px">各階のスクラップ台車の保有台数と、その階から出したい台数を入力します。追加で欲しい階は「追加希望数」に台数を入れると注文になり、追加する日が決まると「備考(追加)」に出ます。戻してほしい階が同じ階でないときは「同じ階」のチェックを外して階を選びます。入力は自動で保存されます。</p>'
@@ -1061,7 +1113,7 @@ function renderMine(C){
 /* 業者: 管理者が追加したスクラップ台車(業者入力の下に表示) */
 function renderLogs(){
   var h='';
-  var logs=((D.plans[ENV.uid]||{}).logs||[]).slice().sort(function(a,b){return a.d<b.d?1:-1});
+  var logs=((D.plans[ENV.vid]||{}).logs||[]).slice().sort(function(a,b){return a.d<b.d?1:-1});
   if(logs.length){
     h+='<h3 style="margin-top:14px">追加・棚卸しの記録</h3><div class="tablewrap"><table><thead><tr><th class="l">日付</th><th>階</th><th>台数</th><th class="l">使ったEV</th><th class="l">メモ</th></tr></thead><tbody>';
     logs.forEach(function(l){h+='<tr><td class="l">'+fmtD(l.d)+'</td><td>'+l.f+'階</td><td><b>'+(l.k==="stock"?(l.u>0?"+":"")+l.u:nrNum(l.u))+'</b></td><td class="l">'+(l.e?'EV'+l.e:'—')+'</td><td class="l" style="white-space:normal">'+esc(l.m||"")+'</td></tr>'});
@@ -1101,7 +1153,7 @@ function renderRec(C){
 /* ---- 追加注文 ---- orders/{業者}: {items:{id:{f,u,want,memo,n,at,st:"new"|"plan"|"done"|"cancel",plan:{d,at},done:{d,ev,u,at,log}}}} */
 function orderList(){
   var out=[];Object.keys(D.orders).forEach(function(vid){var it=(D.orders[vid]||{}).items||{};
-    Object.keys(it).forEach(function(id){if(ENV.admin||ENV.crew||vid===ENV.uid)out.push({vid:vid,id:id,o:it[id]})})});
+    Object.keys(it).forEach(function(id){if(ENV.admin||ENV.crew||vid===ENV.vid)out.push({vid:vid,id:id,o:it[id]})})});
   return out.sort(function(a,b){return (a.o.at||"")<(b.o.at||"")?-1:1});
 }
 /* 業者入力の表用: 階ごとの追加希望数(受付中の合計)と、備考に出す手配・追加済みのお知らせ */
@@ -1162,7 +1214,7 @@ function renderOrders(C){
 function orderBox(C){
   if(ENV.crew)return "";
   if(ENV.admin){var n=newOrders();return n?'<div class="todaybox next" role="status"><h3>📦 新しい追加注文が'+n+'件あります</h3><p style="padding-top:8px">「追加注文」タブで、用意する搬出車を選んでください。</p></div>':""}
-  var since=nrDs(new Date(Date.now()-3*864e5)),list=orderList().filter(function(x){return x.vid===ENV.uid&&((x.o.st==="plan"&&x.o.plan.d>=C.t)||(x.o.st==="done"&&x.o.done.d>=since))});
+  var since=nrDs(new Date(Date.now()-3*864e5)),list=orderList().filter(function(x){return x.vid===ENV.vid&&((x.o.st==="plan"&&x.o.plan.d>=C.t)||(x.o.st==="done"&&x.o.done.d>=since))});
   if(!list.length)return "";
   var h='<div class="todaybox next" role="status"><h3>📦 追加注文のお知らせ</h3><ul>';
   list.forEach(function(x){var o=x.o;h+='<li><b>'+o.f+'階 '+nrNum(o.u)+'台</b>: '+(o.st==="plan"?fmtD(o.plan.d)+'の搬出車で用意します':'✅ '+fmtD(o.done.d)+'に'+nrNum(o.done.u)+'台上げました'+(o.done.ev?'(EV'+o.done.ev+')':''))+'</li>'});
@@ -1216,7 +1268,7 @@ function renderCrewReg(){
   if(m)h+='<div class="note"><span>登録を受け付けました。まもなく使えるようになります。画面が切り替わらないときは再読み込みしてください。</span></div>';
   else h+='<p class="hint">会社名とメールアドレスを登録すると、すぐに使えるようになります。</p>';
   h+='<div class="lbl"><label for="reg-company">会社名(必須)</label><input type="text" id="reg-company" data-keep value="'+esc(m?m.company:"")+'"></div>'
-   +'<div class="lbl"><label for="reg-contact">ご担当者名</label><input type="text" id="reg-contact" data-keep value="'+esc(m?m.contact||"":"")+'"></div>'
+   +'<div class="lbl"><label for="reg-contact">お名前</label><input type="text" id="reg-contact" data-keep value="'+esc(m?m.contact||"":"")+'"></div>'
    +'<div class="lbl"><label for="reg-email">メールアドレス(必須)</label><input type="email" id="reg-email" data-keep value="'+esc(m?m.email:(ENV.email||""))+'"></div>'
    +'<button class="btn primary" data-act="cregsubmit">'+(m?'登録内容を送り直す':'登録する')+'</button>';
   return h+'</section>';
@@ -1241,12 +1293,15 @@ function renderReg(){
   if(D.blocked[ENV.uid])return h+'<div class="note bad"><span>このアカウントは管理者により利用が停止されています。心当たりがない場合は管理者に連絡してください。</span></div></section>';
   if(m)h+='<div class="note"><span>登録を受け付けました。まもなく使えるようになります。画面が切り替わらないときは再読み込みしてください。</span></div>'
    +'<p class="hint" style="margin:0">会社名 '+esc(m.company)+' / 連絡先 '+esc(m.email)+'</p>';
-  else h+='<p class="hint" style="margin:0">会社名とメールアドレスを登録すると、すぐに使えるようになります。</p>';
-  var em=(m&&m.email)||ENV.email||"";
-  h+='<div class="lbl"><label for="reg-company">会社名(必須)</label><input type="text" id="reg-company" data-keep value="'+esc((m&&m.company)||"")+'" autocomplete="organization"></div>'
-   +'<div class="lbl"><label for="reg-contact">ご担当者名</label><input type="text" id="reg-contact" data-keep value="'+esc((m&&m.contact)||ENV.name||"")+'" autocomplete="name"></div>'
+  else h+='<p class="hint" style="margin:0">会社として初めて使うときは「新しく登録」、同じ会社の人がすでに使っているときは「参加コードで入る」を選びます。登録するとすぐに使えます。</p>';
+  var em=(m&&m.email)||ENV.email||"",join=ui.reg==="join";
+  h+='<div class="tabs" role="tablist" style="margin:8px 0"><button role="tab" aria-selected="'+!join+'" data-act="regmode" data-k="new">新しく登録</button><button role="tab" aria-selected="'+join+'" data-act="regmode" data-k="join">参加コードで入る</button></div>';
+  if(join)h+='<div class="lbl"><label for="reg-code">参加コード(必須)</label><input type="text" id="reg-code" data-keep maxlength="8" autocapitalize="characters" placeholder="例: A7K2X9" style="text-transform:uppercase;letter-spacing:.15em"></div>'
+   +'<p class="hint" style="margin:0 0 6px">同じ会社ですでに使っている人のアプリの「業者入力」に出ている参加コードを入れます。</p>';
+  else h+='<div class="lbl"><label for="reg-company">会社名(必須)</label><input type="text" id="reg-company" data-keep value="'+esc((m&&m.company)||"")+'" autocomplete="organization"></div>';
+  h+='<div class="lbl"><label for="reg-contact">お名前</label><input type="text" id="reg-contact" data-keep value="'+esc((m&&m.contact)||ENV.name||"")+'" autocomplete="name"></div>'
    +'<div class="lbl"><label for="reg-email">メールアドレス(必須)</label><input type="email" id="reg-email" data-keep value="'+esc(em)+'" autocomplete="email"></div>'
-   +'<div><button class="btn primary" data-act="regsubmit">'+(m?'登録内容を送り直す':'登録する')+'</button></div></section>';
+   +'<div><button class="btn primary" data-act="regsubmit">'+(join?'この会社に参加する':m?'登録内容を送り直す':'登録する')+'</button></div></section>';
   return h;
 }
 function renderMem(C){
@@ -1256,11 +1311,19 @@ function renderMem(C){
   else{h+='<div class="tablewrap"><table><thead><tr><th class="l">会社名</th><th class="l">担当者</th><th class="l">メールアドレス</th><th class="l">申請日時</th><th></th></tr></thead><tbody>';
     pend.forEach(function(id){var m=D.members[id];h+='<tr><td class="l vn">'+esc(m.company)+'</td><td class="l">'+esc(m.contact||"")+'</td><td class="l">'+esc(m.email)+'</td><td class="l">'+esc(fmtAt(m.at))+'</td><td><button class="btn sm primary" data-act="approve" data-id="'+esc(id)+'">'+(D.blocked[id]?'利用を再開':'利用を許可')+'</button> <button class="btn sm danger" data-act="reject" data-id="'+esc(id)+'">却下</button></td></tr>'});
     h+='</tbody></table></div>'}
-  h+='<h3 style="margin-top:16px">利用中の業者('+ap.length+')</h3>';
-  if(!ap.length)h+='<p class="empty">まだ登録した業者はいません。</p>';
-  else{h+='<div class="tablewrap"><table><thead><tr><th class="l">会社名</th><th class="l">メールアドレス</th><th></th></tr></thead><tbody>';
-    ap.forEach(function(id){var a=D.approved[id];h+='<tr><td class="l"><input type="text" id="co-'+esc(id)+'" data-f="company" data-id="'+esc(id)+'" value="'+esc(a.company)+'" aria-label="会社名"></td><td class="l">'+esc(a.email||"")+'</td><td><button class="btn sm danger" data-act="unapprove" data-id="'+esc(id)+'">'+(ui.confirm==="un-"+id?'もう一度押すと停止':'利用を停止')+'</button></td></tr>'});
-    h+='</tbody></table></div>'}
+  /* 会社ごとにまとめて出す。会社ID(vid)が同じ人は、同じ台数・予定を一緒に使う */
+  var groups={};ap.forEach(function(id){var v=vidOf(id);(groups[v]=groups[v]||[]).push(id)});
+  var gids=Object.keys(groups).sort(function(a,b){return vname(a)<vname(b)?-1:1});
+  h+='<h3 style="margin-top:16px">利用中の業者('+gids.length+'社・'+ap.length+'人)</h3><p class="hint" style="margin:0 0 8px">同じ会社の人は、参加コードで登録すると自動で同じ会社になります。別々に登録してしまった場合は「まとめる」で1つの会社にします(台数・予定・注文・お知らせも合わせます)。</p>';
+  if(!gids.length)h+='<p class="empty">まだ登録した業者はいません。</p>';
+  gids.forEach(function(v){var code=(D.vendors[v]||{}).code;
+    h+='<div class="ccard" style="margin-bottom:10px"><div class="cc-h"><input type="text" id="co-'+esc(v)+'" data-f="company" data-id="'+esc(v)+'" value="'+esc(vname(v))+'" aria-label="会社名" style="font-weight:700;max-width:100%"></div>'
+      +'<div class="cc-r"><span>参加コード</span><div>'+(code?'<b style="letter-spacing:.15em">'+esc(code)+'</b> ':'<span class="hint" style="margin:0">なし</span> ')+'<button class="btn sm" data-act="mkcode" data-vid="'+esc(v)+'">'+(code?'作り直す':'作る')+'</button></div></div>'
+      +'<div class="cc-r"><span>メンバー</span><div>'+groups[v].map(function(id){var a=D.approved[id],m=D.members[id]||{};
+        return '<div style="margin:0 0 6px"><b>'+esc(a.name||m.contact||"(名前なし)")+'</b> <span class="hint" style="margin:0">'+esc(a.email||"")+'</span> <button class="btn sm danger" data-act="unapprove" data-id="'+esc(id)+'">'+(ui.confirm==="un-"+id?'もう一度押すと停止':'この人を停止')+'</button></div>'}).join("")+'</div></div>';
+    var others=gids.filter(function(o){return o!==v});
+    if(others.length)h+='<div class="cc-r"><span>まとめる</span><div class="mvbox" style="flex-wrap:wrap"><select id="mg-'+esc(v)+'" data-keep aria-label="まとめ先の会社">'+others.map(function(o){return '<option value="'+esc(o)+'">'+esc(vname(o))+'</option>'}).join("")+'</select><button class="btn sm" data-act="merge" data-vid="'+esc(v)+'">'+(ui.confirm==="mg-"+v?'もう一度押すと'+esc(vname(v))+'を移す':'この会社を左の会社にまとめる')+'</button></div></div>';
+    h+='</div>'});
   var cq=Object.keys(D.crewreq).filter(function(id){return !D.crews[id]}),cw=Object.keys(D.crews);
   h+='<h2 style="margin:22px 0 6px">盛替え業者</h2><p class="hint" style="margin:0 0 10px">盛替え業者は専用のURL('+esc(APP_URL)+'crew/)から会社名を登録すると、すぐに使えるようになります。全業者の搬出予定を見て、搬出の確認と戻しの完了を入力できます。心当たりのない登録は「利用を停止」してください。</p><h3>利用停止中・未完了('+cq.length+')</h3>';
   if(!cq.length)h+='<p class="empty">ありません。</p>';
@@ -1332,6 +1395,9 @@ function morphNode(a,b,remote){
 var morphing=false,morphAgain=false;
 function render(remote){
   if(ui.pv&&!ENV.preview)return asVendor(function(){render(remote)});
+  /* 業者のデータは会社(vid)単位。同じ会社の人は approved/{本人}.vid に会社のIDを持つ。最初に登録した人の会社IDは本人のID */
+  if(!ENV.preview&&!ENV.admin)ENV.vid=(D.approved[ENV.uid]&&D.approved[ENV.uid].vid)||ENV.uid;
+  if(ENV.mode==="db"&&!ENV.admin&&!ENV.crew)watchVid();
   var C=compute(),vendorOk=ENV.admin||ENV.preview||ENV.mode==="local"||!!D.approved[ENV.uid],h,tabs;
   if(autoConfirm(C))C=compute();
   if(ENV.admin){
@@ -1383,8 +1449,8 @@ function render(remote){
 /* ---- 業者ページのプレビュー(管理者が業者の画面をそのまま確認する) ---- */
 function asVendor(fn){
   if(!ui.pv||ENV.preview||!ENV.admin)return fn();
-  ENV.admin=false;ENV.uid=ui.pv;ENV.preview=true;
-  try{return fn()}finally{ENV.admin=true;ENV.uid=ENV.realUid;ENV.preview=false}
+  ENV.admin=false;ENV.uid=ui.pv;ENV.vid=ui.pv;ENV.preview=true;
+  try{return fn()}finally{ENV.admin=true;ENV.uid=ENV.realUid;ENV.vid=ENV.realUid;ENV.preview=false}
 }
 function onPreview(ev){
   var b=ev.target.closest&&ev.target.closest("[data-act]"),act=b&&b.getAttribute("data-act");
@@ -1516,7 +1582,7 @@ function onClick(ev){
   }
   else if(act==="note"){var nd=b.getAttribute("data-d"),nta=document.getElementById("nt-"+nd),nt=nta?nta.value.trim().slice(0,300):"";
     if(!nt){ui.msg="連絡の内容を入れてください。";ui.msgKind="bad"}else{addNote(nd,nt);nta.value="";ui.msg="連絡を書きました。この日の業者と管理者に表示されます。";ui.msgKind="ok"}}
-  else if(act==="ack"){var ak={};ak[id]=nowIso();patch("notices",ENV.uid,{ack:ak})}
+  else if(act==="ack"){var ak={};ak[id]=nowIso();patch("notices",ENV.vid,{ack:ak})}
   else if(act==="trouble"){
     var td=b.getAttribute("data-d"),tk=document.getElementById("tr-kind").value,tm=document.getElementById("tr-msg").value.trim().slice(0,300),cf6=D.confirmed[td],sent={};
     if(!tm&&tk==="その他"){ui.msg="連絡の内容を入れてください。";ui.msgKind="bad"}
@@ -1524,7 +1590,7 @@ function onClick(ev){
       addHist(td,"連絡を送信【"+tk+"】"+tm);document.getElementById("tr-msg").value="";ui.msg=Object.keys(sent).length+"社に連絡しました。確認したかは下の一覧で見られます。";ui.msgKind="ok"}
   }
   else if(act==="ordadd"){
-    var ov=ENV.admin?ui.vsel:ENV.uid,of=Math.min(LIM.fmax,nrNum(document.getElementById("od-f").value)),ou=nrNum(document.getElementById("od-u").value),ow=document.getElementById("od-w").value,om=document.getElementById("od-m").value.trim().slice(0,100);
+    var ov=ENV.admin?ui.vsel:ENV.vid,of=Math.min(LIM.fmax,nrNum(document.getElementById("od-f").value)),ou=nrNum(document.getElementById("od-u").value),ow=document.getElementById("od-w").value,om=document.getElementById("od-m").value.trim().slice(0,100);
     if(!ov||!of||!ou){ui.msg="追加したい階と台数を入れてください。";ui.msgKind="bad"}
     else{mutOrder(ov,function(o){o.items["o"+Date.now().toString(36)+Math.floor(Math.random()*1e3).toString(36)]={f:of,u:ou,want:/^\d{4}-\d{2}-\d{2}$/.test(ow)?ow:"",memo:om,n:vname(ov),at:nowIso(),st:"new"}});
       document.getElementById("od-f").value="";document.getElementById("od-u").value="1";document.getElementById("od-w").value="";document.getElementById("od-m").value="";
@@ -1556,7 +1622,7 @@ function onClick(ev){
     var cco=document.getElementById("reg-company").value.trim(),cem=document.getElementById("reg-email").value.trim(),cct=document.getElementById("reg-contact").value.trim();
     if(!cco||!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(cem)){ui.msg="会社名と正しいメールアドレスを入力してください。";ui.msgKind="bad"}
     else{put("crewreq",ENV.uid,{company:cco,contact:cct,email:cem,at:nowIso()});
-      if(!D.crews[ENV.uid])put("crews",ENV.uid,{company:cco,email:cem,at:nowIso()});
+      if(!D.crews[ENV.uid])put("crews",ENV.uid,{company:cco,email:cem,at:nowIso(),name:cct});
       ui.msg="登録しました。すぐに使えます。";ui.msgKind="ok"}
   }
   else if(act==="chk"){
@@ -1569,20 +1635,39 @@ function onClick(ev){
   else if(act==="crewok"){var q=D.crewreq[id];if(q){if(D.crewblocked[id])remove("crewblocked",id);put("crews",id,{company:q.company,email:q.email,at:nowIso()})}}
   else if(act==="crewno"){remove("crewreq",id)}
   else if(act==="crewoff"){if(ui.confirm==="co-"+id){var cw0=D.crews[id]||{};put("crewblocked",id,{company:cw0.company||"",email:cw0.email||"",at:nowIso()});remove("crews",id);ui.confirm=""}else{ui.confirm="co-"+id;keepConfirm=true}}
+  else if(act==="regmode"){ui.reg=b.getAttribute("data-k")}
   else if(act==="regsubmit"){
-    var co=document.getElementById("reg-company").value.trim(),em=document.getElementById("reg-email").value.trim(),ct=document.getElementById("reg-contact").value.trim();
-    if(!co||!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)){ui.msg="会社名と正しいメールアドレスを入力してください。";ui.msgKind="bad"}
-    else{
-      /* 承認なしで使えるように、登録と同時に自分の利用許可も作る(停止された人はルールで拒否される) */
-      put("members",ENV.uid,{company:co,contact:ct,email:em,at:nowIso()});
-      if(!D.approved[ENV.uid])put("approved",ENV.uid,{company:co,email:em,at:nowIso()});
-      ui.msg="登録しました。すぐに使えます。";ui.msgKind="ok";
+    var em=document.getElementById("reg-email").value.trim(),ct=document.getElementById("reg-contact").value.trim(),okm=/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em);
+    if(ui.reg==="join"){
+      /* 参加コード: codes/{コード} に会社IDと会社名がある。見つかればその会社の一員として登録する */
+      var cd=document.getElementById("reg-code").value.trim().toUpperCase().replace(/[^A-Z0-9]/g,"");
+      if(!cd||!okm){ui.msg="参加コードと正しいメールアドレスを入力してください。";ui.msgKind="bad"}
+      else{ui.msg="参加コードを確かめています…";ui.msgKind="";
+        getDoc("codes",cd).then(function(c){
+          if(!c||!c.vid){ui.msg="参加コード「"+cd+"」が見つかりません。同じ会社の人のアプリに出ているコードを確かめてください。";ui.msgKind="bad";render();return}
+          put("members",ENV.uid,{company:c.company,contact:ct,email:em,at:nowIso()});
+          put("approved",ENV.uid,{company:c.company,email:em,at:nowIso(),vid:c.vid,code:cd,name:ct});
+          ui.msg=c.company+"に参加しました。同じ会社の人と同じ画面で使えます。";ui.msgKind="ok";render();
+        },function(){ui.msg="参加コードを確かめられませんでした。通信を確かめてもう一度押してください。";ui.msgKind="bad";render()});
+      }
+    }else{
+      var co=document.getElementById("reg-company").value.trim();
+      if(!co||!okm){ui.msg="会社名と正しいメールアドレスを入力してください。";ui.msgKind="bad"}
+      else{
+        /* 承認なしで使えるように、登録と同時に自分の利用許可も作る(停止された人はルールで拒否される)。会社IDは本人のID */
+        put("members",ENV.uid,{company:co,contact:ct,email:em,at:nowIso()});
+        if(!D.approved[ENV.uid]){put("approved",ENV.uid,{company:co,email:em,at:nowIso(),vid:ENV.uid,name:ct});makeCode(ENV.uid,co)}
+        ui.msg="登録しました。すぐに使えます。同じ会社の人には「業者入力」に出る参加コードを伝えてください。";ui.msgKind="ok";
+      }
     }
   }
-  else if(act==="approve"){var m=D.members[id];if(m){if(D.blocked[id])remove("blocked",id);put("approved",id,{company:m.company,email:m.email,at:nowIso()})}}
+  else if(act==="mkcode"){var mv=b.getAttribute("data-vid")||ENV.vid,old=(D.vendors[mv]||{}).code;if(old&&ENV.admin)remove("codes",old);makeCode(mv,vname(mv))}
+  else if(act==="approve"){var m=D.members[id];if(m){var bv=(D.blocked[id]||{}).vid||id;if(D.blocked[id])remove("blocked",id);put("approved",id,{company:bv!==id?vname(bv):m.company,email:m.email,at:nowIso(),vid:bv,name:m.contact||""})}}
+  else if(act==="merge"){var mx=b.getAttribute("data-vid"),ms=document.getElementById("mg-"+mx),mt=ms&&ms.value;
+    if(mt&&mt!==mx){if(ui.confirm==="mg-"+mx){mergeCompany(mx,mt);ui.confirm="";ui.msg=vname(mt)+"にまとめました。";ui.msgKind="ok"}else{ui.confirm="mg-"+mx;keepConfirm=true}}}
   else if(act==="reject"){remove("members",id)}
   else if(act==="unapprove"){
-    if(ui.confirm==="un-"+id){put("blocked",id,{at:nowIso()});remove("approved",id);ui.confirm=""}else{ui.confirm="un-"+id;keepConfirm=true}
+    if(ui.confirm==="un-"+id){put("blocked",id,{at:nowIso(),vid:vidOf(id)});remove("approved",id);ui.confirm=""}else{ui.confirm="un-"+id;keepConfirm=true}
   }
   else if(act==="copyurl"){
     var inp=document.getElementById("appurl");
@@ -1597,14 +1682,14 @@ function onClick(ev){
       ui.confirm=""}
     else{ui.confirm="sampleoff";keepConfirm=true}
   }
-  if(!keepConfirm&&act!=="ordundo"&&act!=="crewoff"&&act!=="vdel"&&act!=="unconfirm"&&act!=="dayoff"&&act!=="sampleoff"&&act!=="unapprove"&&act!=="recdel")ui.confirm="";
+  if(!keepConfirm&&act!=="merge"&&act!=="ordundo"&&act!=="crewoff"&&act!=="vdel"&&act!=="unconfirm"&&act!=="dayoff"&&act!=="sampleoff"&&act!=="unapprove"&&act!=="recdel")ui.confirm="";
   render();
 }
 function onChange(ev){
   var el=ev.target,f=el.getAttribute&&el.getAttribute("data-f");if(!f)return;
   ui.msg="";
   var c=clone(D.config||{});
-  var vid=ENV.admin?ui.vsel:ENV.uid;
+  var vid=ENV.admin?ui.vsel:ENV.vid;
   if(f==="vsel"){ui.vsel=el.value||null;ui.confirm=""}
   else if(f==="only"){ui.only=el.checked}
   else if(f==="cap"){var v=nrNum(el.value);if(v===0){if(D.confirmed[ui.sel]){notifyChanges(ui.sel,D.confirmed[ui.sel],null);remove("confirmed",ui.sel)}remove("days",ui.sel)}else mutDay(ui.sel,function(d){d.cap=v})}
@@ -1638,11 +1723,11 @@ function onChange(ev){
   else if(f==="placed"){
     var pd=el.getAttribute("data-d"),pv=el.getAttribute("data-vid"),pf=el.getAttribute("data-fl");
     var ps=document.getElementById("pe-"+pd+"-"+pv+"-"+pf),pe=ps?nrNum(ps.value)||null:null;
-    if(ENV.admin||pv===ENV.uid)mutVendor(pv,function(v){v.placed=v.placed||{};if(el.checked)v.placed[pd+"|"+pf]={at:nowIso(),ev:pe};else delete v.placed[pd+"|"+pf]});
+    if(ENV.admin||pv===ENV.vid)mutVendor(pv,function(v){v.placed=v.placed||{};if(el.checked)v.placed[pd+"|"+pf]={at:nowIso(),ev:pe};else delete v.placed[pd+"|"+pf]});
   }
   else if(f==="placedev"){
     var qd=el.getAttribute("data-d"),qv=el.getAttribute("data-vid"),qf=el.getAttribute("data-fl"),qk=qd+"|"+qf;
-    if(ENV.admin||qv===ENV.uid)mutVendor(qv,function(v){if(!v.placed||!v.placed[qk])return;var o=v.placed[qk];v.placed[qk]={at:typeof o==="object"?o.at:o,ev:nrNum(el.value)||null}});
+    if(ENV.admin||qv===ENV.vid)mutVendor(qv,function(v){if(!v.placed||!v.placed[qk])return;var o=v.placed[qk];v.placed[qk]={at:typeof o==="object"?o.at:o,ev:nrNum(el.value)||null}});
   }
   else if(f==="back"||f==="backev"||f==="backu"){
     var bd=el.getAttribute("data-d"),bi=Number(el.getAttribute("data-i"));
@@ -1661,7 +1746,7 @@ function onChange(ev){
     }
     if(fx){applyAdj(fx[0],fx[1],fx[2]);ui.msg=(ENV.admin?vname(fx[0]):"業者")+"の保有台数と回収希望を"+(fx[2]>0?"更新":"元に戻")+"しました。";ui.msgKind="ok"}
   }
-  else if(f==="company"){var id2=el.getAttribute("data-id"),nm=el.value.trim();if(D.approved[id2]&&nm){var a=clone(D.approved[id2]);a.company=nm;put("approved",id2,a)}}
+  else if(f==="company"){var id2=el.getAttribute("data-id"),nm=el.value.trim();if(nm){companyMembers(id2).forEach(function(u){patch("approved",u,{company:nm})});var cc=(D.vendors[id2]||{}).code;if(cc)patch("codes",cc,{company:nm})}}
   else if(f==="cunits"){
     var d3=el.getAttribute("data-d"),i3=Number(el.getAttribute("data-i"));
     mutConfirmed(d3,function(cf){var r=cf.rows[i3];if(!r)return;var cap=nrNum((D.days[d3]||{}).cap),room=Math.max(0,cap-rowsTotal(cf,i3));r.units=Math.min(nrNum(el.value),room)});
@@ -1733,7 +1818,7 @@ window.NR_CONFIG={
 <script type="module">
 import {initializeApp} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {getAuth,onAuthStateChanged,GoogleAuthProvider,signInWithPopup,signInWithRedirect,getRedirectResult,signInWithEmailAndPassword,createUserWithEmailAndPassword,sendPasswordResetEmail,sendEmailVerification,signOut} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import {initializeFirestore,collection,doc,onSnapshot,setDoc,deleteDoc,increment,deleteField,arrayUnion,arrayRemove,persistentLocalCache,persistentMultipleTabManager} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import {initializeFirestore,collection,doc,onSnapshot,setDoc,deleteDoc,getDoc as getDocFs,increment,deleteField,arrayUnion,arrayRemove,persistentLocalCache,persistentMultipleTabManager} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 var CFG=window.NR_CONFIG,app=document.getElementById("app");
 function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
@@ -1836,6 +1921,7 @@ function makeDb(fs,u,admin){
     doc:function(p){var r=doc(fs,PFX+p);return {
       set:function(d){return setDoc(r,d)},
       patch:function(d){return setDoc(r,fsVal(d),{merge:true})},
+      get:function(){return getDocFs(r).then(function(s){return s.exists()?s.data():null})},
       delete:function(){return deleteDoc(r)},
       onSnapshot:function(cb,err){return onSnapshot(r,function(s){cb({exists:s.exists(),data:function(){return s.data()}})},quiet(cb,{exists:false,data:function(){}},err))}
     }}

@@ -21,7 +21,7 @@ const { getFirestore, FieldValue } = await import("firebase-admin/firestore");
 const db = getFirestore(admin.app(), process.env.FIRESTORE_DB || "default");
 
 const APPS = [{ prefix: "", name: "NRボックス" }, { prefix: "scrap_", name: "スクラップ" }];
-const COLLS = ["config", "days", "vendors", "approved", "blocked", "confirmed", "members", "plans", "orders", "notices", "crews", "crewreq", "crewblocked"];
+const COLLS = ["config", "days", "vendors", "approved", "blocked", "confirmed", "members", "plans", "orders", "notices", "crews", "crewreq", "crewblocked", "codes"];
 const WD = ["日", "月", "火", "水", "木", "金", "土"];
 const fmtD = s => { const d = nrPd(s); return (d.getMonth() + 1) + "/" + d.getDate() + "(" + WD[d.getDay()] + ")"; };
 const fmtTime = d => d && d.tf ? d.tf + "〜" + (d.tt || "") : "時間未定";
@@ -46,14 +46,17 @@ function hydrate(cf) {
     ["chk", "back"].forEach(f => { if (f in x) { if (x[f]) r[f] = x[f]; else delete r[f]; } }); });
   return cf;
 }
-const vname = (D, id) => (D.approved[id] && D.approved[id].company) || (D.vendors[id] && D.vendors[id].name) || (D.members[id] && D.members[id].company) || "名称未設定";
+/* 業者は会社(vid)単位。approved/{人}.vid が会社ID(無ければ本人のID) */
+const vidOf = (D, u) => (D.approved[u] && D.approved[u].vid) || u;
+const vname = (D, id) => { const m = D.approved[id] ? id : Object.keys(D.approved).find(u => vidOf(D, u) === id); return (m && D.approved[m].company) || (D.vendors[id] && D.vendors[id].name) || (D.members[id] && D.members[id].company) || "名称未設定"; };
 
 for (const app of APPS) {
   const D = await load(app.prefix);
   backup[app.prefix || "nr"] = JSON.parse(JSON.stringify(D, (k, v) => (v && v.toDate ? v.toDate().toISOString() : v)));
   Object.values(D.confirmed).forEach(hydrate);
   const cfg = nrCfg(D.config);
-  const am = {}; Object.keys(D.vendors).forEach(id => { const v = D.vendors[id]; if (D.approved[id] || v.manual || v.sample) am[id] = v; });
+  const active = {}; Object.keys(D.approved).forEach(u => { active[vidOf(D, u)] = 1; });
+  const am = {}; Object.keys(D.vendors).forEach(id => { const v = D.vendors[id]; if (active[id] || v.manual || v.sample) am[id] = v; });
   const sim = nrSimulate(am, D.days, cfg, today, D.confirmed);
 
   /* 1. 自動確定(アプリの autoConfirm と同じ条件) */

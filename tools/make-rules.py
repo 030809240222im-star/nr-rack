@@ -11,6 +11,12 @@ BLOCK = """
     function isApproved{S}() {{
       return signedIn() && exists(/databases/$(database)/documents/{P}approved/$(request.auth.uid));
     }}
+    // 会社のメンバー: 会社IDが本人のID(最初に登録した人)か、利用許可(approved)に入っている会社ID(vid)と同じ
+    function isMember{S}(id) {{
+      return signedIn() && (request.auth.uid == id
+        || (exists(/databases/$(database)/documents/{P}approved/$(request.auth.uid))
+            && get(/databases/$(database)/documents/{P}approved/$(request.auth.uid)).data.get('vid', request.auth.uid) == id));
+    }}
     // 揚重(盛替え)業者: 申請して利用許可(crews)がある人。搬出予定を見て、搬出確認と戻しの✅だけ付けられる
     function isCrew{S}() {{
       return signedIn() && exists(/databases/$(database)/documents/{P}crews/$(request.auth.uid));
@@ -34,8 +40,8 @@ BLOCK = """
 
     // 業者の入力: 本人(利用中)と管理者。盛替え業者は戻したときの台数(floors)だけ書き換えられる
     match /{P}vendors/{{id}} {{
-      allow read: if isAdmin() || isSelf(id) || isCrew{S}();
-      allow write: if isAdmin() || (isSelf(id) && isApproved{S}());
+      allow read: if isAdmin() || isMember{S}(id) || isCrew{S}();
+      allow write: if isAdmin() || (isMember{S}(id) && isApproved{S}());
       allow update: if isCrew{S}() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['floors', 'updated']);
     }}
 
@@ -50,11 +56,15 @@ BLOCK = """
     }}
 
     // 利用許可: 業者は登録と同時に自分の分を作れる(利用停止された人は作れない)。変更・削除は管理者だけ
+    // 会社ID(vid)は、新しい会社なら本人のID、参加コードで入るならそのコードの会社ID
     match /{P}approved/{{id}} {{
       allow read: if isAdmin() || isSelf(id);
       allow create: if isAdmin() || (isSelf(id)
         && !exists(/databases/$(database)/documents/{P}blocked/$(id))
-        && request.resource.data.keys().hasOnly(['company', 'email', 'at'])
+        && request.resource.data.keys().hasOnly(['company', 'email', 'at', 'vid', 'code', 'name'])
+        && (request.resource.data.get('vid', id) == id
+            || (request.resource.data.code is string
+                && get(/databases/$(database)/documents/{P}codes/$(request.resource.data.code)).data.vid == request.resource.data.vid))
         && request.resource.data.company is string && request.resource.data.company.size() <= 100
         && request.resource.data.email is string && request.resource.data.email.size() <= 200);
       allow update, delete: if isAdmin();
@@ -64,22 +74,30 @@ BLOCK = """
       allow read: if isAdmin() || isSelf(id);
       allow write: if isAdmin();
     }}
-    // 追加した台数の記録: 本人は読むだけ。書けるのは管理者だけ
+    // 追加した台数の記録: 会社のメンバーは読むだけ。書けるのは管理者だけ
     match /{P}plans/{{id}} {{
-      allow read: if isAdmin() || isSelf(id);
+      allow read: if isAdmin() || isMember{S}(id);
       allow write: if isAdmin();
     }}
     // 追加注文: 業者が自分の分を出し、管理者が手配と上げた日を書き込む
     match /{P}orders/{{id}} {{
-      allow read: if isAdmin() || isSelf(id) || isCrew{S}();
-      allow write: if isAdmin() || (isSelf(id) && isApproved{S}());
+      allow read: if isAdmin() || isMember{S}(id) || isCrew{S}();
+      allow write: if isAdmin() || (isMember{S}(id) && isApproved{S}());
     }}
 
     // 業者へのお知らせ: 管理者が出し、業者本人は「確認した」(ack)だけ書ける
     match /{P}notices/{{id}} {{
-      allow read: if isAdmin() || isSelf(id);
+      allow read: if isAdmin() || isMember{S}(id);
       allow write: if isAdmin();
-      allow update: if isSelf(id) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ack']);
+      allow update: if isMember{S}(id) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ack']);
+    }}
+    // 参加コード: コードを知っている人だけが1件ずつ読める(一覧は管理者だけ)。会社のメンバーと管理者が作る
+    match /{P}codes/{{code}} {{
+      allow get: if signedIn();
+      allow list: if isAdmin();
+      allow create: if isAdmin() || (isApproved{S}() && isMember{S}(request.resource.data.vid)
+        && request.resource.data.keys().hasOnly(['vid', 'company', 'at']));
+      allow update, delete: if isAdmin();
     }}
 
     // 盛替え業者の登録内容: 本人が出し、管理者が見る
@@ -96,7 +114,7 @@ BLOCK = """
       allow read: if isAdmin() || isSelf(id);
       allow create: if isAdmin() || (isSelf(id)
         && !exists(/databases/$(database)/documents/{P}crewblocked/$(id))
-        && request.resource.data.keys().hasOnly(['company', 'email', 'at'])
+        && request.resource.data.keys().hasOnly(['company', 'email', 'at', 'name'])
         && request.resource.data.company is string && request.resource.data.company.size() <= 100
         && request.resource.data.email is string && request.resource.data.email.size() <= 200);
       allow update, delete: if isAdmin();
