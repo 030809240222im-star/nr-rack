@@ -205,13 +205,16 @@ body{touch-action:manipulation}
 .cc-r .mvbox input[type=date]{width:auto;min-width:10em}
 .stepper{display:inline-flex!important;flex-direction:row!important;flex-wrap:nowrap!important;align-items:stretch;max-width:100%;vertical-align:middle;gap:0!important}
 .stepper::before{content:none!important}
-.stepper input{border-radius:0!important;text-align:center;min-width:0}
-.stp{flex:0 0 auto;width:auto!important;min-width:34px;margin:0!important;padding:0 6px;border:1px solid var(--line);background:var(--surface2);color:var(--fg);font-size:18px;line-height:1;cursor:pointer;touch-action:manipulation}
-.stp:first-child{border-radius:8px 0 0 8px;border-right:0}.stp:last-child{border-radius:0 8px 8px 0;border-left:0}
-.stp:active{background:var(--line)}
+.stepper input{border-top-right-radius:0!important;border-bottom-right-radius:0!important;border-right:0!important;min-width:0}
+.stepper input[type=number]{-moz-appearance:textfield;appearance:textfield}
+.stepper input[type=number]::-webkit-inner-spin-button,.stepper input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+.spin{display:flex;flex-direction:column;flex:0 0 auto;width:30px}
+.stp{flex:1 1 0;width:30px!important;min-height:0;margin:0!important;padding:0;border:1px solid var(--line);background:var(--surface2);color:var(--muted);font-size:10px;line-height:1;cursor:pointer;touch-action:none;-webkit-user-select:none;user-select:none}
+.stp:first-child{border-radius:0 8px 0 0;border-bottom-width:0}.stp:last-child{border-radius:0 0 8px 0}
+.stp:active{background:var(--line);color:var(--fg)}
 .floors .stepper{width:100%}
 .cc-r>div{min-width:0;flex:1 1 auto}.cc-r .mvbox .stepper{width:9.5em;max-width:100%}
-@media (max-width:700px){.floors .stp{min-width:28px;padding:0 4px}}.floors .stepper input,.cc-r .stepper input{flex:1 1 auto;width:auto!important;min-width:2.5em}
+.floors .stepper input,.cc-r .stepper input{flex:1 1 auto;width:auto!important;min-width:2.5em}
 .todaybox.alert{border-color:var(--bad);background:var(--badbg)}
 .todaybox.alert h3{background:var(--bad);color:#fff}
 .hist{margin:6px 0 0;padding-left:18px;font-size:13px}.hist li{margin:4px 0}
@@ -1327,13 +1330,11 @@ function render(remote){
   }else if(ENV.crew)h+=ui.tab==="creg"?renderCrewReg():ui.tab==="ret"?renderRet(C):ui.tab==="ord"?renderOrders(C):renderCal(C);
   else h+=!vendorOk?renderReg():(ui.tab==="cal"?renderCal(C):renderVin(C));
   var box=document.createElement("div");box.innerHTML=h;
-  /* 数字の欄には −/＋ のボタンを付ける(押すと1ずつ増減して、手で打ったときと同じように保存される) */
+  /* 数字の欄の右に ▲▼ のスピンボタンを付ける。押すと1ずつ、押し続けると続けて増減し、離したときに保存する */
   Array.prototype.forEach.call(box.querySelectorAll('input[type="number"]'),function(inp){
-    var w=document.createElement("span");w.className="stepper";inp.parentNode.insertBefore(w,inp);
-    var lab=inp.getAttribute("aria-label")||"";
-    w.innerHTML='<button type="button" class="stp" data-act="step" data-n="-1" aria-label="'+esc(lab)+'を1減らす">−</button>';
-    w.appendChild(inp);
-    w.insertAdjacentHTML("beforeend",'<button type="button" class="stp" data-act="step" data-n="1" aria-label="'+esc(lab)+'を1増やす">＋</button>');
+    var w=document.createElement("span");w.className="stepper";inp.parentNode.insertBefore(w,inp);w.appendChild(inp);
+    var lab=esc(inp.getAttribute("aria-label")||"");
+    w.insertAdjacentHTML("beforeend",'<span class="spin"><button type="button" class="stp" data-step="1" aria-label="'+lab+'を1増やす">▲</button><button type="button" class="stp" data-step="-1" aria-label="'+lab+'を1減らす">▼</button></span>');
   });
   /* スマホでは横長の表をカードにするので、各セルに見出しを付けておく */
   Array.prototype.forEach.call(box.querySelectorAll("table.rtable"),function(t){
@@ -1390,12 +1391,6 @@ function onClick(ev){
   var b=ev.target.closest("[data-act]");if(!b)return;
   var act=b.getAttribute("data-act"),id=b.getAttribute("data-id"),keepConfirm=false;
   ui.msg="";
-  if(act==="step"){
-    var si=b.parentNode.querySelector('input[type="number"]');if(!si)return;
-    var mn=si.getAttribute("min"),mx=si.getAttribute("max"),sv=(Number(si.value)||0)+Number(b.getAttribute("data-n"));
-    if(mn!=null&&mn!==""&&sv<Number(mn))sv=Number(mn);if(mx!=null&&mx!==""&&sv>Number(mx))sv=Number(mx);
-    si.value=String(sv);si.dispatchEvent(new Event("change",{bubbles:true}));return;
-  }
   if(act==="demoreset"){try{localStorage.removeItem(KEY)}catch(e){}location.reload();return}
   if(act==="logout"){if(window.NR_ACCOUNT)window.NR_ACCOUNT.logout();return}
   if(act==="reload"){location.reload();return}
@@ -1647,6 +1642,23 @@ function onChange(ev){
   render();
 }
 var app=document.getElementById("app");
+/* スピンボタン: 押した瞬間に1つ動かし、0.4秒押し続けると連続で動かす。保存は離したとき1回だけ */
+var spin=null;
+function spinInput(b){return b.closest(".stepper").querySelector('input[type="number"]')}
+function spinStep(inp,n){
+  var mn=inp.getAttribute("min"),mx=inp.getAttribute("max"),v=(Number(inp.value)||0)+n;
+  if(mn!=null&&mn!==""&&v<Number(mn))v=Number(mn);if(mx!=null&&mx!==""&&v>Number(mx))v=Number(mx);
+  inp.value=String(v);
+}
+function spinEnd(){if(!spin)return;clearTimeout(spin.t);clearInterval(spin.iv);var inp=spin.inp;spin=null;inp.dispatchEvent(new Event("change",{bubbles:true}))}
+app.addEventListener("pointerdown",function(ev){
+  var b=ev.target.closest(".stp");if(!b)return;ev.preventDefault();spinEnd();
+  var inp=spinInput(b),n=Number(b.getAttribute("data-step"));spinStep(inp,n);
+  spin={inp:inp,t:setTimeout(function(){if(spin)spin.iv=setInterval(function(){spinStep(inp,n)},110)},400)};
+});
+["pointerup","pointercancel","pointerleave"].forEach(function(t){app.addEventListener(t,function(ev){if(spin&&(t!=="pointerleave"||ev.target.closest(".stp")))spinEnd()})});
+/* キーボード(Enter・スペース)で押したとき */
+app.addEventListener("click",function(ev){var b=ev.target.closest(".stp");if(b&&ev.detail===0){var inp=spinInput(b);spinStep(inp,Number(b.getAttribute("data-step")));inp.dispatchEvent(new Event("change",{bubbles:true}))}});
 app.addEventListener("click",function(ev){if(!onPreview(ev))asVendor(function(){onClick(ev)})});
 app.addEventListener("change",function(ev){
   if(ev.target.getAttribute&&ev.target.getAttribute("data-f")==="pv"){ui.pv=ev.target.value||null;render();return}
