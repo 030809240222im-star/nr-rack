@@ -149,6 +149,13 @@ body{touch-action:manipulation}
 .tablewrap,.floors{overscroll-behavior-x:contain}
 @media (max-width:700px){
   input,select,textarea{font-size:16px!important}
+}
+/* 表のカード表示は、画面の幅ではなく、表が入っている枠(panel)の幅で切り替える。
+   iPad の横向きでカレンダーと日付の欄が横に並ぶと枠が狭くなるので、そのときもカードにする。
+   枠の幅で切り替えられない古いブラウザでは、画面の幅で切り替える */
+.panel{container-type:inline-size}
+@media (max-width:700px){
+
   .floors{max-height:none;overflow:visible}
   /* 横長の表は1行ずつカードにして、右側の欄が見切れないようにする */
   table.rtable thead{display:none}
@@ -176,6 +183,40 @@ body{touch-action:manipulation}
   .floors table.rtable td:nth-child(-n+5) input[type=number]{width:100%}
   .floors table.rtable td:nth-child(6) input[type=number]{width:5em}
   .floors th{top:0}
+  .floors .stepper{width:100%;max-width:12em}
+  .floors .stepper input{flex:1 1 auto;width:auto!important}
+}
+@container (max-width:920px){
+
+  .floors{max-height:none;overflow:visible}
+  /* 横長の表は1行ずつカードにして、右側の欄が見切れないようにする */
+  table.rtable thead{display:none}
+  table.rtable,table.rtable tbody{display:block;width:100%;min-width:0}
+  table.rtable tr{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;padding:12px 10px;border-bottom:1px solid var(--line)}
+  table.rtable td{display:flex;flex-wrap:wrap;align-items:center;align-content:flex-start;gap:3px 6px;padding:0!important;border:0!important;text-align:left;white-space:normal!important;min-width:0!important}
+  table.rtable td::before{content:attr(data-label);flex-basis:100%;font-size:12px;color:var(--muted);font-weight:400}
+  table.rtable td>input[type=number]{flex:0 0 auto}
+  table.rtable td:first-child{grid-column:1/-1;font-size:17px;font-weight:700}
+  table.rtable td:first-child::before{content:none}
+  table.rtable td:empty{display:none}
+  table.rtable input[type=number]{width:6em}
+  /* 階の表は 階 | 保有 | 追加希望 | 出したい を1段に並べ、備考・戻し階・状態は入っているときだけ下に出す */
+  .floors table.rtable tr{grid-template-columns:repeat(3,minmax(0,1fr));gap:4px 12px;padding:8px 8px;align-items:end}
+  .floors table.rtable td:first-child{grid-column:1/-1;font-size:16px}
+  .floors table.rtable td:nth-child(2){grid-column:1;grid-row:2}
+  .floors table.rtable td:nth-child(3){grid-column:2;grid-row:2}
+  .floors table.rtable td:nth-child(5){grid-column:3;grid-row:2}
+  .floors table.rtable td:nth-child(4),.floors table.rtable td:nth-child(6),.floors table.rtable td:nth-child(7){grid-column:1/-1}
+  .floors .stepper input{padding:0 2px!important;font-size:17px!important}
+  .floors .stp{min-width:26px;padding:0 2px;font-size:16px}
+  .floors .stepper input{min-width:1.8em!important}
+  .floors table.rtable td{overflow:hidden}
+  .floors table.rtable td::before{font-size:11px}
+  .floors table.rtable td:nth-child(-n+5) input[type=number]{width:100%}
+  .floors table.rtable td:nth-child(6) input[type=number]{width:5em}
+  .floors th{top:0}
+  .floors .stepper{width:100%;max-width:12em}
+  .floors .stepper input{flex:1 1 auto;width:auto!important}
 }
 .acct{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .login{max-width:420px;margin:24px auto;display:flex;flex-direction:column;gap:12px}
@@ -212,9 +253,9 @@ body{touch-action:manipulation}
 .stp{flex:0 0 auto;width:auto!important;min-width:36px;margin:0!important;padding:0 6px;border:1px solid var(--line);background:var(--surface2);color:var(--fg);font-size:18px;line-height:1;cursor:pointer;touch-action:none;-webkit-user-select:none;user-select:none}
 .stp:first-child{border-radius:8px 0 0 8px;border-right:0}.stp:last-child{border-radius:0 8px 8px 0;border-left:0}
 .stp:active{background:var(--line);color:var(--fg)}
-.floors .stepper{width:100%}
+.stepper input[type=number]{width:3.6em}
 .cc-r>div{min-width:0;flex:1 1 auto}.cc-r .mvbox .stepper{width:9.5em;max-width:100%}
-.floors .stepper input,.cc-r .stepper input{flex:1 1 auto;width:auto!important;min-width:2.5em}
+.cc-r .stepper input{flex:1 1 auto;width:auto!important;min-width:2.5em}
 .todaybox.alert{border-color:var(--bad);background:var(--badbg)}
 .todaybox.alert h3{background:var(--bad);color:#fff}
 .hist{margin:6px 0 0;padding-left:18px;font-size:13px}.hist li{margin:4px 0}
@@ -223,6 +264,7 @@ body{touch-action:manipulation}
 .todaybox.next{border-color:var(--accent);background:var(--surface2)}
 .todaybox.next h3{background:var(--accent);color:var(--accent-fg)}
 .tinput{width:5em;text-align:center}
+.stepper .tinput{flex:0 0 5em;width:5em!important}
 .cell.mine.sel{box-shadow:0 0 0 2px var(--surface),0 0 0 4px var(--accent)}
 .cell.past{opacity:.5}
 .note.pv{background:var(--surface2);color:var(--fg);border:1px dashed var(--accent)}
@@ -1026,7 +1068,7 @@ function renderConfirmed(C){
   ds.forEach(function(d){
     var cf=D.confirmed[d],day=D.days[d]||{},cap=nrNum(day.cap),tot=rowsTotal(cf,-1);
     h+='<div class="cday"><h3>'+fmtLong(d)+' <span style="color:var(--muted);font-weight:400">'+esc(fmtTime(day))+' / '+(day.elev&&day.elev.length?day.elev.map(function(e){return "EV"+e}).join("・"):"EV未指定")+' / '+tot+'/'+cap+'台</span>'+(d<t?' <span class="st off">終了</span>':'')+'</h3>'
-     +'<div class="tablewrap"><table><thead><tr><th class="l">業者</th><th>階</th><th>台数</th><th class="l">集積</th><th class="l">戻し階</th><th class="l">他の業者へ移す(業者・階・台数)</th><th></th></tr></thead><tbody>';
+     +'<div class="tablewrap"><table class="rtable"><thead><tr><th class="l">業者</th><th>階</th><th>台数</th><th class="l">集積</th><th class="l">戻し階</th><th class="l">他の業者へ移す(業者・階・台数)</th><th></th></tr></thead><tbody>';
     (cf.rows||[]).forEach(function(r,i){
       h+='<tr><td class="l vn"><i class="chip" style="background:'+vcolor(r.vid)+'"></i>'+esc(vname(r.vid))+'</td><td>'+r.floor+'階</td>'
        +'<td><input type="number" min="0" id="cu-'+d+'-'+i+'" data-f="cunits" data-d="'+d+'" data-i="'+i+'" value="'+nrNum(r.units)+'" aria-label="台数"></td>'
