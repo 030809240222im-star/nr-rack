@@ -222,7 +222,7 @@ body{touch-action:manipulation}
 .todaybox.back h3{background:var(--ok);color:#fff}
 .todaybox.next{border-color:var(--accent);background:var(--surface2)}
 .todaybox.next h3{background:var(--accent);color:var(--accent-fg)}
-.tinput{width:5.5em;text-align:center}
+.tinput{width:5em;text-align:center}
 .cell.mine.sel{box-shadow:0 0 0 2px var(--surface),0 0 0 4px var(--accent)}
 .cell.past{opacity:.5}
 .note.pv{background:var(--surface2);color:var(--fg);border:1px dashed var(--accent)}
@@ -614,7 +614,8 @@ function backCell(d,r,i){
   var b=r.back,el=((D.days[d]||{}).elev||[]);
   if(!ENV.admin&&!ENV.crew)return b?'<span class="st ok">✅ 戻し済み</span><div class="hint" style="margin:2px 0 0">EV'+b.ev+'で'+nrNum(b.u)+'台</div>':'<span class="st off">未</span>';
   var h='<label class="chk ck'+(b?' on':'')+'"><input type="checkbox" data-f="back" data-d="'+d+'" data-i="'+i+'"'+(b?' checked':'')+'>'+(b?'戻し済み':'戻した')+'</label>';
-  if(b){
+  if(b&&ENV.crew)h+='<div class="hint" style="margin:2px 0 0">EV'+b.ev+'で'+nrNum(b.u)+'台</div>';
+  if(b&&ENV.admin){
     h+='<div class="mvbox" style="margin-top:4px"><select id="be-'+d+'-'+i+'" data-f="backev" data-d="'+d+'" data-i="'+i+'" aria-label="戻しに使ったエレベーター">';
     evList().forEach(function(e){h+='<option value="'+e+'"'+(nrNum(b.ev)===e?' selected':'')+'>EV'+e+'</option>'});
     h+='</select><input type="number" min="0" id="bu-'+d+'-'+i+'" data-f="backu" data-d="'+d+'" data-i="'+i+'" value="'+nrNum(b.u)+'" aria-label="戻した台数"><span class="hint" style="margin:0">台</span></div>';
@@ -682,6 +683,13 @@ function nid(){return "n"+Date.now().toString(36)+Math.floor(Math.random()*1e4).
 function notify(vid,d,kind,msg){
   if(!vid||(D.vendors[vid]&&D.vendors[vid].manual))return;
   var it={};it[nid()]={d:d,kind:kind,msg:msg,at:nowIso(),by:who()};patch("notices",vid,{items:it});
+}
+/* 時間の変更は、まだ確認されていない10分以内のお知らせがあれば、それを書き換えて1件にまとめる(＋−を何度も押したとき用) */
+function notifyTime(vid,d,was,now){
+  var n=D.notices[vid]||{},it=n.items||{},ack=n.ack||{},hit=null;
+  Object.keys(it).forEach(function(id){var x=it[id];if(x.d===d&&x.t==="time"&&!ack[id]&&Date.now()-Date.parse(x.at)<10*60*1000)hit=id});
+  if(!hit){var o={};o[nid()]={d:d,kind:"change",t:"time",from:was,msg:fmtD(d)+" の回収時間が変わりました: "+was+" → "+now,at:nowIso(),by:who()};patch("notices",vid,{items:o});return}
+  var u={};u[hit]={msg:fmtD(d)+" の回収時間が変わりました: "+it[hit].from+" → "+now,at:nowIso()};patch("notices",vid,{items:u});
 }
 function rowText(r){return r.floor+"階 "+nrNum(r.units)+"台 → "+evLabel(r.ev,r.to)}
 function vendorRows(cf,vid){return ((cf&&cf.rows)||[]).filter(function(r){return r.vid===vid&&nrNum(r.units)>0})}
@@ -833,8 +841,7 @@ function renderDayV(){
   h+='<div class="sum"><div><small>回収時間</small><b style="font-size:15px">'+esc(fmtTime(doc))+'</b></div><div><small>回収台数</small><b>'+(cf?tot+'/':'')+cap+'台</b></div><div><small>回収エレベーター</small><b style="font-size:15px">'+(el.length?el.map(function(e){return "EV"+e}).join("・"):'未指定')+'</b></div></div>';
   if(!cf){var au=nrCfg(D.config).auto;return h+'<p class="empty">回収する業者と台数は、確定すると表示されます。'+(au>0?'通常は搬出日の'+au+'日前に自動で確定します。':'')+'</p></section>'}
   h+=ENV.crew?crewCards(k):dayRowsTable(k);
-  if(ENV.crew)h+=troubleForm(k)+noticeStatus(k)+histView(k);
-  if(ENV.crew)h+='<p class="hint">搬出エレベーター前で台数を確かめ、揃っていれば「揃っている」、無ければ「無い」、足りなければ実際の台数を入れて「不足」を押します。「無い」「不足」はその業者のアプリにすぐ表示されます。戻したら「戻した」にチェックし、使ったエレベーターと台数を確かめてください。</p>';
+  if(ENV.crew)h+='<p class="hint">搬出エレベーター前で台数を確かめ、揃っていれば「揃っている」、無ければ「無い」、足りなければ実際の台数を入れて「不足」を押します。「無い」「不足」はその業者のアプリにすぐ表示されます。戻したら「戻した」に✅を付けます(エレベーターと台数は自動で入り、違うときは管理者が直します)。</p>';
   if(myRows().some(function(x){return x.d===k}))h+='<p class="hint">自社の行は、スクラップ台車を搬出エレベーター前まで運んだら、置いたエレベーターを選んで「配置した」にチェックしてください。管理者に伝わります。</p>';
   return h+'</section>';
 }
@@ -1131,7 +1138,8 @@ function renderOrders(C){
 }
 /* カレンダー上部: 業者には自社の注文の手配・完了、管理者と揚重業者には新しい注文の件数 */
 function orderBox(C){
-  if(ENV.admin||ENV.crew){var n=newOrders();return n?'<div class="todaybox next" role="status"><h3>📦 新しい追加注文が'+n+'件あります</h3><p style="padding-top:8px">「追加注文」タブで、用意する搬出車を選んでください。</p></div>':""}
+  if(ENV.crew)return "";
+  if(ENV.admin){var n=newOrders();return n?'<div class="todaybox next" role="status"><h3>📦 新しい追加注文が'+n+'件あります</h3><p style="padding-top:8px">「追加注文」タブで、用意する搬出車を選んでください。</p></div>':""}
   var since=nrDs(new Date(Date.now()-3*864e5)),list=orderList().filter(function(x){return x.vid===ENV.uid&&((x.o.st==="plan"&&x.o.plan.d>=C.t)||(x.o.st==="done"&&x.o.done.d>=since))});
   if(!list.length)return "";
   var h='<div class="todaybox next" role="status"><h3>📦 追加注文のお知らせ</h3><ul>';
@@ -1307,8 +1315,9 @@ function render(remote){
   if(ENV.admin){
     var pc=Object.keys(D.members).filter(function(id){return !D.approved[id]}).length;
     tabs=[["cal","カレンダー"],["pri","優先順位"],["cnf","確定と再振り分け"],["vin","業者入力"],["ord","追加注文"+(newOrders()?'<span class="cnt">'+newOrders()+'</span>':"")],["rec","追加と戻し"],["rep","集計・棚卸し"],["mem","登録"+(pc?'<span class="cnt">'+pc+'</span>':"")],["set","設定"]];
-  }else if(ENV.crew){var crewOk=!!D.crews[ENV.uid];tabs=crewOk?[["cal","カレンダー"],["ret","戻し一覧"],["ord","追加注文"+(newOrders()?'<span class="cnt">'+newOrders()+'</span>':"")]]:[["creg","登録"]];
-    if(!crewOk)ui.tab="creg";else if(ui.tab!=="cal"&&ui.tab!=="ret"&&ui.tab!=="ord")ui.tab="cal";
+  }else if(ENV.crew){var crewOk=!!D.crews[ENV.uid];/* 揚重(盛替え)業者は、搬出予定を見て、搬出の確認と戻しの✅を付けるだけ */
+    tabs=crewOk?[["cal","搬出予定"],["ret","戻し一覧"]]:[["creg","登録"]];
+    if(!crewOk)ui.tab="creg";else if(ui.tab!=="cal"&&ui.tab!=="ret")ui.tab="cal";
   }else tabs=vendorOk?[["cal","カレンダー"],["vin","業者入力"]]:[["reg","登録"]];
   if(!ENV.crew){if(!ENV.admin&&!vendorOk)ui.tab="reg";else if(!ENV.admin&&ui.tab!=="cal"&&ui.tab!=="vin")ui.tab="cal";}
   h='<div class="top"><div><h1>スクラップ搬出 調整<span class="role">'+(ENV.admin?'管理者':ENV.crew?(D.crews[ENV.uid]?'盛替え業者':'未登録'):ENV.preview?'業者(プレビュー)':(vendorOk?'業者':'未登録'))+'</span></h1><p>業者が入力した階別の保有・搬出希望を、回収日ごとの台数・時間・エレベーター集積に合わせて自動で配分します</p>'+(window.NR_ACCOUNT?'<p class="acct">'+esc(window.NR_ACCOUNT.email||"")+' <button class="btn sm" data-act="logout">ログアウト</button> <button class="btn sm" data-act="reload">↻ 最新にする</button>'+(ui.synced?' <span class="muted" style="font-size:12px">'+p2(ui.synced.getHours())+':'+p2(ui.synced.getMinutes())+' 更新</span>':'')+'</p>':'')
@@ -1327,11 +1336,11 @@ function render(remote){
   if(ENV.mode==="noid")h+='';
   else if(ENV.admin){
     h+=ui.tab==="cal"?renderCal(C):ui.tab==="pri"?renderPriority(C):ui.tab==="cnf"?renderConfirmed(C):ui.tab==="rec"?renderRec(C):ui.tab==="ord"?renderOrders(C):ui.tab==="rep"?renderReport(C):ui.tab==="mem"?renderMem(C):ui.tab==="set"?renderSet(C):renderVin(C);
-  }else if(ENV.crew)h+=ui.tab==="creg"?renderCrewReg():ui.tab==="ret"?renderRet(C):ui.tab==="ord"?renderOrders(C):renderCal(C);
+  }else if(ENV.crew)h+=ui.tab==="creg"?renderCrewReg():ui.tab==="ret"?renderRet(C):renderCal(C);
   else h+=!vendorOk?renderReg():(ui.tab==="cal"?renderCal(C):renderVin(C));
   var box=document.createElement("div");box.innerHTML=h;
   /* 数字の欄の左に −、右に ＋ を付ける。押すと1ずつ、押し続けると続けて増減し、離したときに保存する */
-  Array.prototype.forEach.call(box.querySelectorAll('input[type="number"]'),function(inp){
+  Array.prototype.forEach.call(box.querySelectorAll('input[type="number"],input.tinput'),function(inp){
     var w=document.createElement("span");w.className="stepper";inp.parentNode.insertBefore(w,inp);
     var lab=esc(inp.getAttribute("aria-label")||"");
     w.innerHTML='<button type="button" class="stp" data-step="-1" aria-label="'+lab+'を1減らす">−</button>';
@@ -1577,7 +1586,7 @@ function onChange(ev){
   else if(f==="cap"){var v=nrNum(el.value);if(v===0){if(D.confirmed[ui.sel]){notifyChanges(ui.sel,D.confirmed[ui.sel],null);remove("confirmed",ui.sel)}remove("days",ui.sel)}else mutDay(ui.sel,function(d){d.cap=v})}
   else if(f==="tf"||f==="tt"){var tv=nrTime(el.value);if(tv===null){ui.msg="時間は「1030」や「10:30」のように入力してください。";ui.msgKind="bad"}else{el.value=tv;var was=fmtTime(D.days[ui.sel]||{});mutDay(ui.sel,function(d){d[f]=tv});
       var now2=fmtTime(D.days[ui.sel]||{}),cf5=D.confirmed[ui.sel];
-      if(cf5&&was!==now2){var sn={};(cf5.rows||[]).forEach(function(r){if(!sn[r.vid]){sn[r.vid]=1;notify(r.vid,ui.sel,"change",fmtD(ui.sel)+" の回収時間が変わりました: "+was+" → "+now2)}})}}}
+      if(cf5&&was!==now2){var sn={};(cf5.rows||[]).forEach(function(r){if(!sn[r.vid]){sn[r.vid]=1;notifyTime(r.vid,ui.sel,was,now2)}})}}}
   else if(f==="elev"){var e=Number(el.getAttribute("data-e"));mutDay(ui.sel,function(d){var a=(d.elev||[]).filter(function(x){return x!==e});if(el.checked)a.push(e);a.sort();d.elev=a})}
   else if(f==="vname"){mutVendor(vid,function(v){v.name=el.value.trim()})}
   else if(f==="vnote"){mutVendor(vid,function(v){v.note=el.value.slice(0,500)})}
@@ -1646,8 +1655,16 @@ function onChange(ev){
 var app=document.getElementById("app");
 /* −/＋: 押した瞬間に1つ動かし、0.4秒押し続けると連続で動かす。保存は離したとき1回だけ */
 var spin=null;
-function spinInput(b){return b.closest(".stepper").querySelector('input[type="number"]')}
+function spinInput(b){return b.closest(".stepper").querySelector("input")}
+/* 時間の欄(10:30 の形)は5分ずつ動かす。空のときは開始8:00、終了は開始の1時間後から */
+function timeStep(inp,n){
+  var t=nrTime(inp.value),m;
+  if(!t){var tf=inp.id==="tt"&&nrTime((document.getElementById("tf")||{}).value||"");m=tf?Number(tf.slice(0,2))*60+Number(tf.slice(3))+60:8*60}
+  else{m=Number(t.slice(0,2))*60+Number(t.slice(3));m=n>0?Math.floor(m/5)*5+5:Math.ceil(m/5)*5-5}
+  m=Math.max(0,Math.min(23*60+55,m));inp.value=p2(Math.floor(m/60))+":"+p2(m%60);
+}
 function spinStep(inp,n){
+  if(inp.classList.contains("tinput")){timeStep(inp,n);return}
   var mn=inp.getAttribute("min"),mx=inp.getAttribute("max"),v=(Number(inp.value)||0)+n;
   if(mn!=null&&mn!==""&&v<Number(mn))v=Number(mn);if(mx!=null&&mx!==""&&v>Number(mx))v=Number(mx);
   inp.value=String(v);
@@ -1699,7 +1716,7 @@ var CFG=window.NR_CONFIG,app=document.getElementById("app");
 function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
 
 if(!CFG.firebase.apiKey||/^YOUR_/.test(CFG.firebase.apiKey)){
-  app.innerHTML='<section class="panel login"><h1>スクラップ搬出 調整'+(window.NR_CREW?'<br><small>盛替え業者用</small>':'')+'</h1><div class="note bad"><span>Firebaseの設定がまだ入っていません。index.html の NR_CONFIG にFirebaseの設定を入れてください。</span></div></section>';
+  app.innerHTML='<section class="panel login"><h1>スクラップ搬出 調整'+(window.NR_CREW?'<br><small>揚重・盛替え業者用</small>':'')+'</h1><div class="note bad"><span>Firebaseの設定がまだ入っていません。index.html の NR_CONFIG にFirebaseの設定を入れてください。</span></div></section>';
 }else start();
 
 function start(){
@@ -1720,7 +1737,7 @@ function start(){
   var mode="login",msg="",kind="";
   function showLogin(){
     var reg=mode==="reg";
-    app.innerHTML='<section class="panel login"><h1>スクラップ搬出 調整'+(window.NR_CREW?'<br><small>盛替え業者用</small>':'')+'</h1>'
+    app.innerHTML='<section class="panel login"><h1>スクラップ搬出 調整'+(window.NR_CREW?'<br><small>揚重・盛替え業者用</small>':'')+'</h1>'
       +'<p class="hint" style="margin:0">'+(reg?'業者の方は、ここでアカウントを作ってから会社名を登録すると、すぐに使えます。':'ログインしてください。初めての業者の方は「新規登録」から始めます。')+'</p>'
       +(msg?'<div class="note '+kind+'"><span>'+esc(msg)+'</span></div>':'')
       +'<button class="btn" id="lg-google" type="button">Googleアカウントでログイン</button>'

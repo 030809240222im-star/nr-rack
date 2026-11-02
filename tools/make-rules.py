@@ -11,7 +11,7 @@ BLOCK = """
     function isApproved{S}() {{
       return signedIn() && exists(/databases/$(database)/documents/{P}approved/$(request.auth.uid));
     }}
-    // 盛替え業者: 申請して利用許可(crews)がある人
+    // 揚重(盛替え)業者: 申請して利用許可(crews)がある人。搬出予定を見て、搬出確認と戻しの✅だけ付けられる
     function isCrew{S}() {{
       return signedIn() && exists(/databases/$(database)/documents/{P}crews/$(request.auth.uid));
     }}
@@ -64,25 +64,21 @@ BLOCK = """
       allow read: if isAdmin() || isSelf(id);
       allow write: if isAdmin();
     }}
-    // 追加した台数の記録: 本人は読むだけ。揚重(盛替え)業者は追加注文を上げたときに記録を足せる
+    // 追加した台数の記録: 本人は読むだけ。書けるのは管理者だけ
     match /{P}plans/{{id}} {{
-      allow read: if isAdmin() || isSelf(id) || isCrew{S}();
+      allow read: if isAdmin() || isSelf(id);
       allow write: if isAdmin();
-      allow create, update: if isCrew{S}() && request.resource.data.keys().hasOnly(['logs', 'at']);
     }}
-    // 追加注文: 業者が自分の分を出し、管理者と揚重(盛替え)業者が手配と上げた日を書き込む
+    // 追加注文: 業者が自分の分を出し、管理者が手配と上げた日を書き込む
     match /{P}orders/{{id}} {{
       allow read: if isAdmin() || isSelf(id) || isCrew{S}();
       allow write: if isAdmin() || (isSelf(id) && isApproved{S}());
-      allow update: if isCrew{S}() && request.resource.data.keys().hasOnly(['items', 'at']);
     }}
 
-    // 業者へのお知らせ: 管理者と盛替え業者が出し、業者本人は「確認した」(ack)だけ書ける
+    // 業者へのお知らせ: 管理者が出し、業者本人は「確認した」(ack)だけ書ける
     match /{P}notices/{{id}} {{
-      allow read: if isAdmin() || isSelf(id) || isCrew{S}();
+      allow read: if isAdmin() || isSelf(id);
       allow write: if isAdmin();
-      allow create: if isCrew{S}() && request.resource.data.keys().hasOnly(['items']);
-      allow update: if isCrew{S}() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['items']);
       allow update: if isSelf(id) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ack']);
     }}
 
