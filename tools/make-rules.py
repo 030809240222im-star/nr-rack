@@ -4,7 +4,7 @@
 """
 import pathlib
 
-ADMINS = ["kowa0371@gmail.com", "030809240222im@gmail.com", "aiko.h@shimz.co.jp"]
+ADMINS = ["kowa0371@gmail.com", "030809240222im@gmail.com", "aiko.h@shimz.co.jp", "t.hiramatsu@shimz.co.jp"]
 
 BLOCK = """
     // ===== {title} =====
