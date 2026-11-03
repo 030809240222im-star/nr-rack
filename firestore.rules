@@ -3,7 +3,7 @@ rules_version = '2';
 // このファイルは tools/make-rules.py で作っています。直すときはスクリプトを直して作り直してください。
 service cloud.firestore {
   match /databases/{database}/documents {
-    function adminEmails() { return ['kowa0371@gmail.com', '030809240222im@gmail.com']; }
+    function adminEmails() { return ['kowa0371@gmail.com', '030809240222im@gmail.com', 'aiko.h@shimz.co.jp']; }
 
     function signedIn() { return request.auth != null; }
     function isAdmin() {
