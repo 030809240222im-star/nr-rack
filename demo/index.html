@@ -415,7 +415,7 @@ function nrRank(vendors,sim,cfg,startStr){
 
 <script>
 (function(){
-var KEY="nr-rack-demo-v1";
+var KEY="nr-rack-demo-v2";try{localStorage.removeItem("nr-rack-demo-v1")}catch(e){}
 var APP_URL=location.origin+location.pathname;
 function qrSvg(){
   try{var q=qrcode(0,"M");q.addData(APP_URL);q.make();return q.createSvgTag({cellSize:4,margin:4,scalable:true})}

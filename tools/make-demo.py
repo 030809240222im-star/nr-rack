@@ -15,7 +15,9 @@ boot = ('<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode
         "<script>window.NR_DEMO=true;window.nrBoot();</script>")
 s = s[:start] + boot + s[end:]
 s = s.replace("<title>NRボックス ラック調整</title>", "<title>NRボックス ラック調整 お試し版</title>", 1)
-s = s.replace('var KEY="nr-rack-planner-v3";', 'var KEY="nr-rack-demo-v1";', 1)
+# 2026-11-03: 試したデータを消すため保存先を v2 に替え、古い v1 は開いたときに消す
+s = s.replace('var KEY="nr-rack-planner-v3";', 'var KEY="nr-rack-demo-v2";try{localStorage.removeItem("nr-rack-demo-v1")}catch(e){}', 1)
+assert 'nr-rack-demo-v2' in s
 (root / "demo").mkdir(exist_ok=True)
 (root / "demo" / "index.html").write_text(s, encoding="utf-8")
 print("wrote demo/index.html")
