@@ -1888,7 +1888,9 @@ if(/\bLine\//i.test(UA)&&!/[?&]openExternalBrowser=1/.test(location.search)){
 function start(){
   var fb=initializeApp(CFG.firebase),auth=getAuth(fb),fs=openStore(fb);
   var booted=false;
-  getRedirectResult(auth).catch(fail);
+  /* ページ移動式のGoogleログインから戻ってきたのにログインできていなければ(Safariの制限など)、黙って元の画面に戻さず理由を出す */
+  var viaRedirect=false;try{viaRedirect=sessionStorage.getItem("nrGoogleRedirect")==="1";sessionStorage.removeItem("nrGoogleRedirect")}catch(e){}
+  getRedirectResult(auth).then(function(r){if(viaRedirect&&!r&&!auth.currentUser)say("Googleのログインが完了しませんでした。この画面(アプリの中のブラウザなど)ではGoogleログインが使えないことがあります。SafariやChromeで開き直すか、下のメールアドレスでログインしてください。","bad")},fail);
   onAuthStateChanged(auth,function(u){
     if(!u){if(booted){location.reload();return}showLogin();return}
     if(booted)return;booted=true;
@@ -1916,10 +1918,17 @@ function start(){
       +(reg?'':'<button class="linkbtn" id="lg-reset" type="button">パスワードを忘れた</button>')+'</div></section>';
     /* ポップアップが止められるブラウザ(一部のSafariやアプリ内ブラウザ)では、ページ移動式のログインに切り替える */
     document.getElementById("lg-google").onclick=function(){
-      var pr=new GoogleAuthProvider();
-      signInWithPopup(auth,pr).catch(function(e){
+      var pr=new GoogleAuthProvider(),btn=this;pr.setCustomParameters({prompt:"select_account"});
+      btn.disabled=true;btn.textContent="Googleのログイン画面を開いています…";
+      /* 90秒たってもログインできていなければ、止まったままにせず案内を出す */
+      var tm=setTimeout(function(){if(!auth.currentUser)say("Googleのログインが完了しませんでした。この画面(アプリの中のブラウザなど)ではGoogleログインが使えないことがあります。SafariやChromeで開き直すか、下のメールアドレスでログインしてください。","bad")},90000);
+      signInWithPopup(auth,pr).then(function(){clearTimeout(tm)},function(e){
+        clearTimeout(tm);
         var c=(e&&e.code)||"";
-        if(c==="auth/popup-blocked"||c==="auth/operation-not-supported-in-this-environment"||c==="auth/web-storage-unsupported")signInWithRedirect(auth,pr).catch(fail);
+        if(c==="auth/popup-blocked"||c==="auth/operation-not-supported-in-this-environment"||c==="auth/web-storage-unsupported"){
+          try{sessionStorage.setItem("nrGoogleRedirect","1")}catch(x){}
+          signInWithRedirect(auth,pr).catch(fail);
+        }
         else fail(e);
       });
     };
