@@ -426,6 +426,8 @@ var COLORS=["var(--c0)","var(--c1)","var(--c2)","var(--c3)","var(--c4)","var(--c
 var ENV={vid:"local",crew:false,mode:"local",uid:"local",realUid:"local",admin:true,preview:false,db:null,email:"",name:""};
 var D={config:{},days:{},vendors:{},plans:{},members:{},approved:{},blocked:{},confirmed:{},crews:{},crewreq:{},crewblocked:{},orders:{},notices:{},codes:{}};
 var LOADED={};
+/* 全データのリセットで消す入れ物。設定(config)は残す */
+var RESET_COLLS=["days","confirmed","vendors","plans","orders","notices","members","approved","blocked","codes","crews","crewreq","crewblocked"];
 var ui={tab:"cal",month:null,sel:null,vsel:null,only:false,confirm:"",msg:"",msgKind:""};
 
 function clone(x){return JSON.parse(JSON.stringify(x))}
@@ -1403,7 +1405,9 @@ function renderSet(C){
    +'<section class="panel"><h2 style="margin-bottom:8px">このアプリのQRコード</h2><div class="qrbox"><div class="qrimg" role="img" aria-label="このアプリを開くQRコード">'+qrSvg()+'</div><div style="flex:1 1 240px;min-width:0"><p style="margin:0 0 4px">スマートフォンで読み取ると、このアプリが開きます。</p>'
    +'<p class="hint" style="margin:0">業者はこのURLを開いて新規登録し、会社名を登録するとすぐに使えます。</p><p class="hint" style="margin:6px 0 0">盛替え業者用のURL: <b>'+esc(APP_URL)+'crew/</b>(会社名を登録するとすぐ使えます)</p><div class="urlrow"><input type="text" id="appurl" readonly value="'+esc(APP_URL)+'" aria-label="アプリのURL"><button class="btn sm" data-act="copyurl">URLをコピー</button></div></div></div></section>'
    +'<section class="panel"><h2 style="margin-bottom:8px">サンプルデータ</h2><p class="hint" style="margin:0 0 8px">動作を試すための例です。業者名・台数・階はすべて架空の値で、実際のデータとは別に消せます。</p>'
-   +'<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" data-act="sampleon">サンプルを入れる</button><button class="btn danger" data-act="sampleoff">'+(ui.confirm==="sampleoff"?'もう一度押すと消去':'サンプルを消す')+'</button></div></section>';
+   +'<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" data-act="sampleon">サンプルを入れる</button><button class="btn danger" data-act="sampleoff">'+(ui.confirm==="sampleoff"?'もう一度押すと消去':'サンプルを消す')+'</button></div></section>'
+   +(ENV.mode==="local"?'':'<section class="panel"><h2 style="margin-bottom:8px">全データのリセット</h2><p class="hint" style="margin:0 0 8px">試しに入れたデータを全部消して、使い始める前の状態に戻します。消えるのは回収日・確定・業者の入力・追加注文・追加と戻しの記録・お知らせ・業者と揚重業者の登録(停止した人も含む)・参加コードです。<b>設定(階・エレベーター・台数など)と管理者は残ります。</b>元に戻せません。業者と揚重業者には、もう一度登録してもらいます。</p>'
+   +'<div class="urlrow"><input type="text" id="resetword" placeholder="「リセット」と入力" aria-label="確認のため「リセット」と入力" autocomplete="off"><button class="btn danger" data-act="resetall">全部消す</button></div></section>');
   return h;
 }
 /* 画面の差し替えは要素を作り直さずに中身だけ合わせる。スクロール位置・フォーカス・入力中の値がそのまま残る */
@@ -1717,6 +1721,13 @@ function onClick(ev){
     return;
   }
   else if(act==="sampleon"){var sm=sample();Object.keys(sm.vendors).forEach(function(k){put("vendors",k,sm.vendors[k])});var sd=Object.keys(sm.days).sort();sd.forEach(function(k){put("days",k,sm.days[k])});if(sd.length){var f0=nrPd(sd[0]);ui.month=new Date(f0.getFullYear(),f0.getMonth(),1,12);ui.sel=sd[0]}ui.vsel=null}
+  else if(act==="resetall"){
+    var rw=document.getElementById("resetword");
+    if(!rw||rw.value.trim()!=="リセット"){ui.msg="消すときは、確認のため入力欄に「リセット」と入れてから押してください。";ui.msgKind="bad"}
+    else if(RESET_COLLS.some(function(c){return c!=="codes"&&!LOADED[c]})){ui.msg="まだデータを読み込み中です。少し待ってからもう一度押してください。";ui.msgKind="bad"}
+    else{var rn=0;Object.keys(D.vendors).forEach(function(k){var cd=D.vendors[k]&&D.vendors[k].code;if(cd&&!D.codes[cd]){remove("codes",cd)}});RESET_COLLS.forEach(function(c){Object.keys(D[c]||{}).forEach(function(k){remove(c,k);rn++})});
+      rw.value="";ui.sel=today();ui.vsel=null;ui.msg="全データを消しました("+rn+"件)。設定と管理者は残っています。";ui.msgKind="ok"}
+  }
   else if(act==="sampleoff"){
     if(ui.confirm==="sampleoff"){
       Object.keys(D.days).forEach(function(k){if(D.days[k].sample){if(D.confirmed[k])remove("confirmed",k);remove("days",k)}});
