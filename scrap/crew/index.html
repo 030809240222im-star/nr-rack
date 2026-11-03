@@ -1870,6 +1870,11 @@ if(!CFG.firebase.apiKey||/^YOUR_/.test(CFG.firebase.apiKey)){
   app.innerHTML='<section class="panel login"><h1>スクラップ搬出 調整'+(window.NR_CREW?'<br><small>揚重・盛替え業者用</small>':'')+'</h1><div class="note bad"><span>Firebaseの設定がまだ入っていません。index.html の NR_CONFIG にFirebaseの設定を入れてください。</span></div></section>';
 }else start();
 
+/* アプリの中の画面(LINE・Instagram・Facebookなど)ではGoogleがログインを断るので、LINEは外のブラウザで開き直し、ほかは案内を出す */
+var UA=navigator.userAgent||"",INAPP=/\bLine\/|FBAN|FBAV|Instagram|KAKAOTALK|MicroMessenger|; wv\)/i.test(UA);
+if(/\bLine\//i.test(UA)&&!/[?&]openExternalBrowser=1/.test(location.search)){
+  location.replace(location.pathname+(location.search?location.search+"&":"?")+"openExternalBrowser=1"+location.hash);
+}
 function start(){
   var fb=initializeApp(CFG.firebase),auth=getAuth(fb),fs=openStore(fb);
   var booted=false;
@@ -1891,6 +1896,7 @@ function start(){
     app.innerHTML='<section class="panel login"><h1>スクラップ搬出 調整'+(window.NR_CREW?'<br><small>揚重・盛替え業者用</small>':'')+'</h1>'
       +'<p class="hint" style="margin:0">'+(reg?'業者の方は、ここでアカウントを作ってから会社名を登録すると、すぐに使えます。':'ログインしてください。初めての業者の方は「新規登録」から始めます。')+'</p>'
       +(msg?'<div class="note '+kind+'"><span>'+esc(msg)+'</span></div>':'')
+      +(INAPP?'<div class="note warn"><span>LINEなどのアプリの中の画面では、Googleアカウントでのログインができません。右上(または右下)のメニューから「ブラウザで開く」を選ぶか、下のメールアドレスでログインしてください。</span></div>':'')
       +'<button class="btn" id="lg-google" type="button">Googleアカウントでログイン</button>'
       +'<div class="sep">またはメールアドレス</div>'
       +'<div class="lbl"><label for="lg-email">メールアドレス</label><input type="email" id="lg-email" autocomplete="email"></div>'
@@ -1925,7 +1931,10 @@ function start(){
       "auth/email-already-in-use":"このメールアドレスは登録済みです。ログインしてください。","auth/weak-password":"パスワードは6文字以上にしてください。","auth/invalid-email":"メールアドレスの形が正しくありません。",
       "auth/popup-closed-by-user":"ログインがキャンセルされました。","auth/too-many-requests":"試行回数が多すぎます。しばらくしてからもう一度試してください。",
       "auth/unauthorized-domain":"このURLはFirebaseの承認済みドメインに入っていません。管理者に連絡してください。","auth/network-request-failed":"通信できませんでした。電波の良い所で再読み込みしてください。",
-      "auth/cancelled-popup-request":"ログインがキャンセルされました。","auth/internal-error":"ログインに失敗しました。ページを再読み込みしてもう一度試してください。"}[c];
+      "auth/cancelled-popup-request":"ログインがキャンセルされました。","auth/internal-error":"ログインに失敗しました。ページを再読み込みしてもう一度試してください。",
+      "auth/popup-blocked":"ログインの画面が開けませんでした。Safariの設定で「ポップアップブロック」をオフにするか、メールアドレスでログインしてください。",
+      "auth/operation-not-allowed":"Googleでのログインが有効になっていません。管理者に連絡してください。",
+      "auth/account-exists-with-different-credential":"このメールアドレスは別の方法(メールアドレスとパスワード)で登録済みです。メールアドレスでログインしてください。"}[c];
     say(m||("ログインできませんでした("+c+")"),"bad");
   }
 }
