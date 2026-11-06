@@ -1915,7 +1915,7 @@ function start(){
       +'<button class="btn primary" id="lg-go" type="button">'+(reg?'新規登録':'ログイン')+'</button>'
       +'<div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><button class="linkbtn" id="lg-mode" type="button">'+(reg?'アカウントをお持ちの方はログイン':'新規登録はこちら')+'</button>'
       +(reg?'':'<button class="linkbtn" id="lg-reset" type="button">パスワードを忘れた</button>')+'</div></section>';
-    /* ポップアップが止められるブラウザ(一部のSafariやアプリ内ブラウザ)では、ページ移動式のログインに切り替える */
+    /* Googleログインはポップアップで開く */
     document.getElementById("lg-google").onclick=function(){
       var pr=new GoogleAuthProvider(),btn=this;pr.setCustomParameters({prompt:"select_account"});
       btn.disabled=true;btn.textContent="Googleのログイン画面を開いています…";
@@ -1924,10 +1924,8 @@ function start(){
       signInWithPopup(auth,pr).then(function(){clearTimeout(tm)},function(e){
         clearTimeout(tm);
         var c=(e&&e.code)||"";
-        if(c==="auth/popup-blocked"||c==="auth/operation-not-supported-in-this-environment"||c==="auth/web-storage-unsupported"){
-          try{sessionStorage.setItem("nrGoogleRedirect","1")}catch(x){}
-          signInWithRedirect(auth,pr).catch(fail);
-        }
+        /* ページ移動式(redirect)は、アプリ(github.io)とログイン画面(firebaseapp.com)のサイトが違うため、今のSafari・Chromeではログインせずに戻ってくる。使わずに案内を出す */
+        if(c==="auth/popup-blocked"||c==="auth/operation-not-supported-in-this-environment"||c==="auth/web-storage-unsupported")say("Googleのログイン画面を開けませんでした。Safariの「ポップアップブロック」をオフにするか、ホーム画面のアイコンではなくSafari・Chromeで直接開いてください。すぐに入りたいときは、下のメールアドレスでログインしてください。","bad");
         else fail(e);
       });
     };
