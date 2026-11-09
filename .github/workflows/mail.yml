@@ -1,0 +1,40 @@
+# 業者へのメール(日本時間)
+#   搬出日の前日 13:00 … 明日の搬出予定と、搬出日から3日たってもアプリを開いていない業者への確認
+#   搬出日の当日  6:30 … 今日の搬出予定
+# GitHub の起動は遅れがちなので少し早めに起こし、スクリプトが決まった時刻まで待ってから送る。
+# 必要な設定(リポジトリの Settings → Secrets and variables → Actions):
+#   FIREBASE_SERVICE_ACCOUNT  Firebase のサービスアカウントの鍵(毎朝の自動処理と同じもの)
+#   MAIL_USER                 送信に使う Gmail のアドレス
+#   MAIL_PASS                 その Gmail の「アプリ パスワード」(16文字)
+name: mail
+on:
+  schedule:
+    - cron: "50 3 * * *"
+    - cron: "20 21 * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "pre = 前日メールと確認メール / day = 当日メール"
+        required: true
+        default: pre
+permissions:
+  contents: read
+jobs:
+  mail:
+    runs-on: ubuntu-latest
+    env:
+      TZ: Asia/Tokyo
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install --no-audit --no-fund
+        working-directory: server
+      - run: node server/mail.mjs
+        env:
+          MAIL_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || (github.event.schedule == '50 3 * * *' && 'pre' || 'day') }}
+          WAIT_UNTIL_TIME: ${{ github.event_name == 'workflow_dispatch' && '0' || '1' }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          MAIL_USER: ${{ secrets.MAIL_USER }}
+          MAIL_PASS: ${{ secrets.MAIL_PASS }}
