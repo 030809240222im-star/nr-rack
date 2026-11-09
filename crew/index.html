@@ -514,13 +514,24 @@ async function boot(){
   render();
 }
 /* 業者は、会社(vid)の文書を読む。会社が変わったら(管理者がまとめたとき)読み直す */
-var VSUB={vid:null,off:[]};
+var VSUB={vid:null,off:[],retry:0};
 var VCOLLS=["vendors","plans","orders","notices"];
+/* 参加コードで別の会社に入ったとき、前の会社の入力を、参加先にまだ入力のない階だけ写す */
+function carryFloors(){
+  var cr=ui.carry;ui.carry=null;if(!cr)return;
+  var cur=(D.vendors[cr.to]||{}).floors||{},add={};
+  Object.keys(cr.floors).forEach(function(f){var x=cr.floors[f]||{};if(cur[f])return;if(nrNum(x.h)||nrNum(x.w)||x.r||x.same===false)add[f]=x});
+  if(Object.keys(add).length)patch("vendors",cr.to,{floors:add,updated:nowIso()});
+}
 function watchVid(){
   if(VSUB.vid===ENV.vid||!LOADED.approved)return;
   VSUB.off.forEach(function(f){try{f()}catch(e){}});VSUB.off=[];VSUB.vid=ENV.vid;
   VCOLLS.forEach(function(c){D[c]={};LOADED[c]=false;
-    VSUB.off.push(ENV.db.doc(c+"/"+ENV.vid).onSnapshot(function(s){var m={};if(s.exists)m[ENV.vid]=s.data();D[c]=m;LOADED[c]=true;ui.synced=new Date();render(true)},function(){LOADED[c]=true}));
+    VSUB.off.push(ENV.db.doc(c+"/"+ENV.vid).onSnapshot(function(s){var m={};if(s.exists)m[ENV.vid]=s.data();D[c]=m;LOADED[c]=true;VSUB.retry=0;ui.synced=new Date();
+      if(c==="vendors"&&ui.carry&&ui.carry.to===ENV.vid&&!(s.metadata&&s.metadata.fromCache))carryFloors();
+      render(true)},function(){LOADED[c]=true;
+      /* 会社を替えた直後は、サーバーに反映されるまで読めないことがある。少し待って読み直す */
+      if(VSUB.retry<5){VSUB.retry++;setTimeout(function(){VSUB.vid=null;watchVid()},2000)}}));
   });
 }
 function subscribe(){
@@ -570,7 +581,7 @@ function companyMembers(vid){return Object.keys(D.approved).filter(function(u){r
 function isActive(id){
   var v=D.vendors[id];if(!v)return false;
   if(ENV.mode==="local")return true;
-  return !!(D.approved[id]||companyMembers(id).length||v.manual||v.sample);
+  return !!(companyMembers(id).length||v.manual||v.sample);
 }
 function activeMap(){var m={};Object.keys(D.vendors).forEach(function(id){if(isActive(id))m[id]=D.vendors[id]});return m}
 /* 画面で使う建物の設定(最下階・最上階・エレベーターの台数) */
@@ -1115,7 +1126,14 @@ function renderVin(C){
   if(admNameEdit)h+='<div class="vtop"><label>会社名<input type="text" id="vname" data-f="vname" value="'+esc(v.name||"")+'" placeholder="会社名を入力"></label></div>';
   else h+='<p style="margin:0 0 10px"><b>'+esc(vname(vid))+'</b></p>';
   var vcode=(D.vendors[vid]||{}).code;
-  if(!ENV.preview)h+='<div class="note" style="margin:0 0 10px"><span>'+(vcode?'参加コード <b style="font-size:18px;letter-spacing:.15em">'+esc(vcode)+'</b> 同じ会社の人は、登録のときに「参加コードで入る」でこのコードを入れると、同じ画面で一緒に使えます。':'同じ会社の人と一緒に使うには、参加コードを作って伝えます。')+(ENV.admin||!vcode?' <button class="btn sm" data-act="mkcode" data-vid="'+esc(vid)+'">'+(vcode?'コードを作り直す':'参加コードを作る')+'</button>':'')+'</span></div>';
+  if(!ENV.preview)h+='<div class="note" style="margin:0 0 10px"><span>'+(vcode?'参加コード <b style="font-size:18px;letter-spacing:.15em">'+esc(vcode)+'</b> 同じ会社の人は、登録のときに「参加コードで入る」か、登録した後に「別の会社の参加コードを入れる」でこのコードを入れると、同じ画面で一緒に使えます。':'同じ会社の人と一緒に使うには、参加コードを作って伝えます。')+(ENV.admin||!vcode?' <button class="btn sm" data-act="mkcode" data-vid="'+esc(vid)+'">'+(vcode?'コードを作り直す':'参加コードを作る')+'</button>':'')+'</span></div>';
+  if(!ENV.preview&&!ENV.admin&&ENV.mode!=="local"){var jp=ui.jcPending;
+    if(!jp&&!ui.jcOpen)h+='<p style="margin:0 0 10px"><button class="linkbtn" data-act="joinopen">別の会社の参加コードを入れる(同じ会社の人とまとめる)</button></p>';
+    else h+='<div class="note pv" style="margin:0 0 10px;display:block"><b>別の会社の参加コードを入れる</b>'
+     +'<p class="hint" style="margin:6px 0">同じ会社の人がすでに使っているときは、その人のアプリに出ている参加コードを入れると、同じ会社として一緒に使えます。いまの会社の入力(保有台数など)は、参加先にまだ入力のない階だけ引き継ぎます。</p>'
+     +'<div class="urlrow"><input type="text" id="jc-code" maxlength="8" placeholder="参加コード(6文字)" autocomplete="off" autocapitalize="characters" value="'+esc(jp?jp.code:"")+'" aria-label="参加コード">'
+     +'<button class="btn'+(jp?' primary':'')+'" data-act="joinco">'+(jp?'「'+esc(jp.company)+'」に参加する':'コードを確かめる')+'</button>'+(jp?'':'')+'<button class="btn" data-act="joincancel">やめる</button></div></div>';
+  }
   var wds=C.cfg.wd[vid];if(wds)h+='<p class="hint" style="margin:0 0 8px">回収曜日: <b>'+wds.map(function(w){return WD[w]}).join("・")+'</b>(積載に余裕がある日は、ほかの曜日にも回収することがあります)</p>';
   h+='<div class="sum"><div><small>保有台数(合計)</small><b>'+th+'台</b></div><div><small>搬出希望(合計)</small><b>'+tw+'台</b></div></div>'
    +'<p class="hint" style="margin:0 0 8px">各階のNRボックスの保有台数と、その階から出したい台数を入力します。追加で欲しい階は「追加希望数」に台数を入れると注文になり、追加する日が決まると「備考(追加)」に出ます。戻してほしい階が同じ階でないときは「同じ階」のチェックを外して階を選びます。入力は自動で保存されます。</p>'
@@ -1705,6 +1723,27 @@ function onClick(ev){
         if(!D.approved[ENV.uid]){put("approved",ENV.uid,{company:co,email:em,at:nowIso(),vid:ENV.uid,name:ct});makeCode(ENV.uid,co)}
         ui.msg="登録しました。すぐに使えます。同じ会社の人には「業者入力」に出る参加コードを伝えてください。";ui.msgKind="ok";
       }
+    }
+  }
+  else if(act==="joincancel"){ui.jcPending=null;ui.jcOpen=false}
+  else if(act==="joinopen"){ui.jcOpen=true}
+  else if(act==="joinco"){
+    var jcIn=document.getElementById("jc-code"),jcd=(jcIn?jcIn.value:"").trim().toUpperCase().replace(/[^A-Z0-9]/g,""),jp=ui.jcPending;ui.jcOpen=true;
+    if(jp&&jp.code===jcd){
+      /* 参加する: 自分の所属(approved.vid)を参加先に替え、いまの会社の入力は参加先にない階だけ引き継ぐ(参加先を読み込んでから) */
+      var oldF=clone((D.vendors[ENV.vid]||{}).floors||{});
+      patch("approved",ENV.uid,{vid:jp.vid,code:jp.code,company:jp.company});
+      if(D.members[ENV.uid])patch("members",ENV.uid,{company:jp.company});
+      ui.carry={to:jp.vid,floors:oldF};ui.jcPending=null;ui.jcOpen=false;
+      ui.msg="「"+jp.company+"」に参加しました。同じ会社の人と同じ画面で使えます。";ui.msgKind="ok";
+    }else if(!jcd){ui.msg="参加コードを入れてください。";ui.msgKind="bad"}
+    else{ui.jcPending=null;ui.msg="参加コードを確かめています…";ui.msgKind="";
+      getDoc("codes",jcd).then(function(c){
+        if(!c||!c.vid){ui.msg="参加コード「"+jcd+"」が見つかりません。同じ会社の人のアプリに出ているコードを確かめてください。";ui.msgKind="bad"}
+        else if(c.vid===ENV.vid){ui.msg="そのコードは、いま使っている会社のものです。";ui.msgKind="bad"}
+        else{ui.jcPending={code:jcd,vid:c.vid,company:c.company||"名称未設定"};ui.msg="参加先は「"+ui.jcPending.company+"」です。よければ「「"+ui.jcPending.company+"」に参加する」を押してください。";ui.msgKind=""}
+        render();
+      },function(){ui.msg="参加コードを確かめられませんでした。通信を確かめてもう一度押してください。";ui.msgKind="bad";render()});
     }
   }
   else if(act==="mkcode"){var mv=b.getAttribute("data-vid")||ENV.vid,old=(D.vendors[mv]||{}).code;if(old&&ENV.admin)remove("codes",old);makeCode(mv,vname(mv))}
