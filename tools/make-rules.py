@@ -131,6 +131,15 @@ BLOCK = """
       allow read: if isAdmin() || isSelf(id);
       allow write: if isAdmin();
     }}
+    // 最終ログイン: 本人が開いた時刻だけを書き、管理者が読む
+    match /{P}seen/{{id}} {{
+      allow read, delete: if isAdmin();
+      allow create, update: if isSelf(id)
+        && request.resource.data.keys().hasOnly(['at', 'email', 'kind'])
+        && request.resource.data.at is string && request.resource.data.at.size() <= 40
+        && request.resource.data.email is string && request.resource.data.email.size() <= 200
+        && request.resource.data.kind in ['admin', 'vendor', 'crew'];
+    }}
 """
 
 HEAD = """rules_version = '2';

@@ -425,10 +425,10 @@ function qrSvg(){
 var WD=["日","月","火","水","木","金","土"];
 var COLORS=["var(--c0)","var(--c1)","var(--c2)","var(--c3)","var(--c4)","var(--c5)","var(--c6)","var(--c7)"];
 var ENV={vid:"local",crew:false,mode:"local",uid:"local",realUid:"local",admin:true,preview:false,db:null,email:"",name:""};
-var D={config:{},days:{},vendors:{},plans:{},members:{},approved:{},blocked:{},confirmed:{},crews:{},crewreq:{},crewblocked:{},orders:{},notices:{},codes:{}};
+var D={config:{},days:{},vendors:{},plans:{},members:{},approved:{},blocked:{},confirmed:{},crews:{},crewreq:{},crewblocked:{},orders:{},notices:{},codes:{},seen:{}};
 var LOADED={};
 /* 全データのリセットで消す入れ物。設定(config)は残す */
-var RESET_COLLS=["days","confirmed","vendors","plans","orders","notices","members","approved","blocked","codes","crews","crewreq","crewblocked"];
+var RESET_COLLS=["days","confirmed","vendors","plans","orders","notices","members","approved","blocked","codes","crews","crewreq","crewblocked","seen"];
 var ui={tab:"cal",month:null,sel:null,vsel:null,only:false,confirm:"",msg:"",msgKind:""};
 
 function clone(x){return JSON.parse(JSON.stringify(x))}
@@ -535,6 +535,13 @@ function watchVid(){
       if(VSUB.retry<5){VSUB.retry++;setTimeout(function(){VSUB.vid=null;watchVid()},2000)}}));
   });
 }
+/* 開いたとき(と画面に戻ったとき)に、最終ログインの時刻を残す。5分以内の繰り返しは書かない。失敗しても画面には出さない */
+var SEEN_AT=0;
+function markSeen(){
+  if(ENV.mode!=="db"||ENV.preview||!ENV.uid||Date.now()-SEEN_AT<300000)return;SEEN_AT=Date.now();
+  try{var pr=ENV.db.doc("seen/"+ENV.uid).patch({at:nowIso(),email:String(ENV.email||"").slice(0,200),kind:ENV.admin?"admin":ENV.crew?"crew":"vendor"});if(pr&&pr.catch)pr.catch(function(){})}catch(e){}
+}
+function seenText(id){var s=D.seen[id];return '<span class="hint seen" style="margin:0">最終ログイン '+(s&&s.at?esc(fmtAt(s.at)):'記録なし')+'</span>'}
 function subscribe(){
   var err=function(e){ui.msg="データを読み込めませんでした("+((e&&e.code)||"error")+")"+(e&&e.code==="permission-denied"?"。Firebaseのセキュリティルールに、このアカウントのメールアドレスが管理者として入っているか確認してください。":"");ui.msgKind="bad";render(true)};
   var colls=["days","vendors","plans","members","approved","blocked","confirmed","crews","crewreq","crewblocked","orders","notices"];
@@ -542,6 +549,10 @@ function subscribe(){
     if(!ENV.admin&&!ENV.crew&&VCOLLS.indexOf(c)>=0)return;
     ENV.db.collection(c).onSnapshot(function(snap){var m={};snap.docs.forEach(function(d){m[d.id]=c==="confirmed"?hydrate(d.data()):d.data()});D[c]=m;LOADED[c]=true;ui.synced=new Date();render(true)},err);
   });
+  /* 最終ログイン(seen/{本人})は管理者だけが読む。ルールを貼る前でも画面を止めないよう、読めなくても黙って続ける */
+  if(ENV.admin)ENV.db.collection("seen").onSnapshot(function(snap){var m={};snap.docs.forEach(function(d){m[d.id]=d.data()});D.seen=m;render(true)},function(){});
+  markSeen();
+  document.addEventListener("visibilitychange",function(){if(document.visibilityState==="visible")markSeen()});
   ENV.db.doc("config/main").onSnapshot(function(s){D.config=s.exists?s.data():{};LOADED.config=true;ui.synced=new Date();render(true)},err);
 }
 
@@ -1382,7 +1393,7 @@ function renderMem(C){
     h+='<div class="ccard" style="margin-bottom:10px"><div class="cc-h"><input type="text" id="co-'+esc(v)+'" data-f="company" data-id="'+esc(v)+'" value="'+esc(vname(v))+'" aria-label="会社名" style="font-weight:700;max-width:100%"></div>'
       +'<div class="cc-r"><span>参加コード</span><div>'+(code?'<b style="letter-spacing:.15em">'+esc(code)+'</b> ':'<span class="hint" style="margin:0">なし</span> ')+'<button class="btn sm" data-act="mkcode" data-vid="'+esc(v)+'">'+(code?'作り直す':'作る')+'</button></div></div>'
       +'<div class="cc-r"><span>メンバー</span><div>'+groups[v].map(function(id){var a=D.approved[id],m=D.members[id]||{};
-        return '<div style="margin:0 0 6px"><b>'+esc(a.name||m.contact||"(名前なし)")+'</b> <span class="hint" style="margin:0">'+esc(a.email||"")+'</span> <button class="btn sm danger" data-act="unapprove" data-id="'+esc(id)+'">'+(ui.confirm==="un-"+id?'もう一度押すと停止':'この人を停止')+'</button></div>'}).join("")+'</div></div>';
+        return '<div style="margin:0 0 6px"><b>'+esc(a.name||m.contact||"(名前なし)")+'</b> <span class="hint" style="margin:0">'+esc(a.email||"")+'</span> '+seenText(id)+' <button class="btn sm danger" data-act="unapprove" data-id="'+esc(id)+'">'+(ui.confirm==="un-"+id?'もう一度押すと停止':'この人を停止')+'</button></div>'}).join("")+'</div></div>';
     var others=gids.filter(function(o){return o!==v});
     if(others.length)h+='<div class="cc-r"><span>まとめる</span><div class="mvbox" style="flex-wrap:wrap"><select id="mg-'+esc(v)+'" data-keep aria-label="まとめ先の会社">'+others.map(function(o){return '<option value="'+esc(o)+'">'+esc(vname(o))+'</option>'}).join("")+'</select><button class="btn sm" data-act="merge" data-vid="'+esc(v)+'">'+(ui.confirm==="mg-"+v?'もう一度押すと'+esc(vname(v))+'を移す':'この会社を左の会社にまとめる')+'</button></div></div>';
     h+='</div>'});
@@ -1394,9 +1405,14 @@ function renderMem(C){
     h+='</tbody></table></div>'}
   h+='<h3 style="margin-top:16px">利用中の盛替え業者('+cw.length+')</h3>';
   if(!cw.length)h+='<p class="empty">まだいません。</p>';
-  else{h+='<div class="tablewrap"><table><thead><tr><th class="l">会社名</th><th class="l">メールアドレス</th><th></th></tr></thead><tbody>';
-    cw.forEach(function(id){var w=D.crews[id];h+='<tr><td class="l vn">'+esc(w.company)+'</td><td class="l">'+esc(w.email||"")+'</td><td><button class="btn sm danger" data-act="crewoff" data-id="'+esc(id)+'">'+(ui.confirm==="co-"+id?'もう一度押すと停止':'利用を停止')+'</button></td></tr>'});
+  else{h+='<div class="tablewrap"><table><thead><tr><th class="l">会社名</th><th class="l">メールアドレス</th><th class="l">最終ログイン</th><th></th></tr></thead><tbody>';
+    cw.forEach(function(id){var w=D.crews[id],sw=D.seen[id];h+='<tr><td class="l vn">'+esc(w.company)+(w.name?' '+esc(w.name):'')+'</td><td class="l">'+esc(w.email||"")+'</td><td class="l">'+(sw&&sw.at?esc(fmtAt(sw.at)):'記録なし')+'</td><td><button class="btn sm danger" data-act="crewoff" data-id="'+esc(id)+'">'+(ui.confirm==="co-"+id?'もう一度押すと停止':'利用を停止')+'</button></td></tr>'});
     h+='</tbody></table></div>'}
+  var adm=(window.NR_CONFIG&&NR_CONFIG.adminEmails)||[],seenBy={};
+  Object.keys(D.seen).forEach(function(k){var s=D.seen[k];if(s&&s.kind==="admin"&&s.email){var e=s.email.toLowerCase();if(!seenBy[e]||seenBy[e]<s.at)seenBy[e]=s.at}});
+  h+='<h2 style="margin:22px 0 6px">管理者</h2><div class="tablewrap"><table><thead><tr><th class="l">メールアドレス</th><th class="l">最終ログイン</th></tr></thead><tbody>'
+    +adm.map(function(e){var at=seenBy[String(e).toLowerCase()];return '<tr><td class="l">'+esc(e)+'</td><td class="l">'+(at?esc(fmtAt(at)):'記録なし')+'</td></tr>'}).join("")+'</tbody></table></div>'
+    +'<p class="hint" style="margin:6px 0 0">最終ログインは、アプリを開いた(または画面に戻った)時刻です。この機能を入れる前のログインは「記録なし」になります。</p>';
   return h+'<p class="hint" style="margin-top:12px">管理者を増やすときは、Firebaseのセキュリティルールと設定(NR_CONFIG.adminEmails)の両方にメールアドレスを追加します。</p></section>';
 }
 function renderSet(C){
@@ -1753,7 +1769,7 @@ function onClick(ev){
   else if(act==="resetall"){
     var rw=document.getElementById("resetword");
     if(!rw||rw.value.trim()!=="リセット"){ui.msg="消すときは、確認のため入力欄に「リセット」と入れてから押してください。";ui.msgKind="bad"}
-    else if(RESET_COLLS.some(function(c){return c!=="codes"&&!LOADED[c]})){ui.msg="まだデータを読み込み中です。少し待ってからもう一度押してください。";ui.msgKind="bad"}
+    else if(RESET_COLLS.some(function(c){return c!=="codes"&&c!=="seen"&&!LOADED[c]})){ui.msg="まだデータを読み込み中です。少し待ってからもう一度押してください。";ui.msgKind="bad"}
     else{var rn=0;Object.keys(D.vendors).forEach(function(k){var cd=D.vendors[k]&&D.vendors[k].code;if(cd&&!D.codes[cd]){remove("codes",cd)}});RESET_COLLS.forEach(function(c){Object.keys(D[c]||{}).forEach(function(k){remove(c,k);rn++})});
       rw.value="";ui.sel=today();ui.vsel=null;ui.msg="全データを消しました("+rn+"件)。設定と管理者は残っています。";ui.msgKind="ok"}
   }
