@@ -136,7 +136,7 @@ td.vn{white-space:normal;min-width:84px}
 .cday{border:1px solid var(--line);border-radius:9px;padding:10px;margin-top:12px}
 .cday h3{margin-bottom:6px}
 .mvbox{display:flex;flex-wrap:wrap;gap:4px;align-items:center}
-.mvbox select{max-width:130px}
+.mvbox select{max-width:130px}.mvbox select[data-role=d]{max-width:12em}
 .mvbox input[type=number]{width:54px}
 .reg{max-width:520px;display:flex;flex-direction:column;gap:12px}
 .qrbox{display:flex;flex-wrap:wrap;gap:16px;align-items:center}
@@ -1239,6 +1239,43 @@ function renderDay(C){
   if(cf)h+=notesView(k,true)+troubleForm(k)+noticeStatus(k)+histView(k);
   return h+'</section>';
 }
+/* ---- 不停止階の業者の一覧 ----
+   回収日のエレベーターが停まらず、まだ配分に入っていない階(と、集積指示を出した階)を、日をまたいで一覧にする。
+   ここから「前日までに、どの階のどのEV前へ集積するか」を日ごとに指示できる */
+function stageRows(C){
+  var rows={},order=[];
+  function row(vid,floor){var k=vid+"|"+floor;if(!rows[k]){rows[k]={vid:vid,floor:floor,days:[],moves:[],rem:0,sc:null,noEv:false};order.push(k)}return rows[k]}
+  C.sim.dates.forEach(function(d){if(d<C.t)return;var s=C.sim.byDate[d];if(!s||s.fixed)return;
+    (s.excl||[]).forEach(function(x){var r=row(x.vid,x.floor);r.days.push(d);r.rem=x.rem;r.sc=x.sc})});
+  Object.keys(D.days).sort().forEach(function(d){if(d<C.t||D.confirmed[d])return;var mv=D.days[d].moves||{};
+    Object.keys(mv).forEach(function(key){var q=key.split("|"),r=row(q[0],Number(q[1]));r.moves.push({d:d,key:key,ev:nrNum(mv[key].ev),to:nrNum(mv[key].to)})})});
+  C.rank.list.forEach(function(x){if(x.noEv){var r=row(x.vid,x.floor);r.rem=x.rem;r.sc=r.sc||x.sc;r.noEv=true}});
+  return order.map(function(k){return rows[k]}).sort(function(a,b){return ((b.sc&&b.sc.crit)?1:0)-((a.sc&&a.sc.crit)?1:0)||((b.sc?b.sc.total:0)-(a.sc?a.sc.total:0))||a.floor-b.floor});
+}
+/* 指示がまだない行の数(タブの数字) */
+function stageTodo(C){return stageRows(C).filter(function(r){return r.days.length&&!r.moves.length}).length}
+function renderStageTab(C){
+  var rows=stageRows(C),cfg=C.cfg,h='<section class="panel"><div class="mhead"><h2>不停止階の業者</h2></div>'
+   +'<p class="hint" style="margin:0 0 10px">回収日のエレベーターが停まらない階の希望です。「設定」で決めた不停止階や、EVの停止範囲の外の階が当たります。逼迫度が高い階は、前日までにどの階のどのEV前へ集積しておくか指示すると、その日の配分に入ります。集積するEVは、すべてのEVから選べます。</p>';
+  var open=C.sim.dates.filter(function(d){return d>=C.t&&C.sim.byDate[d]&&!C.sim.byDate[d].fixed});
+  if(!rows.length)return h+'<p class="empty">不停止階の希望はありません。</p></section>';
+  h+='<div class="tablewrap"><table class="rtable"><thead><tr><th class="l">業者</th><th>階</th><th>希望</th><th>逼迫度</th><th class="l">停まるEV</th><th class="l">集積指示(前日まで)</th></tr></thead><tbody>';
+  rows.forEach(function(x,i){
+    var stops=evList().filter(function(e){return nrStops(x.floor,e,cfg)});
+    var e0=stops[0]||1,near=x.floor;
+    if(!stops.length){e0=1;near=null;evList().forEach(function(e){var n=nrNearest(x.floor,e,cfg);if(n!==null&&(near===null||Math.abs(n-x.floor)<Math.abs(near-x.floor))){near=n;e0=e}})}
+    var cur=x.moves.map(function(m){return '<div style="margin:0 0 4px">'+esc(fmtD(m.d))+' → <b>'+evLabel(m.ev,m.to)+'</b> <button class="btn sm danger" data-act="unstage2" data-d="'+m.d+'" data-key="'+esc(x.vid+"|"+x.floor)+'">外す</button></div>'}).join("");
+    var form=open.length?'<div class="mvbox" data-vid="'+esc(x.vid)+'" data-fl="'+x.floor+'"><select id="sg2-d-'+i+'" data-keep data-role="d" aria-label="集積する回収日">'+open.map(function(d){return '<option value="'+d+'"'+(d===(x.days[0]||open[0])?' selected':'')+'>'+esc(fmtD(d))+'に回収</option>'}).join("")+'</select>'
+      +'<select id="sg2-e-'+i+'" data-keep data-role="ev" aria-label="集積するエレベーター">'+evList().map(function(e){return '<option value="'+e+'"'+(e===e0?' selected':'')+'>EV'+e+'</option>'}).join("")+'</select>'
+      +'<input type="number" min="'+LIM.fmin+'" max="'+LIM.fmax+'" id="sg2-t-'+i+'" data-keep data-role="to" value="'+(near||"")+'" aria-label="集積する階"><span class="hint" style="margin:0">階</span><button class="btn sm primary" data-act="stage2">指示</button></div>'
+      :'<span class="hint" style="margin:0">指示できる回収日がありません(回収日を作るか、確定を取り消してください)。</span>';
+    h+='<tr><td class="l vn"><i class="chip" style="background:'+vcolor(x.vid)+'"></i>'+esc(vname(x.vid))+'</td><td>'+x.floor+'階</td><td>'+x.rem+'</td>'
+     +'<td>'+(x.sc?x.sc.pr.toFixed(0)+'%'+(x.sc.crit?' <span class="st bad">余力なし</span>':''):'—')+'</td>'
+     +'<td class="l">'+(stops.length?stops.map(function(e){return 'EV'+e}).join("・"):'<span class="st bad">どのEVも停まりません</span>')+'</td>'
+     +'<td class="l" style="white-space:normal;min-width:240px">'+(cur||'')+form+'</td></tr>';
+  });
+  return h+'</tbody></table></div><p class="hint" style="margin:8px 0 0">指示を出した日の画面にも同じ指示が出ます(カレンダーでその日を選ぶ)。指示のある階は、前日のお知らせに「今日中に移動」と出ます。</p></section>';
+}
 /* 指定EVが停まらない階の希望と、前日までの集積指示 */
 function renderStage(C,k,s,elev){
   if(!elev.length)return "";
@@ -1722,7 +1759,7 @@ function render(remote){
   if(autoConfirm(C))C=compute();
   if(ENV.admin){
     var pc=Object.keys(D.members).filter(function(id){return !D.approved[id]}).length;
-    tabs=[["cal","カレンダー"],["pri","優先順位"],["cnf","確定と再振り分け"],["vin","業者入力"],["ord","追加注文"+(newOrders()?'<span class="cnt">'+newOrders()+'</span>':"")],["rec","追加と戻し"],["rep","集計・棚卸し"],["mem","登録"+(pc?'<span class="cnt">'+pc+'</span>':"")],["set","設定"]];
+    tabs=[["cal","カレンダー"],["pri","優先順位"],["stg","不停止階"+(stageTodo(C)?'<span class="cnt">'+stageTodo(C)+'</span>':"")],["cnf","確定と再振り分け"],["vin","業者入力"],["ord","追加注文"+(newOrders()?'<span class="cnt">'+newOrders()+'</span>':"")],["rec","追加と戻し"],["rep","集計・棚卸し"],["mem","登録"+(pc?'<span class="cnt">'+pc+'</span>':"")],["set","設定"]];
   }else if(ENV.crew){var crewOk=!!D.crews[ENV.uid];/* 揚重(盛替え)業者は、搬出予定を見て、搬出の確認と戻しの✅を付けるだけ */
     tabs=crewOk?[["cal","搬出予定"],["ret","戻し一覧"],["ord","追加注文"]]:[["creg","登録"]];
     if(!crewOk)ui.tab="creg";else if(ui.tab!=="cal"&&ui.tab!=="ret"&&ui.tab!=="ord")ui.tab="cal";
@@ -1743,7 +1780,7 @@ function render(remote){
   if(ENV.admin&&!Object.keys(D.vendors).length&&!Object.keys(D.days).length&&!Object.keys(D.members).length)h+='<div class="note"><span>まだデータがありません。サンプルを入れて動きを確認できます。</span><button class="btn sm" data-act="sampleon">サンプルを入れる</button></div>';
   if(ENV.mode==="noid")h+='';
   else if(ENV.admin){
-    h+=ui.tab==="cal"?renderCal(C):ui.tab==="pri"?renderPriority(C):ui.tab==="cnf"?renderConfirmed(C):ui.tab==="rec"?renderRec(C):ui.tab==="ord"?renderOrders(C):ui.tab==="rep"?renderReport(C):ui.tab==="mem"?renderMem(C):ui.tab==="set"?renderSet(C):renderVin(C);
+    h+=ui.tab==="cal"?renderCal(C):ui.tab==="pri"?renderPriority(C):ui.tab==="stg"?renderStageTab(C):ui.tab==="cnf"?renderConfirmed(C):ui.tab==="rec"?renderRec(C):ui.tab==="ord"?renderOrders(C):ui.tab==="rep"?renderReport(C):ui.tab==="mem"?renderMem(C):ui.tab==="set"?renderSet(C):renderVin(C);
   }else if(ENV.crew)h+=ui.tab==="creg"?renderCrewReg():ui.tab==="ret"?renderRet(C):ui.tab==="ord"?renderOrders(C):renderCal(C);
   else h+=!vendorOk?renderReg():(ui.tab==="cal"?renderCal(C):renderVin(C));
   var box=document.createElement("div");box.innerHTML=h;
@@ -1864,6 +1901,13 @@ function onClick(ev){
     else if(!nrStops(st,se,nrCfg(D.config))){ui.msg="EV"+se+"は"+st+"階に停まりません。停まる階を指定してください。";ui.msgKind="bad"}
     else mutDay(ui.sel,function(d){d.moves=d.moves||{};d.moves[sv+"|"+sf]={ev:se,to:st}});
   }
+  else if(act==="stage2"){
+    var sb2=b.closest(".mvbox"),sv2=sb2.getAttribute("data-vid"),sf2=sb2.getAttribute("data-fl"),sd2=sb2.querySelector('[data-role="d"]').value,se2=nrNum(sb2.querySelector('[data-role="ev"]').value),st2=Math.min(LIM.fmax,nrNum(sb2.querySelector('[data-role="to"]').value));
+    if(!sd2||!se2||!st2){ui.msg="回収日・集積するエレベーター・階を入力してください。";ui.msgKind="bad"}
+    else if(!nrStops(st2,se2,nrCfg(D.config))){ui.msg="EV"+se2+"は"+st2+"階に停まりません。停まる階を指定してください。";ui.msgKind="bad"}
+    else{mutDay(sd2,function(d){d.moves=d.moves||{};d.moves[sv2+"|"+sf2]={ev:se2,to:st2}});ui.msg=fmtD(sd2)+"の回収に向けて、"+vname(sv2)+"の"+sf2+"階を、前日までにEV"+se2+"前の"+st2+"階へ集積するよう指示しました。";ui.msgKind="ok"}
+  }
+  else if(act==="unstage2"){var ud=b.getAttribute("data-d"),uk2=b.getAttribute("data-key");mutDay(ud,function(d){if(d.moves){delete d.moves[uk2];if(!Object.keys(d.moves).length)delete d.moves}})}
   else if(act==="unstage"){var uk=b.getAttribute("data-key");mutDay(ui.sel,function(d){if(d.moves){delete d.moves[uk];if(!Object.keys(d.moves).length)delete d.moves}})}
   else if(act==="recadd"){
     var rd=document.getElementById("rec-d").value,rv=document.getElementById("rec-v").value,rf=Math.min(LIM.fmax,nrNum(document.getElementById("rec-f").value)),ru=nrNum(document.getElementById("rec-u").value),re=nrNum(document.getElementById("rec-e").value)||null,rm=document.getElementById("rec-m").value.trim().slice(0,100);
