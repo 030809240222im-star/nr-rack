@@ -71,6 +71,8 @@ button:disabled{opacity:.45;cursor:default}
 .cell.sel{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent)}
 .cell .dn{font-weight:700;font-size:13px;line-height:1.2;display:flex;justify-content:space-between;gap:4px}
 .cell .dn i{font-style:normal;font-size:10.5px;color:var(--ok)}
+.cell .dn em{font-style:normal;font-size:10px;font-weight:700;color:var(--bad);margin-right:auto;margin-left:3px}
+.cell.holi .dn b{color:var(--bad)}.cell.mine .dn em,.cell.now .dn em,.cell.mine.holi .dn b,.cell.now.holi .dn b{color:inherit}
 .cell.today .dn b{background:var(--accent);color:var(--accent-fg);border-radius:10px;padding:0 6px}
 .cell .cap{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
 .cell .evs{font-size:10.5px;font-weight:700;color:var(--accent);white-space:nowrap}
@@ -310,6 +312,43 @@ function nrFmtFloors(a){
   while(i<a.length){var j=i;while(j+1<a.length&&a[j+1]===a[j]+1)j++;out.push(j>i?a[i]+"〜"+a[j]:""+a[i]);i=j+1}
   return out.join("、")+"階";
 }
+/* 日本の祝日(2022年以降の決まり): 固定日・第n月曜・春分/秋分・振替休日・国民の休日。{日付:名前} */
+var NR_HOLC={};
+function nrJpHol(y){
+  if(NR_HOLC[y])return NR_HOLC[y];
+  var m={};function p2(n){return (n<10?"0":"")+n}
+  function put(mo,d,n){m[y+"-"+p2(mo)+"-"+p2(d)]=n}
+  function mon(mo,k){var f=new Date(y,mo-1,1,12).getDay();return 1+(8-f)%7+(k-1)*7}
+  var q=y-1980,adj=0.242194*q-Math.floor(q/4);
+  put(1,1,"元日");put(1,mon(1,2),"成人の日");put(2,11,"建国記念の日");put(2,23,"天皇誕生日");
+  put(3,Math.floor(20.8431+adj),"春分の日");put(4,29,"昭和の日");put(5,3,"憲法記念日");put(5,4,"みどりの日");put(5,5,"こどもの日");
+  put(7,mon(7,3),"海の日");put(8,11,"山の日");put(9,mon(9,3),"敬老の日");put(9,Math.floor(23.2488+adj),"秋分の日");
+  put(10,mon(10,2),"スポーツの日");put(11,3,"文化の日");put(11,23,"勤労感謝の日");
+  /* 日曜と重なったら、次の祝日でない日が振替休日 */
+  Object.keys(m).sort().forEach(function(k){
+    if(nrPd(k).getDay()!==0)return;
+    var t=k;do{t=nrDs(new Date(nrPd(t).getTime()+864e5))}while(m[t]);m[t]="振替休日"});
+  /* 祝日にはさまれた平日(日曜以外)は国民の休日 */
+  for(var d=new Date(y,0,2,12);d.getFullYear()===y;d=new Date(d.getTime()+864e5)){
+    var k=nrDs(d);if(m[k]||d.getDay()===0)continue;
+    if(m[nrDs(new Date(d.getTime()-864e5))]&&m[nrDs(new Date(d.getTime()+864e5))])m[k]="国民の休日"}
+  return NR_HOLC[y]=m;
+}
+/* 休日かどうか。cfg.holx {日付:名前|0} で、会社の休日(名前)を足したり、祝日でも回収する日(0)にできる */
+function nrHolName(d,cfg){
+  var x=cfg&&cfg.holx;
+  if(x&&x[d]!==undefined)return x[d]?(typeof x[d]==="string"?x[d]:"休日"):"";
+  return nrJpHol(Number(d.slice(0,4)))[d]||"";
+}
+/* その日を含む週(月曜はじまり)の月曜の日付 */
+function nrWeek(d){var p=nrPd(d);return nrDs(new Date(p.getTime()-((p.getDay()+6)%7)*864e5))}
+/* 休日がある週か。業者ごとの回収曜日に使っている曜日に休日が当たる週だけを数える */
+function nrHolWeek(wk,cfg){
+  var used={};Object.keys(cfg.wd).forEach(function(v){cfg.wd[v].forEach(function(w){used[w]=1})});
+  if(!Object.keys(used).length)return false;
+  for(var i=0;i<7;i++){var t=nrDs(new Date(nrPd(wk).getTime()+i*864e5));if(used[nrPd(t).getDay()]&&nrHolName(t,cfg))return true}
+  return false;
+}
 function nrCfg(c){
   c=c||{};
   var o={perTruck:nrNum(c.perTruck)||NR_DEF.perTruck,wP:nrW(c.wP,NR_DEF.wP),wW:nrW(c.wW,NR_DEF.wW),wH:nrW(c.wH,NR_DEF.wH),crit:Math.min(100,Math.max(1,nrW(c.crit,NR_DEF.crit)||NR_DEF.crit)),auto:c.auto==null||c.auto===""?NR_DEF.auto:Math.min(14,nrNum(c.auto)),ev:{},ns:{},nsStr:{}};
@@ -321,6 +360,8 @@ function nrCfg(c){
     o.nsStr[e]=(c.ns&&c.ns[e])||"";o.ns[e]=nrParseFloors(o.nsStr[e]);
   }
   /* 業者ごとの回収曜日 {業者:[0=日〜6=土]}。指定のない業者はどの曜日でも回収する */
+  o.eq=c.eq==null?true:!!c.eq;
+  o.holx={};Object.keys(c.holx||{}).forEach(function(d){if(/^\d{4}-\d{2}-\d{2}$/.test(d))o.holx[d]=c.holx[d]});
   o.wd={};Object.keys(c.wd||{}).forEach(function(v){var a=(c.wd[v]||[]).filter(function(x){return x>=0&&x<=6});if(a.length)o.wd[v]=a});
   return o;
 }
@@ -410,12 +451,15 @@ function nrSimulate(vendors,days,cfg,startStr,confirmed){
   confirmed=confirmed||{};
   items.forEach(function(it){idx[it.vid+"|"+it.floor]=it});
   var dates=Object.keys(days||{}).filter(function(d){return nrNum(days[d].cap)>0&&(d>=startStr||confirmed[d])}).sort();
+  var wu={},hw={};/* wu: 週ごと・業者ごとに、すでに回収した台数(祝日の週の等分に使う) */
   dates.forEach(function(d){
     var day=days[d],elevs=(day.elev||[]).slice().sort(),moves=day.moves||{},cap=nrNum(day.cap),res={cap:cap,left:cap,elev:elevs,asg:[],excluded:0,excl:[],fixed:false},cf=confirmed[d];
+    var wk=nrWeek(d);if(hw[wk]===undefined)hw[wk]=!!cfg.eq&&nrHolWeek(wk,cfg);
+    var eqWeek=hw[wk];wu[wk]=wu[wk]||{};res.eq=eqWeek;
     if(cf){
       res.fixed=true;var sum=0;
       (cf.rows||[]).forEach(function(r,i){
-        var u=nrNum(r.units);if(u<=0)return;sum+=u;
+        var u=nrNum(r.units);if(u<=0)return;sum+=u;wu[wk][r.vid]=(wu[wk][r.vid]||0)+u;
         res.asg.push({vid:r.vid,floor:r.floor,units:u,ev:r.ev||null,to:r.to||null,ret:r.ret||null,rets:r.rets||null,rank:res.asg.length+1,sc:null});
         var key=r.vid+"|"+r.floor;if(!first[key])first[key]=d;
         if(d>=startStr&&!r.back){var it=idx[key];if(it){it.rem=Math.max(0,it.rem-u);it.held=Math.max(0,it.held-u);if(it.pl===undefined)it.pl=it.p?(it.pq||1e9):0;it.pl=Math.max(0,it.pl-u);it.out=(it.out||0)+u}}
@@ -440,15 +484,31 @@ function nrSimulate(vendors,days,cfg,startStr,confirmed){
     var mine=cand.filter(function(c){return nrOnDay(c.vid,d,cfg)}),other=cand.filter(function(c){return !nrOnDay(c.vid,d,cfg)});
     mine.sort(nrCmp);other.sort(nrUrgCmp);res.excl.sort(nrCmp);
     var rowOf={};
-    nrPrio(mine).concat(nrPrio(other)).forEach(function(c){
-      if(left<=0)return;
-      var take=Math.min(c.q,c.it.rem,left);if(take<=0)return;
-      c.it.rem-=take;c.it.held-=take;left-=take;if(c.p)c.it.pl-=take;
+    function give(c,take){
+      c.it.rem-=take;c.it.held-=take;left-=take;c.q-=take;if(c.p)c.it.pl-=take;
+      wu[wk][c.vid]=(wu[wk][c.vid]||0)+take;
       var key=c.vid+"|"+c.floor;
       if(rowOf[key])rowOf[key].units+=take;
-      else res.asg.push(rowOf[key]={vid:c.vid,floor:c.floor,units:take,ev:c.ev,to:c.to,ret:null,rets:null,rank:res.asg.length+1,sc:c.sc,extra:!nrOnDay(c.vid,d,cfg),p:c.p||0});
+      else res.asg.push(rowOf[key]={vid:c.vid,floor:c.floor,units:take,ev:c.ev,to:c.to,ret:null,rets:null,rank:res.asg.length+1,sc:c.sc,extra:!eqWeek&&!nrOnDay(c.vid,d,cfg),p:c.p||0});
       var rr=nrRets(c.it.src,c.floor,rowOf[key].units,c.it.out||0);rowOf[key].ret=typeof rr==="number"?rr:null;rowOf[key].rets=Array.isArray(rr)?rr:null;
       if(!first[key])first[key]=d;
+    }
+    if(eqWeek){
+      /* 祝日がある週は、曜日の指定をやめて、その週にこれまで回収した台数がいちばん少ない業者から1台ずつ割り当てる(全業者がほぼ同じ台数になる) */
+      var by={},vids=[];
+      nrPrio(cand.slice().sort(nrCmp)).forEach(function(c){if(!by[c.vid]){by[c.vid]=[];vids.push(c.vid)}by[c.vid].push(c)});
+      while(left>0){
+        var bv=null;
+        vids.forEach(function(v){var l=by[v];while(l.length&&(l[0].q<=0||l[0].it.rem<=0))l.shift();if(!l.length)return;
+          var a=wu[wk][v]||0,b=bv===null?0:(wu[wk][bv]||0);
+          if(bv===null||a<b||(a===b&&nrCmp(l[0],by[bv][0])<0))bv=v});
+        if(bv===null)break;
+        give(by[bv][0],1);
+      }
+    }else nrPrio(mine).concat(nrPrio(other)).forEach(function(c){
+      if(left<=0)return;
+      var take=Math.min(c.q,c.it.rem,left);if(take<=0)return;
+      give(c,take);
     });
     /* この日に出した台数を覚えておく(次の回収日の戻し先は、その続きから割り振る) */
     Object.keys(rowOf).forEach(function(k){var it=idx[k];if(it)it.out=(it.out||0)+rowOf[k].units});
@@ -853,7 +913,8 @@ function renderCal(C){
     var cls="cell";
     if(!cap)cls+=" off";else cls+=k===C.t?" now":(s&&s.left===0&&C.sim.left.length&&!cf)?" warn":" ok";
     if(k===ui.sel)cls+=" sel";if(k===C.t)cls+=" today";
-    h+='<button class="'+cls+'" data-act="sel" data-date="'+k+'" aria-label="'+(m+1)+'月'+d+'日"><span class="dn"><b>'+d+'</b>'+(cf?'<i>確定</i>':'')+'</span>';
+    var hn=nrHolName(k,C.cfg);if(hn)cls+=" holi";
+    h+='<button class="'+cls+'" data-act="sel" data-date="'+k+'" aria-label="'+(m+1)+'月'+d+'日'+(hn?' '+hn:'')+'"><span class="dn"><b>'+d+'</b>'+(hn?'<em title="'+esc(hn)+'">祝</em>':'')+(cf?'<i>確定</i>':'')+'</span>';
     if(!cap)h+='<span class="cap">—</span>';
     else{var rows=cf?(cf.rows||[]).filter(function(r){return nrNum(r.units)>0}):[],u=cf?rowsTotal(cf,-1):(ENV.admin&&s?cap-s.left:0);
       h+='<span class="cap">'+(cf||ENV.admin?u+'/':'')+cap+'台'+(doc.tf?' '+esc(doc.tf):'')+'</span><span class="evs'+((doc.elev&&doc.elev.length)?'':' none')+'">'+(doc.elev&&doc.elev.length?doc.elev.map(function(e){return "EV"+e}).join("·"):"EV未指定")+'</span>';
@@ -1027,8 +1088,9 @@ function vCell(k,m,d,doc,cap,cf,C){
   var my=cf?(cf.rows||[]).filter(function(r){return r.vid===ENV.vid&&nrNum(r.units)>0}):[],cls="cell",lab;
   if(!cap){cls+=" off";lab="回収なし"}else if(my.length){cls+=k===C.t?" now":" mine";lab=k===C.t?"本日の搬出日":"自社の搬出日"}else{cls+=" can";lab="搬出可能日"}
   if(k<C.t)cls+=" past";if(k===ui.sel)cls+=" sel";if(k===C.t)cls+=" today";
+  var hn=nrHolName(k,C.cfg);if(hn)cls+=" holi";
   var mu=0,allp=my.length>0,mv=false;my.forEach(function(r){mu+=nrNum(r.units);if(!isPlaced(k,r))allp=false;if(r.to)mv=true});
-  var h='<button class="'+cls+'" data-act="sel" data-date="'+k+'" aria-label="'+(m+1)+'月'+d+'日 '+lab+'"><span class="dn"><b>'+d+'</b>'+(allp?'<i>✅</i>':'')+'</span>';
+  var h='<button class="'+cls+'" data-act="sel" data-date="'+k+'" aria-label="'+(m+1)+'月'+d+'日'+(hn?' '+hn:'')+' '+lab+'"><span class="dn"><b>'+d+'</b>'+(hn?'<em title="'+esc(hn)+'">祝</em>':'')+(allp?'<i>✅</i>':'')+'</span>';
   if(!cap)return h+'<span class="cap">—</span></button>';
   if(my.length)h+='<span class="tag">'+mu+'台</span>'+(mv?'<span class="tag2">前日移動</span>':'');
   else h+='<span class="tag">搬出可</span>';
@@ -1057,6 +1119,9 @@ function renderDay(C){
     return h+'<p class="empty">この日は回収の設定がありません。</p><button class="btn primary" data-act="dayon">この日を回収日にする</button></section>';
   }
   var trucks=Math.ceil(cap/pt),s=C.sim.byDate[k],asg=s?s.asg:[],used=s?cap-s.left:0,elev=doc.elev||[];
+  var hnm=nrHolName(k,C.cfg);
+  if(hnm)h+='<div class="note" style="margin:0 0 8px"><span><b>'+esc(hnm)+'</b>です。'+(cap?'この日は回収日として設定されています。':'')+'</span></div>';
+  if(s&&s.eq&&!cf)h+='<div class="note pv" style="margin:0 0 8px;display:block"><b>祝日がある週のため、この週は曜日の指定をやめて全業者に等分して割り振っています。</b>(設定タブの「祝日の扱い」で変えられます)</div>';
   h+='<div class="field"><span>回収車輌</span><button class="btn sm" data-act="tminus" aria-label="車輌を減らす">−</button><b>'+trucks+'台</b>'
    +'<button class="btn sm" data-act="tplus" aria-label="車輌を増やす">＋</button><span>(1台につきスクラップ台車'+pt+'台まで)</span></div>'
    +'<div class="field"><span>回収できるスクラップ台車</span><input type="number" min="0" id="cap" data-f="cap" value="'+cap+'" aria-label="回収できるスクラップ台車の台数"><span>台</span></div>'
@@ -1181,6 +1246,25 @@ function renderWd(C){
     for(var w=0;w<7;w++)h+='<td><input type="checkbox" data-f="wd" data-vid="'+esc(v)+'" data-w="'+w+'"'+(a.indexOf(w)>=0?' checked':'')+' aria-label="'+esc(vname(v))+' '+WD[w]+'曜日"></td>';
     h+='</tr>'});
   return h+'</tbody></table></div></section>';
+}
+/* 祝日の扱い: 祝日がある週は全業者に等分する。祝日の一覧は「回収する」にも「休み」にも変えられ、会社の休日も足せる */
+function renderHol(C){
+  var c=C.cfg,t=C.t,end=nrDs(new Date(nrPd(t).getTime()+400*864e5)),list={};
+  [Number(t.slice(0,4)),Number(t.slice(0,4))+1,Number(t.slice(0,4))+2].forEach(function(y){var m=nrJpHol(y);Object.keys(m).forEach(function(d){list[d]=m[d]})});
+  Object.keys(c.holx).forEach(function(d){if(c.holx[d])list[d]=typeof c.holx[d]==="string"?c.holx[d]:"休日"});
+  var ds=Object.keys(list).filter(function(d){return d>=t&&d<=end}).sort();
+  var h='<section class="panel"><h2 style="margin-bottom:8px">祝日の扱い</h2>'
+   +'<label class="chk" style="margin-bottom:6px"><input type="checkbox" id="s-eq" data-f="eq"'+(c.eq?' checked':'')+'>祝日がある週は、曜日の指定をやめて全業者に等分する</label>'
+   +'<p class="hint" style="margin:0 0 10px">業者ごとの回収曜日に使っている曜日に祝日(休日)が当たる週は、その週の回収日を、その週にこれまで回収した台数が少ない業者から順に割り当てます。回収日を作った順に、全業者がほぼ同じ台数になるまで1台ずつ回します(希望が少ない業者は、その分を満たしたあと、残りをほかの業者で分けます)。祝日でない週は、これまでどおり曜日の指定で回収します。</p>'
+   +'<h3 style="margin:10px 0 4px">これから1年ほどの休日</h3>';
+  if(!ds.length)h+='<p class="empty">ありません。</p>';
+  else{h+='<div class="tablewrap"><table><thead><tr><th class="l">日付</th><th class="l">名前</th><th>休み</th></tr></thead><tbody>';
+    ds.forEach(function(d){var off=!!nrHolName(d,c),mine=c.holx[d]&&!nrJpHol(Number(d.slice(0,4)))[d];
+      h+='<tr><td class="l">'+d.slice(0,4)+'年 '+fmtD(d)+'</td><td class="l">'+esc(list[d])+(mine?' <span class="hint" style="margin:0">(追加した休日)</span>':'')+'</td><td><input type="checkbox" data-f="holon" data-d="'+d+'"'+(off?' checked':'')+' aria-label="'+fmtD(d)+' '+esc(list[d])+'を休みにする"></td></tr>'});
+    h+='</tbody></table></div>'}
+  h+='<p class="hint" style="margin:6px 0 8px">☑を外すと、その日は休みにしません(祝日でも回収する場合)。会社の休日(年末年始・夏季休業など)は下から足せます。足した休日は、☑を外すと消えます。</p>'
+   +'<div class="urlrow"><input type="date" id="hol-d" aria-label="休日にする日"><input type="text" id="hol-n" maxlength="20" placeholder="名前(例: 夏季休業)" aria-label="休日の名前"><button class="btn" data-act="holadd">休日を追加</button></div></section>';
+  return h;
 }
 function vendorPicker(C){
   var ids=Object.keys(C.am).sort(function(a,b){return vname(a)<vname(b)?-1:1});
@@ -1515,7 +1599,7 @@ function renderSet(C){
      +'<label class="ns"><input type="text" id="ns'+e+'" data-f="ns" data-e="'+e+'" value="'+esc(c.nsStr[e])+'" placeholder="不停止階 例: 13,14,44-46" aria-label="EV'+e+'の不停止階"></label></div>'
      +'<div class="hint" style="margin:0 0 4px 48px">'+(c.ns[e].length?'不停止: '+esc(nrFmtFloors(c.ns[e])):'不停止階なし')+'</div>';
   }
-  h+='<p class="hint">指定した日のエレベーターが停まる階だけを回収対象にします。不停止階は「13,14,44-46」のように、カンマ区切りと範囲で入力します。</p></section>'+renderWd(C)
+  h+='<p class="hint">指定した日のエレベーターが停まる階だけを回収対象にします。不停止階は「13,14,44-46」のように、カンマ区切りと範囲で入力します。</p></section>'+renderWd(C)+renderHol(C)
    +'<section class="panel"><h2 style="margin-bottom:8px">このアプリのQRコード</h2><div class="qrbox"><div class="qrimg" role="img" aria-label="このアプリを開くQRコード">'+qrSvg()+'</div><div style="flex:1 1 240px;min-width:0"><p style="margin:0 0 4px">スマートフォンで読み取ると、このアプリが開きます。</p>'
    +'<p class="hint" style="margin:0">業者はこのURLを開いて新規登録し、会社名を登録するとすぐに使えます。</p><p class="hint" style="margin:6px 0 0">盛替え業者用のURL: <b>'+esc(APP_URL)+'crew/</b>(会社名を登録するとすぐ使えます)</p><div class="urlrow"><input type="text" id="appurl" readonly value="'+esc(APP_URL)+'" aria-label="アプリのURL"><button class="btn sm" data-act="copyurl">URLをコピー</button></div></div></div></section>'
    +'<section class="panel"><h2 style="margin-bottom:8px">サンプルデータ</h2><p class="hint" style="margin:0 0 8px">動作を試すための例です。業者名・台数・階はすべて架空の値で、実際のデータとは別に消せます。</p>'
@@ -1815,6 +1899,13 @@ function onClick(ev){
     mutVendor(rvid,function(v){var e=v.floors[rfl];if(!e)return;var l=rsOf(e,nrNum(e.w));
       if(act==="rsadd"){var used=l.reduce(function(a,x){return a+nrNum(x.u)},0);l.push({f:0,u:Math.max(0,nrNum(e.w)-used)})}else l.splice(rdi,1);
       e.rs=l;rsClip(e);if(!e.rs.length)e.rs=[{f:0,u:0}]})}
+  else if(act==="holadd"){
+    var hdv=(document.getElementById("hol-d")||{}).value,hnv=((document.getElementById("hol-n")||{}).value||"").trim().slice(0,20)||"休日";
+    if(!hdv||!/^\d{4}-\d{2}-\d{2}$/.test(hdv)){ui.msg="休日にする日を選んでください。";ui.msgKind="bad"}
+    else{var hc=clone(D.config||{});hc.holx=hc.holx||{};var hnat=!!nrJpHol(Number(hdv.slice(0,4)))[hdv];
+      if(hnat&&hc.holx[hdv]===0)delete hc.holx[hdv];else if(!hnat)hc.holx[hdv]=hnv;
+      if(!Object.keys(hc.holx).length)delete hc.holx;putCfg(hc);ui.msg=fmtD(hdv)+"を休日にしました。";ui.msgKind="ok"}
+  }
   else if(act==="joincancel"){ui.jcPending=null;ui.jcOpen=false}
   else if(act==="joinopen"){ui.jcOpen=true}
   else if(act==="joinco"){
@@ -1949,6 +2040,10 @@ function onChange(ev){
   else if(f==="wd"){var wv=el.getAttribute("data-vid"),ww=Number(el.getAttribute("data-w"));c.wd=c.wd||{};
     var wa=(c.wd[wv]||[]).filter(function(x){return x!==ww});if(el.checked)wa.push(ww);wa.sort();if(wa.length)c.wd[wv]=wa;else delete c.wd[wv];putCfg(c)}
   else if(f==="auto"){c.auto=Math.min(14,nrNum(el.value));putCfg(c)}
+  else if(f==="eq"){c.eq=el.checked;putCfg(c)}
+  else if(f==="holon"){var hd=el.getAttribute("data-d"),nat=!!nrJpHol(Number(hd.slice(0,4)))[hd];c.holx=c.holx||{};
+    if(el.checked){if(nat)delete c.holx[hd];else c.holx[hd]=c.holx[hd]||"休日"}else{if(nat)c.holx[hd]=0;else delete c.holx[hd]}
+    if(!Object.keys(c.holx).length)delete c.holx;putCfg(c)}
   else if(f==="fmin"||f==="fmax"||f==="evn"){var lim=f==="evn"?NR_MAXE:NR_MAXF,nv=Math.max(1,Math.min(lim,nrNum(el.value)||1));c[f]=nv;
     if(f==="fmin"&&nv>nrCfg(c).fmax)c.fmin=nrCfg(c).fmax;putCfg(c)}
   else if(f==="perTruck"||f==="wP"||f==="wW"||f==="wH"||f==="crit"){c[f]=f==="perTruck"?(nrNum(el.value)||NR_DEF.perTruck):f==="crit"?Math.min(100,Math.max(1,nrNum(el.value)||100)):nrW(el.value,NR_DEF[f]);putCfg(c)}
