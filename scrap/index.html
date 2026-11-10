@@ -2211,13 +2211,35 @@ function start(){
   getRedirectResult(auth).then(function(r){if(viaRedirect&&!r&&!auth.currentUser)say("Googleのログインが完了しませんでした。この画面(アプリの中のブラウザなど)ではGoogleログインが使えないことがあります。SafariやChromeで開き直すか、下のメールアドレスでログインしてください。","bad")},fail);
   onAuthStateChanged(auth,function(u){
     if(!u){if(booted){location.reload();return}showLogin();return}
-    if(booted)return;booted=true;
-    var admin=!!(u.email&&u.emailVerified&&CFG.adminEmails.map(function(e){return e.toLowerCase()}).indexOf(u.email.toLowerCase())>=0);
-    window.NR_ACCOUNT={email:u.email,logout:function(){signOut(auth)}};
-    window.NR_RUNTIME={use:async function(n){return n==="db"?makeDb(fs,u,admin):n==="user"?makeUser(u,admin):null}};
-    if(!admin)watchApproval(fs,u);
-    window.nrBoot();
+    if(booted)return;
+    var isAdm=!!(u.email&&CFG.adminEmails.map(function(e){return e.toLowerCase()}).indexOf(u.email.toLowerCase())>=0);
+    /* 管理者のメールアドレスでも、メールの確認が済むまでは管理者になれない(業者の登録画面にならないよう、案内を出す) */
+    if(isAdm&&!u.emailVerified){showVerify(u);return}
+    function go(){
+      if(booted)return;booted=true;
+      var admin=isAdm&&!!u.emailVerified;
+      window.NR_ACCOUNT={email:u.email,logout:function(){signOut(auth)}};
+      window.NR_RUNTIME={use:async function(n){return n==="db"?makeDb(fs,u,admin):n==="user"?makeUser(u,admin):null}};
+      if(!admin)watchApproval(fs,u);
+      window.nrBoot();
+    }
+    /* 確認が済んだばかりのときは、古い通行証のままだとサーバーが管理者と認めないので、取り直してから始める */
+    if(isAdm)u.getIdToken(true).then(go,go);else go();
   });
+  function showVerify(u){
+    app.innerHTML='<section class="panel login"><h1>スクラップ搬出 調整'+(window.NR_CREW?'<br><small>揚重・盛替え業者用</small>':'')+'</h1>'
+      +'<div class="note"><span><b>'+esc(u.email)+'</b> は管理者のメールアドレスですが、メールの確認がまだ済んでいません。届いた確認メールのリンクを押してから、下の「確認しました」を押してください。メールが見つからないときは、迷惑メールのフォルダを見るか、「確認メールをもう一度送る」を押してください。</span></div>'
+      +'<button class="btn primary" id="vf-ok" type="button">確認しました</button>'
+      +'<button class="btn" id="vf-re" type="button">確認メールをもう一度送る</button>'
+      +'<button class="btn" id="vf-out" type="button">ログアウト</button><p class="hint" id="vf-msg" style="margin:0"></p></section>';
+    function say2(t){document.getElementById("vf-msg").textContent=t}
+    document.getElementById("vf-out").onclick=function(){signOut(auth).then(function(){location.reload()})};
+    document.getElementById("vf-re").onclick=function(){say2("送っています…");sendEmailVerification(auth.currentUser).then(function(){say2("確認メールを送りました。リンクを押したら「確認しました」を押してください。")},function(e){say2((e&&e.code)==="auth/too-many-requests"?"続けて送りすぎました。しばらくしてからもう一度押してください。":"送れませんでした。通信を確かめてもう一度押してください。")})};
+    document.getElementById("vf-ok").onclick=function(){say2("確かめています…");
+      auth.currentUser.reload().then(function(){return auth.currentUser.getIdToken(true)}).then(function(){
+        if(auth.currentUser.emailVerified)location.reload();else say2("まだ確認されていません。確認メールのリンクを押してから、もう一度押してください。")},
+        function(){say2("確かめられませんでした。通信を確かめてもう一度押してください。")})};
+  }
 
   /* ログイン画面 */
   var mode="login",msg="",kind="";
