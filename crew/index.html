@@ -186,7 +186,7 @@ body{touch-action:manipulation}
   .floors .stepper{width:100%;max-width:12em}
   .floors .stepper input{flex:1 1 auto;width:auto!important}
 }
-@container (max-width:920px){
+@container (max-width:1040px){
 
   .floors{max-height:none;overflow:visible}
   /* 横長の表は1行ずつカードにして、右側の欄が見切れないようにする */
@@ -254,6 +254,8 @@ body{touch-action:manipulation}
 .stp:first-child{border-radius:8px 0 0 8px;border-right:0}.stp:last-child{border-radius:0 8px 8px 0;border-left:0}
 .stp:active{background:var(--line);color:var(--fg)}
 .stepper input[type=number]{width:3.6em}
+.prio .prow{display:flex;align-items:center;gap:6px;margin-top:4px;flex:1 1 100%;width:100%}.prio .prow>span{font-size:12px;color:var(--muted);flex:none;width:2.4em}
+.floors .prio .stepper{width:8.6em!important;max-width:none;flex:none}.floors .prio .stepper input{flex:1 1 auto!important;width:3em!important;min-width:3em;padding-left:2px;padding-right:2px;text-align:center}
 .mvbox .stepper input[type=number]{width:4.4em;padding-left:4px;padding-right:4px;text-align:center}
 .cc-r>div{min-width:0;flex:1 1 auto}.cc-r .mvbox .stepper{width:9.5em;max-width:100%}
 .cc-r .stepper input{flex:1 1 auto;width:auto!important;min-width:2.5em}
@@ -347,7 +349,8 @@ function nrItems(vendors,startStr){
       var f=parseInt(k,10),h=nrNum(fl[k].h),w=nrNum(fl[k].w),rem=Math.min(w,h);
       if(!(f>=1&&f<=NR_MAXF)||rem<=0)return;
       var rt=fl[k].same===false?nrNum(fl[k].r):0;
-      items.push({vid:vid,floor:f,held:h,want:w,rem:rem,since:fl[k].s||startStr,ret:rt||null,retPending:fl[k].same===false&&!rt});
+      /* p: 業者が付けた先行の順位(1が最初。0は指定なし)。pq: 先行して出す台数(0は出したい台数の全部) */
+      items.push({vid:vid,floor:f,held:h,want:w,rem:rem,since:fl[k].s||startStr,ret:rt||null,retPending:fl[k].same===false&&!rt,p:nrNum(fl[k].p),pq:nrNum(fl[k].pq)});
     });
   });
   return items;
@@ -359,6 +362,14 @@ function nrScore(it,date,cfg){
 }
 function nrCmp(a,b){
   return (b.sc.crit?1:0)-(a.sc.crit?1:0)||b.sc.total-a.sc.total||(a.since<b.since?-1:a.since>b.since?1:0)||a.floor-b.floor||(a.vid<b.vid?-1:a.vid>b.vid?1:0);
+}
+/* 業者が付けた先行の順位を反映する。業者どうしの順番(並びの中でその業者が占める位置)は変えず、
+   同じ業者の中だけで、先行の階(順位の小さい順)を先に並べ替える */
+function nrPrio(list){
+  var by={},k={};
+  list.forEach(function(c,i){(by[c.vid]=by[c.vid]||[]).push({c:c,i:i})});
+  Object.keys(by).forEach(function(v){by[v].sort(function(a,b){return (a.c.p||1e9)-(b.c.p||1e9)||a.i-b.i})});
+  return list.map(function(c){k[c.vid]=k[c.vid]||0;return by[c.vid][k[c.vid]++].c});
 }
 /* confirmed: {日付:{rows:[{vid,floor,units,ev,to,ret}]}} 確定済みの日は行をそのまま使い、残りの希望から差し引く。
    days[日付].moves: {"vid|階":{ev,to}} 指定EVが停まらない階を、前日までにto階のEV前へ集積させる管理者の指示 */
@@ -375,7 +386,7 @@ function nrSimulate(vendors,days,cfg,startStr,confirmed){
         var u=nrNum(r.units);if(u<=0)return;sum+=u;
         res.asg.push({vid:r.vid,floor:r.floor,units:u,ev:r.ev||null,to:r.to||null,ret:r.ret||null,rank:res.asg.length+1,sc:null});
         var key=r.vid+"|"+r.floor;if(!first[key])first[key]=d;
-        if(d>=startStr&&!r.back){var it=idx[key];if(it){it.rem=Math.max(0,it.rem-u);it.held=Math.max(0,it.held-u)}}
+        if(d>=startStr&&!r.back){var it=idx[key];if(it){it.rem=Math.max(0,it.rem-u);it.held=Math.max(0,it.held-u);if(it.pl===undefined)it.pl=it.p?(it.pq||1e9):0;it.pl=Math.max(0,it.pl-u)}}
       });
       res.left=Math.max(0,cap-sum);byDate[d]=res;return;
     }
@@ -387,17 +398,24 @@ function nrSimulate(vendors,days,cfg,startStr,confirmed){
         if(ev===null){var mv=moves[it.vid+"|"+it.floor];
           if(mv&&elevs.indexOf(nrNum(mv.ev))>=0){ev=nrNum(mv.ev);to=nrNum(mv.to)||null}
           else{res.excluded++;res.excl.push({vid:it.vid,floor:it.floor,rem:it.rem,since:it.since,sc:nrScore(it,d,cfg)});return}}}
-      cand.push({it:it,ev:ev,to:to,vid:it.vid,floor:it.floor,since:it.since,sc:nrScore(it,d,cfg)});
+      /* 先行の台数が出したい台数より少ないときは、先行分と残りに分けて並べる */
+      if(it.pl===undefined)it.pl=it.p?(it.pq||1e9):0;
+      var sc=nrScore(it,d,cfg),pq=Math.min(it.pl,it.rem);
+      if(pq>0)cand.push({it:it,ev:ev,to:to,vid:it.vid,floor:it.floor,since:it.since,sc:sc,p:it.p,q:pq});
+      if(it.rem>pq)cand.push({it:it,ev:ev,to:to,vid:it.vid,floor:it.floor,since:it.since,sc:sc,p:0,q:it.rem-pq});
     });
     /* その曜日の担当業者を先に回収し、積載に余裕が残ったら曜日外の業者を逼迫している順に入れる */
     var mine=cand.filter(function(c){return nrOnDay(c.vid,d,cfg)}),other=cand.filter(function(c){return !nrOnDay(c.vid,d,cfg)});
     mine.sort(nrCmp);other.sort(nrUrgCmp);res.excl.sort(nrCmp);
-    mine.concat(other).forEach(function(c){
+    var rowOf={};
+    nrPrio(mine).concat(nrPrio(other)).forEach(function(c){
       if(left<=0)return;
-      var take=Math.min(c.it.rem,left);
-      c.it.rem-=take;c.it.held-=take;left-=take;
-      res.asg.push({vid:c.vid,floor:c.floor,units:take,ev:c.ev,to:c.to,ret:c.it.ret,rank:res.asg.length+1,sc:c.sc,extra:!nrOnDay(c.vid,d,cfg)});
-      var key=c.vid+"|"+c.floor;if(!first[key])first[key]=d;
+      var take=Math.min(c.q,c.it.rem,left);if(take<=0)return;
+      c.it.rem-=take;c.it.held-=take;left-=take;if(c.p)c.it.pl-=take;
+      var key=c.vid+"|"+c.floor;
+      if(rowOf[key])rowOf[key].units+=take;
+      else res.asg.push(rowOf[key]={vid:c.vid,floor:c.floor,units:take,ev:c.ev,to:c.to,ret:c.it.ret,rank:res.asg.length+1,sc:c.sc,extra:!nrOnDay(c.vid,d,cfg),p:c.p||0});
+      if(!first[key])first[key]=d;
     });
     res.left=left;byDate[d]=res;
   });
@@ -406,7 +424,7 @@ function nrSimulate(vendors,days,cfg,startStr,confirmed){
 function nrRank(vendors,sim,cfg,startStr){
   var ref=sim.dates.filter(function(d){return d>=startStr})[0]||startStr;
   var list=nrItems(vendors,startStr).map(function(it){
-    return {vid:it.vid,floor:it.floor,held:it.held,want:it.want,rem:it.rem,since:it.since,ret:it.ret,sc:nrScore(it,ref,cfg),first:sim.first[it.vid+"|"+it.floor]||null,noEv:!nrAnyElev(it.floor,cfg)};
+    return {vid:it.vid,floor:it.floor,held:it.held,want:it.want,rem:it.rem,since:it.since,ret:it.ret,p:it.p,pq:it.pq,sc:nrScore(it,ref,cfg),first:sim.first[it.vid+"|"+it.floor]||null,noEv:!nrAnyElev(it.floor,cfg)};
   });
   list.sort(nrCmp);
   list.forEach(function(r,i){r.rank=i+1});
@@ -1060,7 +1078,7 @@ function renderStage(C,k,s,elev){
 function renderPriority(C){
   var R=C.rank,h='<section class="panel"><div class="mhead"><h2>優先順位</h2></div>';
   if(!R.list.length)return h+'<p class="empty">業者の搬出希望がまだ入力されていません。</p></section>';
-  h+='<p class="hint" style="margin:0 0 10px">基準日 '+fmtD(R.ref)+' の評価です。評価点 = 逼迫度×'+C.cfg.wP+' + 待機日数×'+C.cfg.wW+' + 保有台数×'+C.cfg.wH+'(重みは設定で変更)。逼迫度は、保有台数に対する搬出希望台数の割合(%)です。逼迫度が'+C.cfg.crit+'%以上の階は「余力なし」として、評価点に関係なく最優先で回収します。</p>';
+  h+='<p class="hint" style="margin:0 0 10px">基準日 '+fmtD(R.ref)+' の評価です。評価点 = 逼迫度×'+C.cfg.wP+' + 待機日数×'+C.cfg.wW+' + 保有台数×'+C.cfg.wH+'(重みは設定で変更)。逼迫度は、保有台数に対する搬出希望台数の割合(%)です。逼迫度が'+C.cfg.crit+'%以上の階は「余力なし」として、評価点に関係なく最優先で回収します。業者が「先に出す」を付けた階は、その業者の分の中で先に回収します(業者どうしの順番は変わりません)。</p>';
   var best={};R.list.forEach(function(r){if(!best[r.vid])best[r.vid]={rank:r.rank,want:0,floors:0};var b=best[r.vid];b.want+=r.rem;b.floors++});
   var vs=Object.keys(best).sort(function(a,b){return best[a].rank-best[b].rank});
   h+='<h3>業者の優先順位</h3><div class="ranklist" style="margin-top:6px">';
@@ -1068,7 +1086,7 @@ function renderPriority(C){
   h+='</div><h3>階ごとの優先順位</h3><div class="tablewrap"><table><thead><tr><th class="l">順位</th><th class="l">業者</th><th>階</th><th>保有</th><th>希望</th><th>待機日</th><th>評価点</th><th class="l">戻し階</th><th class="l">回収予定</th></tr></thead><tbody>';
   R.list.forEach(function(r){
     var when=r.first?fmtD(r.first):(r.noEv?'<span class="st bad">対応EVなし</span>':'<span class="st bad">日程なし</span>');
-    h+='<tr><td class="l"><b>'+r.rank+'</b>'+(r.sc.crit?' <span class="st bad">余力なし</span>':'')+'</td><td class="l vn"><i class="chip" style="background:'+vcolor(r.vid)+'"></i>'+esc(vname(r.vid))+'</td><td>'+r.floor+'階</td><td>'+r.held+'</td><td>'+r.rem+'</td><td>'+r.sc.wait+'</td><td>'+r.sc.total.toFixed(0)+'</td><td class="l">'+retText(r.ret)+'</td><td class="l">'+when+'</td></tr>';
+    h+='<tr><td class="l"><b>'+r.rank+'</b>'+(r.sc.crit?' <span class="st bad">余力なし</span>':'')+(r.p?' <span class="st ok">業者の先行'+r.p+'番'+(r.pq&&r.pq<r.rem?'('+r.pq+'台)':'')+'</span>':'')+'</td><td class="l vn"><i class="chip" style="background:'+vcolor(r.vid)+'"></i>'+esc(vname(r.vid))+'</td><td>'+r.floor+'階</td><td>'+r.held+'</td><td>'+r.rem+'</td><td>'+r.sc.wait+'</td><td>'+r.sc.total.toFixed(0)+'</td><td class="l">'+retText(r.ret)+'</td><td class="l">'+when+'</td></tr>';
   });
   h+='</tbody></table></div>';
   var left=C.sim.left.reduce(function(a,i){return a+i.rem},0);
@@ -1147,22 +1165,25 @@ function renderVin(C){
   }
   var wds=C.cfg.wd[vid];if(wds)h+='<p class="hint" style="margin:0 0 8px">回収曜日: <b>'+wds.map(function(w){return WD[w]}).join("・")+'</b>(積載に余裕がある日は、ほかの曜日にも回収することがあります)</p>';
   h+='<div class="sum"><div><small>保有台数(合計)</small><b>'+th+'台</b></div><div><small>搬出希望(合計)</small><b>'+tw+'台</b></div></div>'
-   +'<p class="hint" style="margin:0 0 8px">各階のNRボックスの保有台数と、その階から出したい台数を入力します。追加で欲しい階は「追加希望数」に台数を入れると注文になり、追加する日が決まると「備考(追加)」に出ます。戻してほしい階が同じ階でないときは「同じ階」のチェックを外して階を選びます。入力は自動で保存されます。</p>'
+   +'<p class="hint" style="margin:0 0 8px">各階のNRボックスの保有台数と、その階から出したい台数を入力します。先に出してほしい階は「先に出す」に☑を付け、順位(1が最初)と先に出す台数を入れます。追加で欲しい階は「追加希望数」に台数を入れると注文になり、追加する日が決まると「備考(追加)」に出ます。戻してほしい階が同じ階でないときは「同じ階」のチェックを外して階を選びます。入力は自動で保存されます。</p>'
    +'<label class="chk" style="margin-bottom:8px"><input type="checkbox" id="only" data-f="only"'+(ui.only?' checked':'')+'>入力のある階だけ表示</label>'
-   +'<div class="floors"><table class="rtable"><thead><tr><th class="l">階</th><th>保有台数</th><th>追加希望数</th><th class="l">備考(追加)</th><th>出したい台数</th><th class="l">戻してほしい階</th><th class="l">状態</th></tr></thead><tbody>';
+   +'<div class="floors"><table class="rtable"><thead><tr><th class="l">階</th><th>保有台数</th><th>追加希望数</th><th class="l">備考(追加)</th><th>出したい台数</th><th class="l">先に出す(順位・台数)</th><th class="l">戻してほしい階</th><th class="l">状態</th></tr></thead><tbody>';
   var fo=floorOrders(vid);
   for(var f=LIM.fmax;f>=LIM.fmin;f--){
     var e=fl[f],hh=e?nrNum(e.h):0,ww=e?nrNum(e.w):0,fx=fo[f]||{req:0,notes:[]};
     if(ui.only&&!hh&&!ww&&!fx.req&&!fx.notes.length)continue;
-    var over=ww>hh,same=!e||e.same!==false,rt=e?nrNum(e.r):0,state='';
+    var over=ww>hh,same=!e||e.same!==false,rt=e?nrNum(e.r):0,state='',pp=e?nrNum(e.p):0,pq=e?nrNum(e.pq):0;
     if(over)state='<span class="st bad">保有を超えています</span>';
     else if(ww&&!same&&!rt)state='<span class="st warn">戻し階を選択</span>';
     else if(ww&&hh&&ww/hh*100>=C.cfg.crit)state='<span class="st bad">余力なし・最優先</span>';
     else if(ww)state='<span class="st ok">希望あり</span>';
+    if(pp&&ww)state+=' <span class="st ok">先行'+pp+'番</span>';
     h+='<tr><td class="fl">'+f+'階</td><td><input type="number" min="0" id="h-'+f+'" data-f="floor" data-fl="'+f+'" data-k="h" value="'+(hh||"")+'" aria-label="'+f+'階の保有台数"></td>'
      +'<td><input type="number" min="0" id="a-'+f+'" data-f="addreq" data-fl="'+f+'" value="'+(fx.req||"")+'" aria-label="'+f+'階の追加希望数"></td>'
      +'<td class="l" style="white-space:normal;min-width:120px;font-size:12px">'+fx.notes.join("<br>")+'</td>'
      +'<td><input type="number" min="0" id="w-'+f+'" data-f="floor" data-fl="'+f+'" data-k="w" value="'+(ww||"")+'"'+(over?' class="bad"':'')+' aria-label="'+f+'階の出したい台数"></td>'
+     +'<td class="l prio">'+(hh?'<label class="chk"><input type="checkbox" id="p-'+f+'" data-f="prio" data-fl="'+f+'"'+(pp?' checked':'')+' aria-label="'+f+'階を先に出す">先に出す</label>'
+       +(pp?'<div class="prow"><span>順位</span><input type="number" min="1" id="pn-'+f+'" data-f="prank" data-fl="'+f+'" value="'+pp+'" aria-label="'+f+'階の先行の順位"></div><div class="prow"><span>台数</span><input type="number" min="0" id="pq-'+f+'" data-f="pqty" data-fl="'+f+'" value="'+(pq?Math.min(pq,ww||pq):(ww||""))+'" aria-label="'+f+'階から先に出す台数"></div>':''):'')+'</td>'
      +'<td class="l">'+(ww?'<label class="chk"><input type="checkbox" id="s-'+f+'" data-f="same" data-fl="'+f+'"'+(same?' checked':'')+'>同じ階</label>'+(same?'':' <input type="number" min="'+LIM.fmin+'" max="'+LIM.fmax+'" id="r-'+f+'" data-f="ret" data-fl="'+f+'" value="'+(rt||"")+'" aria-label="'+f+'階から出す分を戻してほしい階"> 階'):'')+'</td>'
      +'<td class="l">'+state+'</td></tr>';
   }
@@ -1816,6 +1837,14 @@ function onChange(ev){
       else if(an>0)o.items["o"+Date.now().toString(36)+Math.floor(Math.random()*1e3).toString(36)]={f:af,u:an,want:"",memo:"",n:vname(vid),at:nowIso(),st:"new"}});
     if(an>0){ui.msg=af+"階に"+an+"台の追加を希望しました。手配されると備考欄とカレンダーに日付が出ます。";ui.msgKind="ok"}
   }
+  else if(f==="prio"){var pf=el.getAttribute("data-fl");mutVendor(vid,function(v){var e=v.floors[pf];if(!e)return;
+      if(el.checked){var mx=0;Object.keys(v.floors).forEach(function(k){var x=v.floors[k];if(k!==pf&&nrNum(x.w)&&nrNum(x.p)>mx)mx=nrNum(x.p)});e.p=mx+1;delete e.pq}
+      else{delete e.p;delete e.pq}})}
+  else if(f==="prank"){var pf2=el.getAttribute("data-fl");mutVendor(vid,function(v){var e=v.floors[pf2];if(!e)return;e.p=Math.max(1,Math.min(99,nrNum(el.value)))})}
+  else if(f==="pqty"){var pf3=el.getAttribute("data-fl"),pv=nrNum(el.value);mutVendor(vid,function(v){var e=v.floors[pf3];if(!e)return;
+      /* 出したい台数より多く入れたら、出したい台数も合わせて増やす。出したい台数と同じ(全部)なら pq は持たない */
+      if(pv>nrNum(e.w)){if(!(nrNum(e.w)>0))e.s=today();e.w=pv}
+      if(pv>0&&pv<nrNum(e.w))e.pq=pv;else delete e.pq})}
   else if(f==="same"){var fl2=el.getAttribute("data-fl");mutVendor(vid,function(v){var e=v.floors[fl2];if(!e)return;e.same=el.checked;if(el.checked)delete e.r})}
   else if(f==="ret"){var fl3=el.getAttribute("data-fl");mutVendor(vid,function(v){var e=v.floors[fl3];if(!e)return;e.r=Math.min(LIM.fmax,nrNum(el.value))})}
   else if(f==="placed"){
