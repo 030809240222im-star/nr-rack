@@ -24,6 +24,10 @@ const APPS = [{ prefix: "", name: "NRボックス" }, { prefix: "scrap_", name: 
 const COLLS = ["config", "days", "vendors", "approved", "blocked", "confirmed", "members", "plans", "orders", "notices", "crews", "crewreq", "crewblocked", "codes"];
 const WD = ["日", "月", "火", "水", "木", "金", "土"];
 const fmtD = s => { const d = nrPd(s); return (d.getMonth() + 1) + "/" + d.getDate() + "(" + WD[d.getDay()] + ")"; };
+/* 1日に複数回(午前・午後など)あるときのキーは「日付」「日付-2」…。同じ日の回の一覧と名前 */
+const sesNo = k => { const m = /^\d{4}-\d{2}-\d{2}-(\d+)$/.exec(k); return m ? Number(m[1]) : 1; };
+const sesKeysOf = (D, date) => [...new Set([...Object.keys(D.days), ...Object.keys(D.confirmed)])].filter(k => k.slice(0, 10) === date).sort((a, b) => sesNo(a) - sesNo(b));
+const sesLab = (D, k) => { const ks = sesKeysOf(D, k.slice(0, 10)); return ks.length < 2 ? "" : " " + ((D.days[k] && D.days[k].lb) || sesNo(k) + "回目"); };
 const fmtTime = d => d && d.tf ? d.tf + "〜" + (d.tt || "") : "時間未定";
 const evLabel = (e, to) => e ? (to ? to + "階 EV" + e + "前" : "EV" + e + "前") : "—";
 const today = nrDs(new Date());
@@ -74,7 +78,7 @@ for (const app of APPS) {
       const seen = {};
       for (const r of rows) {
         if (seen[r.vid] || (D.vendors[r.vid] && D.vendors[r.vid].manual)) continue; seen[r.vid] = 1;
-        const msg = fmtD(d) + " " + fmtTime(day) + " の予定が確定しました: " + rows.filter(x => x.vid === r.vid).map(x => x.floor + "階 " + x.units + "台 → " + evLabel(x.ev, x.to)).join("、");
+        const msg = fmtD(d) + sesLab(D, d) + " " + fmtTime(day) + " の予定が確定しました: " + rows.filter(x => x.vid === r.vid).map(x => x.floor + "階 " + x.units + "台 → " + evLabel(x.ev, x.to)).join("、");
         const id = "n" + Date.now().toString(36) + Math.floor(Math.random() * 1e4).toString(36);
         await db.collection(app.prefix + "notices").doc(r.vid).set({ items: { [id]: { d, kind: "confirm", msg, at, by: "毎朝の自動処理" } } }, { merge: true });
       }
@@ -85,10 +89,10 @@ for (const app of APPS) {
 
   /* 2. LINE の文面 */
   const tm = nrDs(new Date(nrPd(today).getTime() + 864e5));
-  for (const [d, label] of [[today, "本日"], [tm, "明日"]]) {
+  for (const [d, label] of [[today, "本日"], [tm, "明日"]].flatMap(([b, l]) => sesKeysOf(D, b).map(k => [k, l]))) {
     const cf = D.confirmed[d]; if (!cf || !(cf.rows || []).length) continue;
     const day = D.days[d] || {};
-    lines.push("【" + app.name + "】" + label + " " + fmtD(d) + " " + fmtTime(day));
+    lines.push("【" + app.name + "】" + label + " " + fmtD(d) + sesLab(D, d) + " " + fmtTime(day));
     cf.rows.filter(r => nrNum(r.units) > 0).forEach(r => lines.push("・" + (r.n || vname(D, r.vid)) + " " + r.floor + "階 " + nrNum(r.units) + "台 → " + evLabel(r.ev, r.to) + (label === "明日" && r.to ? "(今日中に移動)" : "")));
   }
   let newOrders = 0; Object.values(D.orders).forEach(o => Object.values(o.items || {}).forEach(x => { if (x.st === "new") newOrders++; }));

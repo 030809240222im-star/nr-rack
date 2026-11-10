@@ -11,7 +11,7 @@ const root = new URL("..", import.meta.url).pathname;
 const html = fs.readFileSync(root + "index.html", "utf8");
 const core = html.match(/<script>\s*([\s\S]*?function nrRank[\s\S]*?)<\/script>/)[1];
 const ctx = {}; vm.createContext(ctx); vm.runInContext(core, ctx);
-const { nrDs, nrPd, nrNum, nrRowRets } = ctx;
+const { nrDs, nrPd, nrNum, nrRowRets, nrBase, nrSesNo } = ctx;
 
 const MODE = process.env.MAIL_MODE || "pre";
 const APP_URL = "https://030809240222im-star.github.io/nr-rack/";
@@ -22,6 +22,9 @@ const fmtD = s => { const d = nrPd(s); return (d.getMonth() + 1) + "月" + d.get
 const fmtTime = d => d && d.tf ? d.tf + "〜" + (d.tt || "") : "時間未定";
 const evLabel = (e, to) => e ? (to ? to + "階のEV" + e + "前" : "EV" + e + "前") : "未定";
 const SEEN_SINCE = process.env.SEEN_SINCE || "2026-11-10";
+/* 同じ日の回(午前・午後など)の一覧と名前。1回だけの日は名前を出さない */
+const sesKeysOf = (D, date) => [...new Set([...Object.keys(D.days), ...Object.keys(D.confirmed)])].filter(k => nrBase(k) === date).sort((a, b) => nrSesNo(a) - nrSesNo(b));
+const sesLab = (D, k) => { const ks = sesKeysOf(D, nrBase(k)); return ks.length < 2 ? "" : ((D.days[k] && D.days[k].lb) || nrSesNo(k) + "回目"); };
 const addDays = (s, n) => nrDs(new Date(nrPd(s).getTime() + n * 864e5));
 
 /* 決まった時刻(GitHub は少し早めに起こす)まで待つ。遅れて起きたときはすぐ送る */
@@ -88,15 +91,21 @@ for (const app of APPS) {
   const log = D.maillog || {};
   /* 前日メール・当日メール */
   const d = MODE === "pre" ? addDays(today, 1) : today, label = MODE === "pre" ? "明日" : "本日", kind = MODE === "pre" ? "pre" : "day";
-  const cf = D.confirmed[d], day = D.days[d] || {};
-  if (cf && (cf.rows || []).length) {
-    const byV = {}; cf.rows.filter(r => nrNum(r.units) > 0).forEach(r => { (byV[r.vid] = byV[r.vid] || []).push(r); });
+  const sess = sesKeysOf(D, d).filter(k => D.confirmed[k] && (D.confirmed[k].rows || []).length);
+  if (sess.length) {
+    const byV = {};
+    sess.forEach(k => D.confirmed[k].rows.filter(r => nrNum(r.units) > 0).forEach(r => { ((byV[r.vid] = byV[r.vid] || {})[k] = byV[r.vid][k] || []).push(r); }));
     for (const vid of Object.keys(byV)) {
       const key = kind + "_" + vid;
       if ((log[d] || {})[key] || (D.vendors[vid] && D.vendors[vid].manual)) continue;
       const to = emailsOf(D, vid);
       const subject = "【" + app.name + "】" + label + " " + fmtD(d) + " の搬出予定";
-      const text = vname(D, vid) + " 御中\n\n" + label + "(" + fmtD(d) + " " + fmtTime(day) + ")の搬出予定です。\n\n" + rowsText(byV[vid], label)
+      const blocks = Object.keys(byV[vid]).sort((a, b) => nrSesNo(a) - nrSesNo(b)).map(k => {
+        const day = D.days[k] || {}, ln = sesLab(D, k);
+        return (sess.length > 1 ? "■ " + (ln ? ln + " " : "") + fmtTime(day) + "\n" : "") + rowsText(byV[vid][k], label);
+      });
+      const first = D.days[Object.keys(byV[vid]).sort((a, b) => nrSesNo(a) - nrSesNo(b))[0]] || {};
+      const text = vname(D, vid) + " 御中\n\n" + label + "(" + fmtD(d) + (sess.length > 1 ? "" : " " + fmtTime(first)) + ")の搬出予定です。\n\n" + blocks.join("\n\n")
         + (MODE === "pre" ? "\n\n前日のうちに、指定のエレベーター前への" + app.item + "の準備をお願いします。" : "\n\n本日はよろしくお願いします。")
         + footer(app);
       if (await send(to, subject, text)) await mark(app, d, key);
@@ -104,10 +113,11 @@ for (const app of APPS) {
   }
   /* 搬出日から3日たってもアプリを開いていない業者への確認メール(前日メールと同じ 13:00 に送る。7日を過ぎたら送らない) */
   if (MODE === "pre") {
-    for (const cd of Object.keys(D.confirmed).sort()) {
+    const bases = [...new Set(Object.keys(D.confirmed).map(nrBase))].sort();
+    for (const cd of bases) {
       /* 最終ログインの記録を始めた日より前の搬出日は、開いたかどうか分からないので送らない */
       if (!(cd <= addDays(today, -3) && cd >= addDays(today, -7)) || cd < SEEN_SINCE) continue;
-      const rows = (D.confirmed[cd].rows || []).filter(r => nrNum(r.units) > 0), vids = [...new Set(rows.map(r => r.vid))];
+      const rows = sesKeysOf(D, cd).flatMap(k => (D.confirmed[k] ? D.confirmed[k].rows || [] : []).filter(r => nrNum(r.units) > 0).map(r => ({ ...r, _k: k }))), vids = [...new Set(rows.map(r => r.vid))];
       const since = nrPd(cd).getTime();
       for (const vid of vids) {
         const key = "chk_" + vid;
@@ -118,7 +128,7 @@ for (const app of APPS) {
         const subject = "【" + app.name + "】" + fmtD(cd) + " の搬出結果のご確認のお願い";
         const text = vname(D, vid) + " 御中\n\n" + fmtD(cd) + "の搬出のあと、アプリがまだ開かれていないようです。\n"
           + "戻ってきた台数や、各階の保有台数に違いがないか、アプリの「業者入力」でご確認ください。違いがあれば、その場で直していただけます。\n\n"
-          + "この日の搬出:\n" + rowsText(rows.filter(r => r.vid === vid), "")
+          + "この日の搬出:\n" + rows.filter(r => r.vid === vid).map(r => (sesLab(D, r._k) ? "[" + sesLab(D, r._k) + "] " : "") + rowsText([r], "")).join("\n")
           + footer(app);
         if (await send(to, subject, text)) await mark(app, cd, key);
       }

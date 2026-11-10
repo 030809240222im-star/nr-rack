@@ -71,6 +71,7 @@ button:disabled{opacity:.45;cursor:default}
 .cell.sel{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent)}
 .cell .dn{font-weight:700;font-size:13px;line-height:1.2;display:flex;justify-content:space-between;gap:4px}
 .cell .dn i{font-style:normal;font-size:10.5px;color:var(--ok)}
+.sesbar{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 10px}.dstack{display:flex;flex-direction:column;gap:14px;min-width:0}
 .cell .dn em{font-style:normal;font-size:10px;font-weight:700;color:var(--bad);margin-right:auto;margin-left:3px}
 .cell.holi .dn b{color:var(--bad)}.cell.mine .dn em,.cell.now .dn em,.cell.mine.holi .dn b,.cell.now.holi .dn b{color:inherit}
 .cell.today .dn b{background:var(--accent);color:var(--accent-fg);border-radius:10px;padding:0 6px}
@@ -312,6 +313,10 @@ function nrFmtFloors(a){
   while(i<a.length){var j=i;while(j+1<a.length&&a[j+1]===a[j]+1)j++;out.push(j>i?a[i]+"〜"+a[j]:""+a[i]);i=j+1}
   return out.join("、")+"階";
 }
+/* 1日に複数回(午前・午後など)回収するとき、2回目以降のキーは「日付-2」「日付-3」。1回目は今までどおり日付だけ */
+function nrBase(k){return String(k).slice(0,10)}
+function nrSesNo(k){var m=/^\d{4}-\d{2}-\d{2}-(\d+)$/.exec(k);return m?Number(m[1]):1}
+function nrSesKey(date,n){return n>1?date+"-"+n:date}
 /* 日本の祝日(2022年以降の決まり): 固定日・第n月曜・春分/秋分・振替休日・国民の休日。{日付:名前} */
 var NR_HOLC={};
 function nrJpHol(y){
@@ -336,7 +341,7 @@ function nrJpHol(y){
 }
 /* 休日かどうか。cfg.holx {日付:名前|0} で、会社の休日(名前)を足したり、祝日でも回収する日(0)にできる */
 function nrHolName(d,cfg){
-  var x=cfg&&cfg.holx;
+  d=nrBase(d);var x=cfg&&cfg.holx;
   if(x&&x[d]!==undefined)return x[d]?(typeof x[d]==="string"?x[d]:"休日"):"";
   return nrJpHol(Number(d.slice(0,4)))[d]||"";
 }
@@ -548,8 +553,24 @@ function clone(x){return JSON.parse(JSON.stringify(x))}
 function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
 function today(){return nrDs(new Date())}
 function p2(n){return (n<10?"0":"")+n}
-function fmtD(s){var d=nrPd(s);return (d.getMonth()+1)+"/"+d.getDate()+"("+WD[d.getDay()]+")"}
-function fmtLong(s){var d=nrPd(s);return (d.getMonth()+1)+"月"+d.getDate()+"日("+WD[d.getDay()]+")"}
+/* 回収日のキー(日付、または日付-2)から、その日の回の一覧と名前を出す。再描画のたびに作り直す */
+var SESC=null;
+function sesIndex(){
+  if(SESC)return SESC;SESC={};
+  var seen={};Object.keys(D.days).concat(Object.keys(D.confirmed)).forEach(function(k){if(seen[k])return;seen[k]=1;var b=nrBase(k);(SESC[b]=SESC[b]||[]).push(k)});
+  Object.keys(SESC).forEach(function(b){SESC[b].sort(function(x,y){return nrSesNo(x)-nrSesNo(y)})});
+  return SESC;
+}
+function sesKeys(date){return (sesIndex()[nrBase(date)]||[]).slice()}
+/* 1日に回が2つ以上あるときだけ、その回の名前(午前・午後など。未入力なら「1回目」)を返す */
+function sesLabel(k){
+  var ks=sesIndex()[nrBase(k)]||[];if(ks.length<2||ks.indexOf(k)<0)return "";
+  return ((D.days[k]||{}).lb||"").trim()||(nrSesNo(k)+"回目");
+}
+function fmtDP(s){var d=nrPd(s);return (d.getMonth()+1)+"/"+d.getDate()+"("+WD[d.getDay()]+")"}
+function fmtLongP(s){var d=nrPd(s);return (d.getMonth()+1)+"月"+d.getDate()+"日("+WD[d.getDay()]+")"}
+function fmtD(s){var l=sesLabel(s);return fmtDP(s)+(l?" "+l:"")}
+function fmtLong(s){var l=sesLabel(s);return fmtLongP(s)+(l?" "+l:"")}
 function fmtTime(d){return d&&d.tf?(d.tf+"〜"+(d.tt||"")):"時間未定"}
 function nowIso(){return new Date().toISOString()}
 /* 保存した時刻(UTC)を、見ている端末の時刻で「10/31 9:05」の形にする */
@@ -569,6 +590,7 @@ function send(pr){
     .then(function(){PEND.n--;if(!PEND.n)PEND.since=0;render(true)});
 }
 function persist(coll,id,obj){
+  SESC=null;
   if(ENV.mode==="local"){try{localStorage.setItem(KEY,JSON.stringify(D))}catch(e){}return}
   var ref=ENV.db.doc(coll+"/"+id);send(obj===null?ref.delete():ref.set(obj));
 }
@@ -590,6 +612,7 @@ function mergeDeep(t,p){
   return t;
 }
 function patch(coll,id,p){
+  SESC=null;
   D[coll][id]=mergeDeep(clone(D[coll][id]||{}),p);if(coll==="confirmed")hydrate(D[coll][id]);
   if(ENV.mode==="local"){persist(coll,id,D[coll][id]);return}
   send(ENV.db.doc(coll+"/"+id).patch(p));
@@ -908,21 +931,27 @@ function renderCal(C){
   WD.forEach(function(w,i){h+='<div class="wd'+(i===0?' sun':'')+'">'+w+'</div>'});
   for(var i=0;i<first;i++)h+='<div class="cell blank"></div>';
   for(var d=1;d<=n;d++){
-    var k=y+"-"+p2(m+1)+"-"+p2(d),doc=D.days[k],cap=doc?nrNum(doc.cap):0,s=C.sim.byDate[k],cf=D.confirmed[k];
-    if(!ENV.admin&&!ENV.crew){h+=vCell(k,m,d,doc,cap,cf,C);continue}
+    var k=y+"-"+p2(m+1)+"-"+p2(d),ses=sesKeys(k);
+    if(!ENV.admin&&!ENV.crew){h+=vCell(k,m,d,ses,C);continue}
+    /* 1日に回が複数あるときは、全部の回を合わせて表示する */
+    var cap=0,u=0,nCf=0,np=0,nb=0,nr=0,evs={},warn=false,doc=D.days[ses[0]]||{};
+    ses.forEach(function(sk){var dc=D.days[sk]||{},c=nrNum(dc.cap),cfk=D.confirmed[sk],ss=C.sim.byDate[sk];cap+=c;
+      (dc.elev||[]).forEach(function(e){evs[e]=1});
+      if(cfk){nCf++;var rs=(cfk.rows||[]).filter(function(r){return nrNum(r.units)>0});nr+=rs.length;rs.forEach(function(r){if(isPlaced(sk,r))np++;if(r.back)nb++});u+=rowsTotal(cfk,-1)}
+      else{if(ENV.admin&&ss)u+=c-ss.left;if(c&&ss&&ss.left===0&&C.sim.left.length)warn=true}});
+    var cf=ses.length>0&&nCf===ses.length,evl=Object.keys(evs).map(Number).sort();
     var cls="cell";
-    if(!cap)cls+=" off";else cls+=k===C.t?" now":(s&&s.left===0&&C.sim.left.length&&!cf)?" warn":" ok";
-    if(k===ui.sel)cls+=" sel";if(k===C.t)cls+=" today";
+    if(!cap)cls+=" off";else cls+=k===C.t?" now":warn&&!cf?" warn":" ok";
+    if(nrBase(ui.sel)===k)cls+=" sel";if(k===C.t)cls+=" today";
     var hn=nrHolName(k,C.cfg);if(hn)cls+=" holi";
-    h+='<button class="'+cls+'" data-act="sel" data-date="'+k+'" aria-label="'+(m+1)+'月'+d+'日'+(hn?' '+hn:'')+'"><span class="dn"><b>'+d+'</b>'+(hn?'<em title="'+esc(hn)+'">祝</em>':'')+(cf?'<i>確定</i>':'')+'</span>';
+    h+='<button class="'+cls+'" data-act="sel" data-date="'+k+'" aria-label="'+(m+1)+'月'+d+'日'+(hn?' '+hn:'')+(ses.length>1?' '+ses.length+'回':'')+'"><span class="dn"><b>'+d+'</b>'+(hn?'<em title="'+esc(hn)+'">祝</em>':'')+(cf?'<i>確定</i>':nCf?'<i>一部確定</i>':'')+'</span>';
     if(!cap)h+='<span class="cap">—</span>';
-    else{var rows=cf?(cf.rows||[]).filter(function(r){return nrNum(r.units)>0}):[],u=cf?rowsTotal(cf,-1):(ENV.admin&&s?cap-s.left:0);
-      h+='<span class="cap">'+(cf||ENV.admin?u+'/':'')+cap+'台'+(doc.tf?' '+esc(doc.tf):'')+'</span><span class="evs'+((doc.elev&&doc.elev.length)?'':' none')+'">'+(doc.elev&&doc.elev.length?doc.elev.map(function(e){return "EV"+e}).join("·"):"EV未指定")+'</span>';
-      if(cf&&(ENV.admin||ENV.crew)){var np=rows.filter(function(r){return isPlaced(k,r)}).length,nb=rows.filter(function(r){return r.back}).length;
-        h+='<span class="cap">配置'+np+'/'+rows.length+' 戻し'+nb+'/'+rows.length+'</span>'}
-      else if(cf){var my=rows.filter(function(r){return r.vid===ENV.vid});
-        if(my.length){var mu=0,allp=true;my.forEach(function(r){mu+=nrNum(r.units);if(!isPlaced(k,r))allp=false});
-          h+='<span class="evs">自社'+mu+'台'+(allp?' ✅':'')+'</span>'}}
+    else{h+='<span class="cap">'+(cf||nCf||ENV.admin?u+'/':'')+cap+'台'+(ses.length===1&&doc.tf?' '+esc(doc.tf):'')+'</span>'
+        +(ses.length>1?'<span class="evs">'+ses.map(function(sk){return esc(sesLabel(sk))}).join('・')+'</span>':'')
+        +'<span class="evs'+(evl.length?'':' none')+'">'+(evl.length?evl.map(function(e){return "EV"+e}).join("·"):"EV未指定")+'</span>';
+      if(nCf&&(ENV.admin||ENV.crew))h+='<span class="cap">配置'+np+'/'+nr+' 戻し'+nb+'/'+nr+'</span>';
+      else if(nCf){var my=0,mu=0,allp=true;ses.forEach(function(sk){var cfk=D.confirmed[sk];if(cfk)(cfk.rows||[]).forEach(function(r){if(r.vid===ENV.vid&&nrNum(r.units)>0){my++;mu+=nrNum(r.units);if(!isPlaced(sk,r))allp=false}})});
+        if(my)h+='<span class="evs">自社'+mu+'台'+(allp?' ✅':'')+'</span>'}
       h+='<span class="bar"><b style="width:'+Math.round(u/cap*100)+'%"></b></span>'}
     h+='</button>';
   }
@@ -1034,9 +1063,10 @@ function autoConfirm(C){
 }
 
 /* 当日と翌日の搬出のお知らせ(業者は自社の分、管理者はその日の全体)。カレンダーの一番上に目立つように出す */
+function sesKeysOr(d){var ks=sesKeys(d);return ks.length?ks:[d]}
 function todayBox(C){
   var t=C.t,tm=nrDs(new Date(nrPd(t).getTime()+864e5));
-  return noticeBox()+noteBox(t,tm)+problemBox()+backBox()+orderBox(C)+dayNotice(t,true)+dayNotice(tm,false);
+  return noticeBox()+noteBox(t,tm)+problemBox()+backBox()+orderBox(C)+sesKeysOr(t).map(function(k){return dayNotice(k,true)}).join("")+sesKeysOr(tm).map(function(k){return dayNotice(k,false)}).join("");
 }
 /* 業者向け: 揚重(盛替え)業者や管理者が戻した分のお知らせ(3日以内) */
 function backBox(){
@@ -1052,7 +1082,7 @@ function backBox(){
 /* 業者・揚重業者: 今日・明日の連絡(備考)。業者は自社の予定がある日だけ */
 function noteBox(t,tm){
   if(ENV.admin)return "";
-  var items=[];[t,tm].forEach(function(d){var cf=D.confirmed[d];if(!cf)return;
+  var items=[];sesKeys(t).concat(sesKeys(tm)).forEach(function(d){var cf=D.confirmed[d];if(!cf)return;
     if(!ENV.crew&&!(cf.rows||[]).some(function(r){return r.vid===ENV.vid}))return;
     dayNotes(d).forEach(function(x){items.push({d:d,x:x})})});
   if(!items.length)return "";
@@ -1084,23 +1114,31 @@ function dayNotice(d,isToday){
   if(!isToday&&mv)h+='<p>「今日中に移動」の分は、今日のうちに指定の階のエレベーター前へ移しておいてください。</p>';
   return h+'</div>';
 }
-function vCell(k,m,d,doc,cap,cf,C){
-  var my=cf?(cf.rows||[]).filter(function(r){return r.vid===ENV.vid&&nrNum(r.units)>0}):[],cls="cell",lab;
+function vCell(k,m,d,ses,C){
+  var my=[],cap=0,doc=D.days[ses[0]]||{},evs={};
+  ses.forEach(function(sk){var dc=D.days[sk]||{},cf=D.confirmed[sk];cap+=nrNum(dc.cap);(dc.elev||[]).forEach(function(e){evs[e]=1});
+    if(cf)(cf.rows||[]).forEach(function(r){if(r.vid===ENV.vid&&nrNum(r.units)>0)my.push({sk:sk,r:r})})});
+  var cls="cell",lab,evl=Object.keys(evs).map(Number).sort();
   if(!cap){cls+=" off";lab="回収なし"}else if(my.length){cls+=k===C.t?" now":" mine";lab=k===C.t?"本日の搬出日":"自社の搬出日"}else{cls+=" can";lab="搬出可能日"}
-  if(k<C.t)cls+=" past";if(k===ui.sel)cls+=" sel";if(k===C.t)cls+=" today";
+  if(k<C.t)cls+=" past";if(nrBase(ui.sel)===k)cls+=" sel";if(k===C.t)cls+=" today";
   var hn=nrHolName(k,C.cfg);if(hn)cls+=" holi";
-  var mu=0,allp=my.length>0,mv=false;my.forEach(function(r){mu+=nrNum(r.units);if(!isPlaced(k,r))allp=false;if(r.to)mv=true});
-  var h='<button class="'+cls+'" data-act="sel" data-date="'+k+'" aria-label="'+(m+1)+'月'+d+'日'+(hn?' '+hn:'')+' '+lab+'"><span class="dn"><b>'+d+'</b>'+(hn?'<em title="'+esc(hn)+'">祝</em>':'')+(allp?'<i>✅</i>':'')+'</span>';
+  var mu=0,allp=my.length>0,mv=false;my.forEach(function(x){mu+=nrNum(x.r.units);if(!isPlaced(x.sk,x.r))allp=false;if(x.r.to)mv=true});
+  var h='<button class="'+cls+'" data-act="sel" data-date="'+k+'" aria-label="'+(m+1)+'月'+d+'日'+(hn?' '+hn:'')+(ses.length>1?' '+ses.length+'回':'')+' '+lab+'"><span class="dn"><b>'+d+'</b>'+(hn?'<em title="'+esc(hn)+'">祝</em>':'')+(allp?'<i>✅</i>':'')+'</span>';
   if(!cap)return h+'<span class="cap">—</span></button>';
   if(my.length)h+='<span class="tag">'+mu+'台</span>'+(mv?'<span class="tag2">前日移動</span>':'');
   else h+='<span class="tag">搬出可</span>';
-  h+='<span class="cap">'+(doc.tf?esc(doc.tf):'')+'</span>';
-  if(!my.length&&doc.elev&&doc.elev.length)h+='<span class="evs">'+doc.elev.map(function(e){return "EV"+e}).join("·")+'</span>';
+  h+='<span class="cap">'+(ses.length>1?ses.map(function(sk){return esc(sesLabel(sk))}).join('・'):(doc.tf?esc(doc.tf):''))+'</span>';
+  if(!my.length&&evl.length)h+='<span class="evs">'+evl.map(function(e){return "EV"+e}).join("·")+'</span>';
   return h+'</button>';
 }
 /* 業者向けの日別表示 */
 function renderDayV(){
-  var k=ui.sel,doc=D.days[k],cap=doc?nrNum(doc.cap):0,cf=D.confirmed[k];
+  var ks=sesKeys(ui.sel);
+  if(ks.length<2)return renderDayVOne(ks[0]||ui.sel);
+  return '<div class="dstack">'+ks.map(renderDayVOne).join("")+'</div>';
+}
+function renderDayVOne(k){
+  var doc=D.days[k],cap=doc?nrNum(doc.cap):0,cf=D.confirmed[k];
   var h='<section class="panel"><div class="dhead"><h2>'+fmtLong(k)+'</h2>'+(cf?'<span class="st ok">確定済み</span>':'')+'</div>';
   if(!cap)return h+'<p class="empty">この日は回収がありません。</p></section>';
   var el=doc.elev||[],tot=cf?rowsTotal(cf,-1):0;
@@ -1112,9 +1150,18 @@ function renderDayV(){
   if(myRows().some(function(x){return x.d===k}))h+='<p class="hint">自社の行は、スクラップ台車を搬出エレベーター前まで運んだら、置いたエレベーターを選んで「配置した」にチェックしてください。管理者に伝わります。</p>';
   return h+'</section>';
 }
+/* 1日に複数回(午前・午後など)回収するときの、回の切り替えと追加・名前 */
+function sesBar(k){
+  var ks=sesKeys(k);if(!ks.length)return "";
+  var h='<div class="sesbar">';
+  if(ks.length>1)ks.forEach(function(sk){h+='<button class="btn sm'+(sk===k?' primary':'')+'" data-act="sesel" data-k="'+sk+'">'+esc(sesLabel(sk))+(D.confirmed[sk]?' ✓':'')+'</button>'});
+  h+='<button class="btn sm" data-act="sesadd">＋ 午前・午後など、回を追加</button></div>';
+  if(ks.length>1)h+='<div class="field"><span>この回の名前</span><input type="text" maxlength="10" id="dlabel" data-f="dlabel" list="dl-ses" value="'+esc((D.days[k]||{}).lb||"")+'" placeholder="例: 午前" aria-label="この回の名前"><datalist id="dl-ses"><option value="午前"><option value="午後"><option value="夕方"></datalist></div>';
+  return h;
+}
 function renderDay(C){
   var k=ui.sel,doc=D.days[k],cap=doc?nrNum(doc.cap):0,pt=C.cfg.perTruck,cf=D.confirmed[k];
-  var h='<section class="panel"><div class="dhead"><h2>'+fmtLong(k)+'</h2>'+(cf?'<span class="st ok">確定済み</span>':'')+'</div>';
+  var h='<section class="panel"><div class="dhead"><h2>'+fmtLong(k)+'</h2>'+(cf?'<span class="st ok">確定済み</span>':'')+'</div>'+sesBar(k);
   if(!cap){
     return h+'<p class="empty">この日は回収の設定がありません。</p><button class="btn primary" data-act="dayon">この日を回収日にする</button></section>';
   }
@@ -1154,10 +1201,10 @@ function renderDay(C){
   h+='<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">';
   if(cf)h+='<button class="btn" data-act="goconf">確定内容の再振り分け</button><button class="btn danger" data-act="unconfirm">'+(ui.confirm==="unconfirm"?'もう一度押すと取り消し':'確定を取り消す')+'</button>';
   else h+='<button class="btn primary" data-act="confirm"'+(asg.length?'':' disabled')+'>'+(doc.hold?'この日の配分を確定':'今すぐ確定')+'</button>';
-  h+='<button class="btn danger sm" data-act="dayoff">'+(ui.confirm==="dayoff"?'もう一度押すと削除':'この日を回収なしに戻す')+'</button></div>';
+  h+='<button class="btn danger sm" data-act="dayoff">'+(ui.confirm==="dayoff"?'もう一度押すと削除':sesKeys(k).length>1?'この回を削除':'この日を回収なしに戻す')+'</button></div>';
   if(!cf)h+=doc.hold?'<p class="hint">確定を取り消したため、この日は自動確定を止めています。「この日の配分を確定」を押すと確定します。</p>'
     :inAuto(k,C)?'<p class="hint"><b>自動確定の期間に入っています。</b>'+(elev.length?'設定を変えてから10分たつと、この配分で自動で確定されます。':'集積するエレベーターを選ぶと、10分後に自動で確定されます。')+'すぐ確定するときは「今すぐ確定」を押します。</p>'
-    :C.cfg.auto>0?'<p class="hint">この日は<b>'+fmtD(nrDs(new Date(nrPd(k).getTime()-C.cfg.auto*864e5)))+'('+C.cfg.auto+'日前)に自動で確定</b>されます。それより早く確定するときは「今すぐ確定」を押します。確定すると、各業者の「回収予定」に日付・時間・集積場所・階が表示されます。</p>'
+    :C.cfg.auto>0?'<p class="hint">この日は<b>'+fmtDP(nrDs(new Date(nrPd(k).getTime()-C.cfg.auto*864e5)))+'('+C.cfg.auto+'日前)に自動で確定</b>されます。それより早く確定するときは「今すぐ確定」を押します。確定すると、各業者の「回収予定」に日付・時間・集積場所・階が表示されます。</p>'
     :'<p class="hint">確定すると、各業者の「回収予定」に日付・時間・集積場所・階が表示されます。</p>';
   else if(cf.auto)h+='<p class="hint"><span class="st ok">自動確定</span> 搬出日の'+C.cfg.auto+'日前に自動で確定しました。追加の業者や急ぎの業者は「確定内容の再振り分け」で変更できます。</p>';
   else h+='<p class="hint">「搬出EVまで配置」は業者がチェックします(管理者も代わりにチェックできます)。台車を戻したら「戻した」にチェックし、使ったエレベーターと台数を入れてください。</p>';
@@ -1191,7 +1238,7 @@ function renderStage(C,k,s,elev){
 function renderPriority(C){
   var R=C.rank,h='<section class="panel"><div class="mhead"><h2>優先順位</h2></div>';
   if(!R.list.length)return h+'<p class="empty">業者の搬出希望がまだ入力されていません。</p></section>';
-  h+='<p class="hint" style="margin:0 0 10px">基準日 '+fmtD(R.ref)+' の評価です。評価点 = 逼迫度×'+C.cfg.wP+' + 待機日数×'+C.cfg.wW+' + 保有台数×'+C.cfg.wH+'(重みは設定で変更)。逼迫度は、保有台数に対する搬出希望台数の割合(%)です。逼迫度が'+C.cfg.crit+'%以上の階は「余力なし」として、評価点に関係なく最優先で回収します。業者が「先に出す」を付けた階は、その業者の分の中で先に回収します(業者どうしの順番は変わりません)。</p>';
+  h+='<p class="hint" style="margin:0 0 10px">基準日 '+fmtDP(R.ref)+' の評価です。評価点 = 逼迫度×'+C.cfg.wP+' + 待機日数×'+C.cfg.wW+' + 保有台数×'+C.cfg.wH+'(重みは設定で変更)。逼迫度は、保有台数に対する搬出希望台数の割合(%)です。逼迫度が'+C.cfg.crit+'%以上の階は「余力なし」として、評価点に関係なく最優先で回収します。業者が「先に出す」を付けた階は、その業者の分の中で先に回収します(業者どうしの順番は変わりません)。</p>';
   var best={};R.list.forEach(function(r){if(!best[r.vid])best[r.vid]={rank:r.rank,want:0,floors:0};var b=best[r.vid];b.want+=r.rem;b.floors++});
   var vs=Object.keys(best).sort(function(a,b){return best[a].rank-best[b].rank});
   h+='<h3>業者の優先順位</h3><div class="ranklist" style="margin-top:6px">';
@@ -1260,7 +1307,7 @@ function renderHol(C){
   if(!ds.length)h+='<p class="empty">ありません。</p>';
   else{h+='<div class="tablewrap"><table><thead><tr><th class="l">日付</th><th class="l">名前</th><th>休み</th></tr></thead><tbody>';
     ds.forEach(function(d){var off=!!nrHolName(d,c),mine=c.holx[d]&&!nrJpHol(Number(d.slice(0,4)))[d];
-      h+='<tr><td class="l">'+d.slice(0,4)+'年 '+fmtD(d)+'</td><td class="l">'+esc(list[d])+(mine?' <span class="hint" style="margin:0">(追加した休日)</span>':'')+'</td><td><input type="checkbox" data-f="holon" data-d="'+d+'"'+(off?' checked':'')+' aria-label="'+fmtD(d)+' '+esc(list[d])+'を休みにする"></td></tr>'});
+      h+='<tr><td class="l">'+d.slice(0,4)+'年 '+fmtDP(d)+'</td><td class="l">'+esc(list[d])+(mine?' <span class="hint" style="margin:0">(追加した休日)</span>':'')+'</td><td><input type="checkbox" data-f="holon" data-d="'+d+'"'+(off?' checked':'')+' aria-label="'+fmtD(d)+' '+esc(list[d])+'を休みにする"></td></tr>'});
     h+='</tbody></table></div>'}
   h+='<p class="hint" style="margin:6px 0 8px">☑を外すと、その日は休みにしません(祝日でも回収する場合)。会社の休日(年末年始・夏季休業など)は下から足せます。足した休日は、☑を外すと消えます。</p>'
    +'<div class="urlrow"><input type="date" id="hol-d" aria-label="休日にする日"><input type="text" id="hol-n" maxlength="20" placeholder="名前(例: 夏季休業)" aria-label="休日の名前"><button class="btn" data-act="holadd">休日を追加</button></div></section>';
@@ -1398,8 +1445,8 @@ function floorOrders(vid){
   var out={},since=nrDs(new Date(Date.now()-14*864e5)),t=today();
   orderList().forEach(function(x){if(x.vid!==vid)return;var o=x.o,r=out[o.f]=out[o.f]||{req:0,notes:[]};
     if(o.st==="new"){r.req+=nrNum(o.u);r.notes.push('<span class="st warn">受付中</span> '+nrNum(o.u)+'台')}
-    else if(o.st==="plan")r.notes.push('<span class="st ok">追加予定</span> '+fmtD(o.plan.d)+'に'+nrNum(o.u)+'台'+(o.plan.d===t?'(本日)':''));
-    else if(o.st==="done"&&o.done.d>=since)r.notes.push('<span class="st ok">✅ 追加済み</span> '+fmtD(o.done.d)+'に'+nrNum(o.done.u)+'台');
+    else if(o.st==="plan")r.notes.push('<span class="st ok">追加予定</span> '+fmtD(o.plan.d)+'に'+nrNum(o.u)+'台'+(nrBase(o.plan.d)===t?'(本日)':''));
+    else if(o.st==="done"&&o.done.d>=since)r.notes.push('<span class="st ok">✅ 追加済み</span> '+fmtDP(o.done.d)+'に'+nrNum(o.done.u)+'台');
   });
   return out;
 }
@@ -1408,7 +1455,7 @@ function mutOrder(vid,fn){var o=clone(D.orders[vid]||{items:{}});o.items=o.items
 function ordStatus(o){
   if(o.st==="new")return '<span class="st warn">受付中</span>';
   if(o.st==="plan")return '<span class="st ok">手配済み</span> '+fmtD(o.plan.d)+'の搬出車で用意';
-  if(o.st==="done")return '<span class="st ok">✅ 上げ済み</span> '+fmtD(o.done.d)+'に'+nrNum(o.done.u)+'台'+(o.done.ev?'(EV'+o.done.ev+')':'');
+  if(o.st==="done")return '<span class="st ok">✅ 上げ済み</span> '+fmtDP(o.done.d)+'に'+nrNum(o.done.u)+'台'+(o.done.ev?'(EV'+o.done.ev+')':'');
   return '<span class="st off">取り消し</span>';
 }
 /* 業者: 追加注文の入力と自社の注文一覧 */
@@ -1419,7 +1466,7 @@ function renderMyOrders(vid){
    +'<div class="set"><label>階<input type="number" min="'+LIM.fmin+'" max="'+LIM.fmax+'" id="od-f" data-keep placeholder="例: 12"></label><label>台数<input type="number" min="1" id="od-u" data-keep value="1"></label><label>希望日(任意)<input type="date" id="od-w" data-keep></label><label>メモ(任意)<input type="text" id="od-m" data-keep maxlength="100"></label></div>'
    +'<button class="btn primary" data-act="ordadd">注文する</button>';
   if(mine.length){h+='<div class="tablewrap" style="margin-top:10px"><table><thead><tr><th class="l">注文</th><th class="l">状況</th><th></th></tr></thead><tbody>';
-    mine.forEach(function(x){var o=x.o;h+='<tr><td class="l"><b>'+o.f+'階 '+nrNum(o.u)+'台</b><div class="hint" style="margin:0">'+(o.want?'希望 '+fmtD(o.want)+' ':'')+esc(o.memo||"")+'</div></td><td class="l" style="white-space:normal">'+ordStatus(o)+'</td><td>'+(o.st==="new"?'<button class="btn sm" data-act="ordcancel" data-vid="'+esc(x.vid)+'" data-id="'+esc(x.id)+'">取り消す</button>':'')+'</td></tr>'});
+    mine.forEach(function(x){var o=x.o;h+='<tr><td class="l"><b>'+o.f+'階 '+nrNum(o.u)+'台</b><div class="hint" style="margin:0">'+(o.want?'希望 '+fmtDP(o.want)+' ':'')+esc(o.memo||"")+'</div></td><td class="l" style="white-space:normal">'+ordStatus(o)+'</td><td>'+(o.st==="new"?'<button class="btn sm" data-act="ordcancel" data-vid="'+esc(x.vid)+'" data-id="'+esc(x.id)+'">取り消す</button>':'')+'</td></tr>'});
     h+='</tbody></table></div>'}
   return h+'</section>';
 }
@@ -1438,7 +1485,7 @@ function renderOrders(C){
     h+='<div class="ccards">';
     list.forEach(function(x){var o=x.o,k=esc(x.vid)+'-'+esc(x.id),da=' data-vid="'+esc(x.vid)+'" data-id="'+esc(x.id)+'"';
       h+='<div class="ccard"><div class="cc-h"><b>'+esc(o.n||vname(x.vid))+'</b> '+o.f+'階 <b>'+nrNum(o.u)+'台</b></div>'
-        +'<div class="cc-r"><span>注文</span><div>'+esc(fmtAt(o.at))+(o.want?' 希望 '+fmtD(o.want):'')+(o.memo?'<div class="hint" style="margin:0">'+esc(o.memo)+'</div>':'')+'</div></div>'
+        +'<div class="cc-r"><span>注文</span><div>'+esc(fmtAt(o.at))+(o.want?' 希望 '+fmtDP(o.want):'')+(o.memo?'<div class="hint" style="margin:0">'+esc(o.memo)+'</div>':'')+'</div></div>'
         +'<div class="cc-r"><span>状況</span><div>'+ordStatus(o)+'</div></div>';
       if(ENV.admin&&o.st==="new")h+='<div class="cc-r"><span>搬出車</span><div class="mvbox" style="flex-wrap:wrap">'+(days.length?'<select id="op-'+k+'" data-keep aria-label="用意する搬出車">'+opts+'</select><button class="btn sm primary" data-act="ordplan"'+da+'>手配する</button>':'<span class="hint" style="margin:0">これからの回収日がありません</span>')+(ENV.admin?'<button class="btn sm" data-act="ordcancel"'+da+'>却下</button>':'')+'</div></div>';
       if(ENV.admin&&o.st==="plan")h+='<div class="cc-r"><span>上げた</span><div class="mvbox" style="flex-wrap:wrap"><input type="date" id="odd-'+k+'" data-keep value="'+(o.plan.d<=C.t?C.t:o.plan.d)+'" aria-label="上げた日"><select id="ode-'+k+'" data-keep aria-label="使ったエレベーター"><option value="">EV指定なし</option>'+evList().map(function(e){return '<option value="'+e+'">EV'+e+'</option>'}).join("")+'</select><input type="number" min="1" id="odu-'+k+'" data-keep value="'+nrNum(o.u)+'" aria-label="上げた台数"><button class="btn sm primary" data-act="orddone"'+da+'>上げた</button><button class="btn sm" data-act="ordunplan"'+da+'>手配を戻す</button></div></div>';
@@ -1454,7 +1501,7 @@ function orderBox(C){
   var since=nrDs(new Date(Date.now()-3*864e5)),list=orderList().filter(function(x){return x.vid===ENV.vid&&((x.o.st==="plan"&&x.o.plan.d>=C.t)||(x.o.st==="done"&&x.o.done.d>=since))});
   if(!list.length)return "";
   var h='<div class="todaybox next" role="status"><h3>📦 追加注文のお知らせ</h3><ul>';
-  list.forEach(function(x){var o=x.o;h+='<li><b>'+o.f+'階 '+nrNum(o.u)+'台</b>: '+(o.st==="plan"?fmtD(o.plan.d)+'の搬出車で用意します':'✅ '+fmtD(o.done.d)+'に'+nrNum(o.done.u)+'台上げました'+(o.done.ev?'(EV'+o.done.ev+')':''))+'</li>'});
+  list.forEach(function(x){var o=x.o;h+='<li><b>'+o.f+'階 '+nrNum(o.u)+'台</b>: '+(o.st==="plan"?fmtD(o.plan.d)+'の搬出車で用意します':'✅ '+fmtDP(o.done.d)+'に'+nrNum(o.done.u)+'台上げました'+(o.done.ev?'(EV'+o.done.ev+')':''))+'</li>'});
   return h+'</ul></div>';
 }
 /* ---- 集計と棚卸し(管理者) ---- */
@@ -1464,7 +1511,7 @@ function monthData(m){
   Object.keys(D.confirmed).sort().forEach(function(d){if(d.slice(0,7)!==m)return;var day=D.days[d]||{};
     (D.confirmed[d].rows||[]).forEach(function(r){if(nrNum(r.units)<=0)return;var v=V(r.vid),c=r.chk,b=r.back,pe=placedEv(d,r);
       v.out+=nrNum(r.units);v.times++;if(b)v.back+=nrNum(b.u);if(c&&c.k==="none")v.none++;if(c&&c.k==="short")v.short++;
-      det.push([d,fmtTime(day),vname(r.vid),r.floor,nrNum(r.units),r.ev?"EV"+r.ev:"",r.to||"",Array.isArray(r.rets)?retLabel(r):(nrNum(r.ret)||r.floor),isPlaced(d,r)?"済"+(pe?"(EV"+pe+")":""):"",c?(c.k==="ok"?"揃っている":c.k==="none"?"無い":"不足 "+nrNum(c.got)):"",c&&c.by||"",b?nrNum(b.u):"",b?"EV"+b.ev:"",b&&b.by||""])})});
+      det.push([nrBase(d)+(sesLabel(d)?" "+sesLabel(d):""),fmtTime(day),vname(r.vid),r.floor,nrNum(r.units),r.ev?"EV"+r.ev:"",r.to||"",Array.isArray(r.rets)?retLabel(r):(nrNum(r.ret)||r.floor),isPlaced(d,r)?"済"+(pe?"(EV"+pe+")":""):"",c?(c.k==="ok"?"揃っている":c.k==="none"?"無い":"不足 "+nrNum(c.got)):"",c&&c.by||"",b?nrNum(b.u):"",b?"EV"+b.ev:"",b&&b.by||""])})});
   Object.keys(D.plans).forEach(function(vid){((D.plans[vid]||{}).logs||[]).forEach(function(l){if((l.d||"").slice(0,7)!==m)return;var v=V(vid);if(l.k==="stock")v.stock+=Number(l.u)||0;else v.add+=nrNum(l.u)})});
   Object.keys(D.orders).forEach(function(vid){var it=(D.orders[vid]||{}).items||{};Object.keys(it).forEach(function(k){if((it[k].at||"").slice(0,7)===m&&it[k].st!=="cancel")V(vid).ord++})});
   return {by:by,det:det};
@@ -1638,6 +1685,7 @@ function morphNode(a,b,remote){
 }
 var morphing=false,morphAgain=false;
 function render(remote){
+  SESC=null;
   if(ui.pv&&!ENV.preview)return asVendor(function(){render(remote)});
   /* 業者のデータは会社(vid)単位。同じ会社の人は approved/{本人}.vid に会社のIDを持つ。最初に登録した人の会社IDは本人のID */
   if(!ENV.preview&&!ENV.admin)ENV.vid=(D.approved[ENV.uid]&&D.approved[ENV.uid].vid)||ENV.uid;
@@ -1708,6 +1756,8 @@ function mutVendor(vid,fn){
   if(!vid)return;
   var v=clone(D.vendors[vid]||{floors:{}});v.floors=v.floors||{};fn(v);v.updated=nowIso();save("vendors",vid,v);
 }
+/* 回を消したら、同じ日の残りの回(なければその日)を選び直す */
+function afterDayRemoved(k){var rest=sesKeys(nrBase(k)).filter(function(x){return x!==k&&(D.days[x]||D.confirmed[x])});ui.sel=rest[0]||nrBase(k)}
 function mutDay(k,fn){
   var d=clone(D.days[k]||{cap:0,elev:[]});fn(d);d.edited=nowIso();save("days",k,d);
 }
@@ -1741,11 +1791,18 @@ function onClick(ev){
   else if(act==="prev"){ui.month=new Date(ui.month.getFullYear(),ui.month.getMonth()-1,1,12)}
   else if(act==="next"){ui.month=new Date(ui.month.getFullYear(),ui.month.getMonth()+1,1,12)}
   else if(act==="today"){var t=new Date();ui.month=new Date(t.getFullYear(),t.getMonth(),1,12);ui.sel=today()}
-  else if(act==="sel"){ui.sel=b.getAttribute("data-date")}
+  else if(act==="sel"){var sd0=b.getAttribute("data-date");ui.sel=sesKeys(sd0)[0]||sd0}
+  else if(act==="sesel"){ui.sel=b.getAttribute("data-k")}
+  else if(act==="sesadd"){
+    var sb=nrBase(ui.sel),sks=sesKeys(sb),sprev=D.days[ui.sel]||D.days[sks[0]]||{},sno=0;sks.forEach(function(x){sno=Math.max(sno,nrSesNo(x))});sno++;
+    var snk=nrSesKey(sb,sno);
+    if(sks.length===1&&!((D.days[sks[0]]||{}).lb))patch("days",sks[0],{lb:"午前"});
+    put("days",snk,{cap:nrNum(sprev.cap)||nrCfg(D.config).perTruck,elev:(sprev.elev||[]).slice(),lb:sks.length===1?"午後":sno+"回目",edited:nowIso()});
+    ui.sel=snk;ui.msg="回を追加しました。回収できる台数・時間・エレベーターは、この回ごとに設定します。";ui.msgKind="ok"}
   else if(act==="goconf"){ui.tab="cnf"}
   else if(act==="dayon"){var pt=nrCfg(D.config).perTruck;mutDay(ui.sel,function(d){d.cap=pt;d.elev=d.elev||[]})}
   else if(act==="dayoff"){
-    if(ui.confirm==="dayoff"){if(D.confirmed[ui.sel]){notifyChanges(ui.sel,D.confirmed[ui.sel],null);remove("confirmed",ui.sel)}remove("days",ui.sel);ui.confirm=""}
+    if(ui.confirm==="dayoff"){var dok=ui.sel;if(D.confirmed[dok]){notifyChanges(dok,D.confirmed[dok],null);remove("confirmed",dok)}remove("days",dok);ui.confirm="";afterDayRemoved(dok)}
     else{ui.confirm="dayoff";keepConfirm=true}
   }
   else if(act==="tplus"||act==="tminus"){
@@ -1841,7 +1898,7 @@ function onClick(ev){
       addLog(dv,{id:lid,d:dd,f:df,u:du,e:de,m:"追加注文"+(dx.memo?": "+dx.memo:""),at:nowIso(),by:who()});
       var ad3={};ad3[df]={h:du};addFloors(dv,ad3,1);
       mutOrder(dv,function(o){var x=o.items[id];if(x){x.st="done";x.done={d:dd,ev:de,u:du,at:nowIso(),log:lid,by:who()}}});
-      ui.msg=fmtD(dd)+"に"+df+"階へ"+du+"台上げたことを業者に報告し、保有台数を増やしました。";ui.msgKind="ok"}
+      ui.msg=fmtDP(dd)+"に"+df+"階へ"+du+"台上げたことを業者に報告し、保有台数を増やしました。";ui.msgKind="ok"}
   }
   else if(act==="ordundo"){
     if(ui.confirm==="ou-"+id){var rv2=b.getAttribute("data-vid"),rx=((D.orders[rv2]||{}).items||{})[id];
@@ -1904,7 +1961,7 @@ function onClick(ev){
     if(!hdv||!/^\d{4}-\d{2}-\d{2}$/.test(hdv)){ui.msg="休日にする日を選んでください。";ui.msgKind="bad"}
     else{var hc=clone(D.config||{});hc.holx=hc.holx||{};var hnat=!!nrJpHol(Number(hdv.slice(0,4)))[hdv];
       if(hnat&&hc.holx[hdv]===0)delete hc.holx[hdv];else if(!hnat)hc.holx[hdv]=hnv;
-      if(!Object.keys(hc.holx).length)delete hc.holx;putCfg(hc);ui.msg=fmtD(hdv)+"を休日にしました。";ui.msgKind="ok"}
+      if(!Object.keys(hc.holx).length)delete hc.holx;putCfg(hc);ui.msg=fmtDP(hdv)+"を休日にしました。";ui.msgKind="ok"}
   }
   else if(act==="joincancel"){ui.jcPending=null;ui.jcOpen=false}
   else if(act==="joinopen"){ui.jcOpen=true}
@@ -1965,7 +2022,8 @@ function onChange(ev){
   var vid=ENV.admin?ui.vsel:ENV.vid;
   if(f==="vsel"){ui.vsel=el.value||null;ui.confirm=""}
   else if(f==="only"){ui.only=el.checked}
-  else if(f==="cap"){var v=nrNum(el.value);if(v===0){if(D.confirmed[ui.sel]){notifyChanges(ui.sel,D.confirmed[ui.sel],null);remove("confirmed",ui.sel)}remove("days",ui.sel)}else mutDay(ui.sel,function(d){d.cap=v})}
+  else if(f==="dlabel"){patch("days",ui.sel,{lb:el.value.trim().slice(0,10)})}
+  else if(f==="cap"){var v=nrNum(el.value);if(v===0){var cok=ui.sel;if(D.confirmed[cok]){notifyChanges(cok,D.confirmed[cok],null);remove("confirmed",cok)}remove("days",cok);afterDayRemoved(cok)}else mutDay(ui.sel,function(d){d.cap=v})}
   else if(f==="tf"||f==="tt"){var tv=nrTime(el.value);if(tv===null){ui.msg="時間は「1030」や「10:30」のように入力してください。";ui.msgKind="bad"}else{el.value=tv;var was=fmtTime(D.days[ui.sel]||{});mutDay(ui.sel,function(d){d[f]=tv});
       var now2=fmtTime(D.days[ui.sel]||{}),cf5=D.confirmed[ui.sel];
       if(cf5&&was!==now2){var sn={};(cf5.rows||[]).forEach(function(r){if(!sn[r.vid]){sn[r.vid]=1;notifyTime(r.vid,ui.sel,was,now2)}})}}}
