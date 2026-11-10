@@ -477,7 +477,7 @@ function nrSimulate(vendors,days,cfg,startStr,confirmed){
       var ev=null,to=null;
       if(elevs.length){ev=nrElevFor(it.floor,elevs,cfg);
         if(ev===null){var mv=moves[it.vid+"|"+it.floor];
-          if(mv&&elevs.indexOf(nrNum(mv.ev))>=0){ev=nrNum(mv.ev);to=nrNum(mv.to)||null}
+          if(mv&&nrNum(mv.ev)>=1&&nrNum(mv.ev)<=cfg.evn){ev=nrNum(mv.ev);to=nrNum(mv.to)||null}
           else{res.excluded++;res.excl.push({vid:it.vid,floor:it.floor,rem:it.rem,since:it.since,sc:nrScore(it,d,cfg)});return}}}
       /* 先行の台数が出したい台数より少ないときは、先行分と残りに分けて並べる */
       if(it.pl===undefined)it.pl=it.p?(it.pq||1e9):0;
@@ -784,12 +784,19 @@ function problemRows(){
     (D.confirmed[d].rows||[]).forEach(function(r,i){if(nrNum(r.units)>0&&r.chk&&r.chk.k!=="ok"&&!r.back&&(ENV.admin||ENV.crew||r.vid===ENV.vid))out.push({d:d,i:i,r:r})})});
   return out;
 }
+/* その回に管理者が決めたエレベーター。集積指示で選んだEV(指定のEV以外でもよい)も含める */
+function desigEv(k){
+  var doc=D.days[k]||{},el=(doc.elev||[]).slice();
+  if(!el.length)return [];
+  Object.keys(doc.moves||{}).forEach(function(x){var e=nrNum(doc.moves[x].ev);if(e&&el.indexOf(e)<0)el.push(e)});
+  return el.sort(function(a,b){return a-b});
+}
 /* 管理者が指定したエレベーター以外に、業者が置いた行(管理者・揚重業者に知らせる)。確認済みで、置いたEVが変わっていなければ出さない */
 function offRows(){
   if(!(ENV.admin||ENV.crew))return [];
   var out=[],from=nrDs(new Date(Date.now()-3*864e5));
   Object.keys(D.confirmed).sort().forEach(function(d){if(d<from)return;
-    var el=(D.days[d]||{}).elev||[],cf=D.confirmed[d];if(!el.length)return;
+    var el=desigEv(d),cf=D.confirmed[d];if(!el.length)return;
     (cf.rows||[]).forEach(function(r,i){if(nrNum(r.units)<=0||r.back)return;var pe=placedEv(d,r);
       if(!pe||el.indexOf(pe)>=0)return;
       var a=((cf.st||{})[rowKey(r)]||{}).pack;if(a&&a.ev===pe)return;
@@ -859,7 +866,7 @@ function addRow(cf,k,vid,floor,units,skipCap){
   var cap=nrNum((D.days[k]||{}).cap),room=skipCap?units:Math.max(0,cap-rowsTotal(cf));
   units=Math.min(units,room);if(units<=0)return 0;
   var cfg=nrCfg(D.config),el=((D.days[k]||{}).elev||[]).slice().sort(),ev=el.length?nrElevFor(floor,el,cfg):null,to=null;
-  if(el.length&&ev===null){var mv=((D.days[k]||{}).moves||{})[vid+"|"+floor];if(mv&&el.indexOf(nrNum(mv.ev))>=0){ev=nrNum(mv.ev);to=nrNum(mv.to)||null}}
+  if(el.length&&ev===null){var mv=((D.days[k]||{}).moves||{})[vid+"|"+floor];if(mv&&nrNum(mv.ev)>=1&&nrNum(mv.ev)<=cfg.evn){ev=nrNum(mv.ev);to=nrNum(mv.to)||null}}
   var hit=null;cf.rows.forEach(function(r){if(r.vid===vid&&r.floor===floor&&(r.ev||null)===ev)hit=r});
   if(hit)hit.units=nrNum(hit.units)+units;else{var nr={vid:vid,floor:floor,units:units,ev:ev,to:to,ret:null};setRowRet(nr,retFor(vid,floor,units));cf.rows.push(nr)}
   return units;
@@ -895,7 +902,7 @@ function who(){
 /* 配置(業者)と戻し(管理者)のチェック欄 */
 function placedCell(d,r){
   var on=isPlaced(d,r),can=ENV.admin||r.vid===ENV.vid;
-  var del=((D.days[d]||{}).elev||[]).slice().sort();
+  var del=desigEv(d);
   if(ENV.crew){var pe0=placedEv(d,r);return on?'<span class="st ok">✅ 配置済み'+(pe0?'(EV'+pe0+')':'')+'</span>'+(pe0&&del.length&&del.indexOf(pe0)<0?' <span class="st bad">指定外のEV</span>':''):'<span class="st off">未配置</span>'}
   if(!can)return '<span class="muted">—</span>';
   /* 置く場所は、すべてのエレベーターから選べる。管理者が指定したEV以外に置いたときは、管理者と揚重業者に通知される */
@@ -1200,7 +1207,7 @@ function renderDay(C){
   if(!elev.length)h+='<div class="note bad" style="margin-bottom:10px">集積するエレベーターが未指定です。指定するまで全階を対象に配分します。</div>';
   else{var ns=elev.filter(function(e){return C.cfg.ns[e].length}).map(function(e){return "EV"+e+": "+nrFmtFloors(C.cfg.ns[e])});
     if(ns.length)h+='<p class="hint" style="margin:0 0 10px">不停止階 '+esc(ns.join(" / "))+'(設定タブで変更できます)</p>'}
-  if(cf&&elev.length){var stale=(cf.rows||[]).some(function(r){return r.ev&&elev.indexOf(r.ev)<0});
+  if(cf&&elev.length){var dg=desigEv(k),stale=(cf.rows||[]).some(function(r){return r.ev&&dg.indexOf(r.ev)<0});
     if(stale)h+='<div class="note bad" style="margin-bottom:10px">確定後にエレベーターを変更しています。確定を取り消して、もう一度確定してください。</div>'}
   h+='<div class="sum"><div><small>回収可能</small><b>'+cap+'台</b></div><div><small>配分済み</small><b>'+used+'台</b></div><div><small>空き</small><b>'+(cap-used)+'台</b></div></div>';
   var seq=[];asg.forEach(function(a){for(var i=0;i<a.units;i++)seq.push(a.vid)});
@@ -1237,22 +1244,22 @@ function renderStage(C,k,s,elev){
   if(!elev.length)return "";
   var moves=(D.days[k]||{}).moves||{},mk=Object.keys(moves),ex=(s&&s.excl)||[],h='';
   if(!mk.length&&!ex.length)return "";
-  h+='<div class="cday"><h3>停まらない階の集積指示</h3><p class="hint" style="margin:0 0 8px">この日のエレベーターが停まらない階の希望です。逼迫度が高い階は、前日までにどの階のどのEV前へ集積しておくか指示すると、この日の配分に入ります。</p>';
+  h+='<div class="cday"><h3>停まらない階の集積指示</h3><p class="hint" style="margin:0 0 8px">この日のエレベーターが停まらない階の希望です。逼迫度が高い階は、前日までにどの階のどのEV前へ集積しておくか指示すると、この日の配分に入ります。集積するEVは、この日に指定したEV以外も含め、すべてのEVから選べます。</p>';
   if(mk.length){
     h+='<div class="tablewrap"><table><thead><tr><th class="l">業者</th><th>階</th><th class="l">前日までの集積先</th><th></th></tr></thead><tbody>';
     mk.sort().forEach(function(key){var p=key.split("|"),m=moves[key];
-      h+='<tr><td class="l vn"><i class="chip" style="background:'+vcolor(p[0])+'"></i>'+esc(vname(p[0]))+'</td><td>'+esc(p[1])+'階</td><td class="l">'+evLabel(nrNum(m.ev),nrNum(m.to))+(elev.indexOf(nrNum(m.ev))<0?' <span class="st bad">この日のEVではありません</span>':'')+'</td><td><button class="btn sm danger" data-act="unstage" data-key="'+esc(key)+'">指示を外す</button></td></tr>'});
+      h+='<tr><td class="l vn"><i class="chip" style="background:'+vcolor(p[0])+'"></i>'+esc(vname(p[0]))+'</td><td>'+esc(p[1])+'階</td><td class="l">'+evLabel(nrNum(m.ev),nrNum(m.to))+(elev.indexOf(nrNum(m.ev))<0?' <span class="st warn">指定のEV以外</span>':'')+'</td><td><button class="btn sm danger" data-act="unstage" data-key="'+esc(key)+'">指示を外す</button></td></tr>'});
     h+='</tbody></table></div>';
   }
   if(ex.length){
     h+='<div class="tablewrap" style="margin-top:8px"><table><thead><tr><th class="l">業者</th><th>階</th><th>希望</th><th>逼迫度</th><th>評価点</th><th class="l">集積先を指示</th></tr></thead><tbody>';
     ex.forEach(function(x,i){
-      var e0=elev[0],near=null;elev.forEach(function(e){var n=nrNearest(x.floor,e,C.cfg);if(n!==null&&(near===null||Math.abs(n-x.floor)<Math.abs(near-x.floor))){near=n;e0=e}});
+      var e0=elev[0],near=null;evList().forEach(function(e){var n=nrStops(x.floor,e,C.cfg)?x.floor:nrNearest(x.floor,e,C.cfg);if(n!==null&&(near===null||Math.abs(n-x.floor)<Math.abs(near-x.floor))){near=n;e0=e}});
       h+='<tr><td class="l vn"><i class="chip" style="background:'+vcolor(x.vid)+'"></i>'+esc(vname(x.vid))+'</td><td>'+x.floor+'階</td><td>'+x.rem+'</td><td>'+x.sc.pr.toFixed(0)+'%'+(x.sc.crit?' <span class="st bad">余力なし</span>':'')+'</td><td>'+x.sc.total.toFixed(0)+'</td>'
-       +'<td class="l"><div class="mvbox" data-vid="'+esc(x.vid)+'" data-fl="'+x.floor+'"><select id="sg-e-'+k+'-'+i+'" data-keep data-role="ev" aria-label="集積するエレベーター">'+elev.map(function(e){return '<option value="'+e+'"'+(e===e0?' selected':'')+'>EV'+e+'</option>'}).join("")+'</select>'
+       +'<td class="l"><div class="mvbox" data-vid="'+esc(x.vid)+'" data-fl="'+x.floor+'"><select id="sg-e-'+k+'-'+i+'" data-keep data-role="ev" aria-label="集積するエレベーター">'+evList().map(function(e){return '<option value="'+e+'"'+(e===e0?' selected':'')+'>EV'+e+(elev.indexOf(e)<0?'(指定外)':'')+'</option>'}).join("")+'</select>'
        +'<input type="number" min="'+LIM.fmin+'" max="'+LIM.fmax+'" id="sg-t-'+k+'-'+i+'" data-keep data-role="to" value="'+(near||"")+'" aria-label="集積する階"><span class="hint" style="margin:0">階</span><button class="btn sm primary" data-act="stage">指示</button></div></td></tr>';
     });
-    h+='</tbody></table></div><p class="hint">集積する階の初期値は、そのEVが停まる一番近い階です。</p>';
+    h+='</tbody></table></div><p class="hint">集積する階の初期値は、いちばん近い階に停まるEVと、その階です。</p>';
   }
   return h+'</div>';
 }

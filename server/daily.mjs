@@ -97,7 +97,8 @@ for (const app of APPS) {
       lines.push("・" + (r.n || vname(D, r.vid)) + " " + r.floor + "階 " + nrNum(r.units) + "台 → " + evLabel(r.ev, r.to) + (label === "明日" && r.to ? "(今日中に移動)" : ""));
       /* 管理者が指定したEV以外に業者が置いていたら知らせる */
       const pl = D.vendors[r.vid] && D.vendors[r.vid].placed && D.vendors[r.vid].placed[d + "|" + r.floor], pe = pl && typeof pl === "object" ? nrNum(pl.ev) : 0;
-      if (pe && (day.elev || []).length && day.elev.indexOf(pe) < 0 && !r.back) lines.push("  ⚠ EV" + pe + "に置かれています(指定: " + day.elev.map(e => "EV" + e).join("・") + ")");
+      const dg = [...new Set([...(day.elev || []), ...Object.values(day.moves || {}).map(m => nrNum(m.ev))])].filter(Boolean).sort((p, q) => p - q);
+      if (pe && (day.elev || []).length && dg.indexOf(pe) < 0 && !r.back) lines.push("  ⚠ EV" + pe + "に置かれています(指定: " + dg.map(e => "EV" + e).join("・") + ")");
     });
   }
   let newOrders = 0; Object.values(D.orders).forEach(o => Object.values(o.items || {}).forEach(x => { if (x.st === "new") newOrders++; }));
