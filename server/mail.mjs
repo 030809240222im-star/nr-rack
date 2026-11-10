@@ -11,7 +11,7 @@ const root = new URL("..", import.meta.url).pathname;
 const html = fs.readFileSync(root + "index.html", "utf8");
 const core = html.match(/<script>\s*([\s\S]*?function nrRank[\s\S]*?)<\/script>/)[1];
 const ctx = {}; vm.createContext(ctx); vm.runInContext(core, ctx);
-const { nrDs, nrPd, nrNum } = ctx;
+const { nrDs, nrPd, nrNum, nrRowRets } = ctx;
 
 const MODE = process.env.MAIL_MODE || "pre";
 const APP_URL = "https://030809240222im-star.github.io/nr-rack/";
@@ -75,7 +75,8 @@ const footer = app => "\n\n予定の確認や連絡は、アプリから行っ�
 function rowsText(rows, label) {
   return rows.map(r => "・" + r.floor + "階 " + nrNum(r.units) + "台 → " + evLabel(r.ev, r.to)
     + (r.to && label === "明日" ? "(今日中に" + r.to + "階へ移動してください)" : "")
-    + (r.ret && Number(r.ret) !== Number(r.floor) ? "(戻し先: " + r.ret + "階)" : "")).join("\n");
+    + (Array.isArray(r.rets) ? "(戻し先: " + nrRowRets(r).map(x => (x.f === r.floor ? "同じ階" : x.f + "階") + " " + x.u + "台").join("・") + ")"
+      : r.ret && Number(r.ret) !== Number(r.floor) ? "(戻し先: " + r.ret + "階)" : "")).join("\n");
 }
 async function mark(app, d, key) {
   if (fixture) return;

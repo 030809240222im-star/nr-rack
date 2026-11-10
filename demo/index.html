@@ -186,7 +186,7 @@ body{touch-action:manipulation}
   .floors .stepper{width:100%;max-width:12em}
   .floors .stepper input{flex:1 1 auto;width:auto!important}
 }
-@container (max-width:1040px){
+@container (max-width:1100px){
 
   .floors{max-height:none;overflow:visible}
   /* 横長の表は1行ずつカードにして、右側の欄が見切れないようにする */
@@ -255,6 +255,8 @@ body{touch-action:manipulation}
 .stp:active{background:var(--line);color:var(--fg)}
 .stepper input[type=number]{width:3.6em}
 .prio .prow{display:flex;align-items:center;gap:6px;margin-top:4px;flex:1 1 100%;width:100%}.prio .prow>span{font-size:12px;color:var(--muted);flex:none;width:2.4em}
+.rsbox .prow>span{width:auto}.rsbox .prow{flex-wrap:nowrap}
+.floors .rsbox .stepper{width:8.6em!important;max-width:none;flex:none}.floors .rsbox .stepper input{flex:1 1 auto!important;width:3em!important;min-width:3em;padding-left:2px;padding-right:2px;text-align:center}
 .floors .prio .stepper{width:8.6em!important;max-width:none;flex:none}.floors .prio .stepper input{flex:1 1 auto!important;width:3em!important;min-width:3em;padding-left:2px;padding-right:2px;text-align:center}
 .mvbox .stepper input[type=number]{width:4.4em;padding-left:4px;padding-right:4px;text-align:center}
 .cc-r>div{min-width:0;flex:1 1 auto}.cc-r .mvbox .stepper{width:9.5em;max-width:100%}
@@ -341,6 +343,36 @@ function nrElevFor(floor,elevs,cfg){for(var i=0;i<elevs.length;i++){if(nrStops(f
 function nrAnyElev(floor,cfg){for(var e=1;e<=cfg.evn;e++){if(nrStops(floor,e,cfg))return true}return false}
 /* 停まらない階から近い、そのEVが停まる階 */
 function nrNearest(floor,e,cfg){for(var k=1;k<cfg.fmax;k++){if(nrStops(floor-k,e,cfg))return floor-k;if(nrStops(floor+k,e,cfg))return floor+k}return null}
+/* 戻し先の割り振り。e: 業者の階の入力、floor: 出す階、units: 出す台数。
+   e.rs=[{f:階,u:台数}] を上から順に埋め、余りは同じ階に戻す。昔の形(e.r だけ)は全部その階へ。
+   全部が同じ階なら null、行き先が1つだけならその階の数字、分かれるなら [{f,u}] を返す */
+function nrRetList(e,floor,units){
+  var list=[],left=units,rs=Array.isArray(e.rs)?e.rs:[];
+  if(!rs.length&&nrNum(e.r))rs=[{f:nrNum(e.r),u:units}];
+  rs.forEach(function(x){var f=nrNum(x.f),u=Math.min(nrNum(x.u),left);if(!f||u<=0)return;left-=u;
+    var hit=null;list.forEach(function(y){if(y.f===f)hit=y});if(hit)hit.u+=u;else list.push({f:f,u:u})});
+  if(left>0){var same=null;list.forEach(function(y){if(y.f===floor)same=y});if(same)same.u+=left;else list.push({f:floor,u:left})}
+  return list;
+}
+/* skip: その階から、これより前の回収日にもう出した台数(その分の戻し先は使い終わったものとして飛ばす) */
+function nrRets(e,floor,units,skip){
+  if(!e||e.same!==false||units<=0)return null;
+  skip=skip||0;
+  var all=nrRetList(e,floor,skip+units),done={},list=[];
+  if(skip&&!(Array.isArray(e.rs)&&e.rs.length)&&nrNum(e.r))skip=0,all=nrRetList(e,floor,units);
+  if(skip)nrRetList(e,floor,skip).forEach(function(x){done[x.f]=x.u});
+  all.forEach(function(x){var u=x.u-(done[x.f]||0);if(u>0)list.push({f:x.f,u:u})});
+  if(list.length===1)return list[0].f===floor?null:list[0].f;
+  return list;
+}
+/* 確定した行の戻し先を [{f,u}] でそろえる(台数をあとで変えた行も、今の台数に合わせて上から埋め直す) */
+function nrRowRets(r){
+  var n=nrNum(r.units),list=[],left=n;
+  if(Array.isArray(r.rets))r.rets.forEach(function(x){var f=nrNum(x.f),u=Math.min(nrNum(x.u),left);if(!f||u<=0)return;left-=u;list.push({f:f,u:u})});
+  else if(nrNum(r.ret)){list.push({f:nrNum(r.ret),u:n});left=0}
+  if(left>0){var same=null;list.forEach(function(y){if(y.f===r.floor)same=y});if(same)same.u+=left;else list.push({f:r.floor,u:left})}
+  return list;
+}
 function nrItems(vendors,startStr){
   var items=[];
   Object.keys(vendors).sort().forEach(function(vid){
@@ -348,9 +380,9 @@ function nrItems(vendors,startStr){
     Object.keys(fl).forEach(function(k){
       var f=parseInt(k,10),h=nrNum(fl[k].h),w=nrNum(fl[k].w),rem=Math.min(w,h);
       if(!(f>=1&&f<=NR_MAXF)||rem<=0)return;
-      var rt=fl[k].same===false?nrNum(fl[k].r):0;
+      var rr=nrRets(fl[k],f,rem),rt=typeof rr==="number"?rr:0;
       /* p: 業者が付けた先行の順位(1が最初。0は指定なし)。pq: 先行して出す台数(0は出したい台数の全部) */
-      items.push({vid:vid,floor:f,held:h,want:w,rem:rem,since:fl[k].s||startStr,ret:rt||null,retPending:fl[k].same===false&&!rt,p:nrNum(fl[k].p),pq:nrNum(fl[k].pq)});
+      items.push({vid:vid,floor:f,held:h,want:w,rem:rem,since:fl[k].s||startStr,ret:rt||null,src:fl[k],retPending:fl[k].same===false&&rr===null,p:nrNum(fl[k].p),pq:nrNum(fl[k].pq)});
     });
   });
   return items;
@@ -384,9 +416,9 @@ function nrSimulate(vendors,days,cfg,startStr,confirmed){
       res.fixed=true;var sum=0;
       (cf.rows||[]).forEach(function(r,i){
         var u=nrNum(r.units);if(u<=0)return;sum+=u;
-        res.asg.push({vid:r.vid,floor:r.floor,units:u,ev:r.ev||null,to:r.to||null,ret:r.ret||null,rank:res.asg.length+1,sc:null});
+        res.asg.push({vid:r.vid,floor:r.floor,units:u,ev:r.ev||null,to:r.to||null,ret:r.ret||null,rets:r.rets||null,rank:res.asg.length+1,sc:null});
         var key=r.vid+"|"+r.floor;if(!first[key])first[key]=d;
-        if(d>=startStr&&!r.back){var it=idx[key];if(it){it.rem=Math.max(0,it.rem-u);it.held=Math.max(0,it.held-u);if(it.pl===undefined)it.pl=it.p?(it.pq||1e9):0;it.pl=Math.max(0,it.pl-u)}}
+        if(d>=startStr&&!r.back){var it=idx[key];if(it){it.rem=Math.max(0,it.rem-u);it.held=Math.max(0,it.held-u);if(it.pl===undefined)it.pl=it.p?(it.pq||1e9):0;it.pl=Math.max(0,it.pl-u);it.out=(it.out||0)+u}}
       });
       res.left=Math.max(0,cap-sum);byDate[d]=res;return;
     }
@@ -414,9 +446,12 @@ function nrSimulate(vendors,days,cfg,startStr,confirmed){
       c.it.rem-=take;c.it.held-=take;left-=take;if(c.p)c.it.pl-=take;
       var key=c.vid+"|"+c.floor;
       if(rowOf[key])rowOf[key].units+=take;
-      else res.asg.push(rowOf[key]={vid:c.vid,floor:c.floor,units:take,ev:c.ev,to:c.to,ret:c.it.ret,rank:res.asg.length+1,sc:c.sc,extra:!nrOnDay(c.vid,d,cfg),p:c.p||0});
+      else res.asg.push(rowOf[key]={vid:c.vid,floor:c.floor,units:take,ev:c.ev,to:c.to,ret:null,rets:null,rank:res.asg.length+1,sc:c.sc,extra:!nrOnDay(c.vid,d,cfg),p:c.p||0});
+      var rr=nrRets(c.it.src,c.floor,rowOf[key].units,c.it.out||0);rowOf[key].ret=typeof rr==="number"?rr:null;rowOf[key].rets=Array.isArray(rr)?rr:null;
       if(!first[key])first[key]=d;
     });
+    /* この日に出した台数を覚えておく(次の回収日の戻し先は、その続きから割り振る) */
+    Object.keys(rowOf).forEach(function(k){var it=idx[k];if(it)it.out=(it.out||0)+rowOf[k].units});
     res.left=left;byDate[d]=res;
   });
   return {byDate:byDate,dates:dates,first:first,left:items.filter(function(i){return i.rem>0})};
@@ -627,6 +662,18 @@ function vname(id){
 }
 function vcolor(id){var ids=Object.keys(D.vendors).sort(),i=ids.indexOf(id);return COLORS[(i<0?0:i)%COLORS.length]}
 function retText(r){return r?(r+"階"):"同じ階"}
+/* 行の戻し先の表示。分かれているときは「18階 2台・同じ階 1台」 */
+function retLabel(r){
+  if(!Array.isArray(r.rets))return retText(r.ret);
+  return nrRowRets(r).map(function(x){return (x.f===r.floor?"同じ階":x.f+"階")+" "+x.u+"台"}).join("・");
+}
+/* 戻す台数 u を、行の戻し先に上から割り振る({階:台数})。行の台数より多い分は最後の戻し先へ */
+function retSplit(r,u){
+  var m={},left=nrNum(u),list=nrRowRets(r);
+  list.forEach(function(x,i){var t=i===list.length-1?left:Math.min(x.u,left);if(t>0){m[x.f]=(m[x.f]||0)+t;left-=t}});
+  return m;
+}
+function retMain(r){var l=nrRowRets(r);return l.length?l[0].f:r.floor}
 /* 集積場所。toがあれば停まらない階なので、前日までにto階のEV前へ集める */
 function evLabel(e,to){return e?(to?to+"階 EV"+e+"前":"EV"+e+"前"):"—"}
 function evCell(r){return evLabel(r.ev,r.to)+(r.to?' <span class="st warn">前日までに移動</span>':'')}
@@ -704,23 +751,24 @@ function mutConfirmed(k,fn){
   if(ENV.admin&&before){var ch=[];notifyText(before,cf).forEach(function(x){ch.push(x)});if(ch.length)p.hist={$op:"union",v:[histEntry("予定を変更: "+ch.join(" / "))]}}  patch("confirmed",k,p);
 }
 function rowsTotal(cf,skip){var s=0;(cf.rows||[]).forEach(function(r,i){if(i!==skip)s+=nrNum(r.units)});return s}
-function retFor(vid,floor){var e=(D.vendors[vid]&&D.vendors[vid].floors||{})[floor];return e&&e.same===false&&nrNum(e.r)?nrNum(e.r):null}
+function retFor(vid,floor,units){var e=(D.vendors[vid]&&D.vendors[vid].floors||{})[floor];return nrRets(e,floor,nrNum(units)||1)}
+function setRowRet(r,rr){if(Array.isArray(rr)){r.rets=rr;r.ret=null}else{r.ret=rr||null;delete r.rets}}
 function addRow(cf,k,vid,floor,units,skipCap){
   var cap=nrNum((D.days[k]||{}).cap),room=skipCap?units:Math.max(0,cap-rowsTotal(cf));
   units=Math.min(units,room);if(units<=0)return 0;
   var cfg=nrCfg(D.config),el=((D.days[k]||{}).elev||[]).slice().sort(),ev=el.length?nrElevFor(floor,el,cfg):null,to=null;
   if(el.length&&ev===null){var mv=((D.days[k]||{}).moves||{})[vid+"|"+floor];if(mv&&el.indexOf(nrNum(mv.ev))>=0){ev=nrNum(mv.ev);to=nrNum(mv.to)||null}}
   var hit=null;cf.rows.forEach(function(r){if(r.vid===vid&&r.floor===floor&&(r.ev||null)===ev)hit=r});
-  if(hit)hit.units=nrNum(hit.units)+units;else cf.rows.push({vid:vid,floor:floor,units:units,ev:ev,to:to,ret:retFor(vid,floor)});
+  if(hit)hit.units=nrNum(hit.units)+units;else{var nr={vid:vid,floor:floor,units:units,ev:ev,to:to,ret:null};setRowRet(nr,retFor(vid,floor,units));cf.rows.push(nr)}
   return units;
 }
 
 /* 戻したら業者の台数に反映する。回収した階の希望と保有から回収台数を引き、戻し先の階の保有に戻した台数を足す。
    取り消せるように、実際に動かした量を back.adj に残す */
 function backAdj(r,u){
-  var v=D.vendors[r.vid]||{},e=(v.floors||{})[r.floor]||{},n=nrNum(r.units),adj={},to=nrNum(r.ret)||r.floor;
+  var v=D.vendors[r.vid]||{},e=(v.floors||{})[r.floor]||{},n=nrNum(r.units),adj={},sp=retSplit(r,u);
   adj[r.floor]={h:-Math.min(n,nrNum(e.h)),w:-Math.min(n,nrNum(e.w))};
-  adj[to]=adj[to]||{h:0,w:0};adj[to].h+=nrNum(u);
+  Object.keys(sp).forEach(function(to){adj[to]=adj[to]||{h:0,w:0};adj[to].h+=sp[to]});
   return adj;
 }
 /* 台数は「足す・引く」で送る(同時に別の人が台数を変えても消し合わない)。マイナスになった分は0として扱う */
@@ -778,7 +826,7 @@ function crewCards(d){
       +((D.vendors[r.vid]||{}).note?'<div class="cc-r"><span>業者の備考</span><div style="white-space:pre-wrap">'+esc(D.vendors[r.vid].note)+'</div></div>':'')
       +'<div class="cc-r"><span>配置</span>'+placedCell(d,r)+'</div>'
       +'<div class="cc-r"><span>搬出確認</span><div>'+chkCell(d,r,i)+'</div></div>'
-      +'<div class="cc-r"><span>戻し '+(nrNum(r.ret)||r.floor)+'階</span><div>'+backCell(d,r,i)+'</div></div></div>';
+      +'<div class="cc-r"><span>戻し '+esc(retLabel(r))+'</span><div>'+backCell(d,r,i)+'</div></div></div>';
   });
   return h+'</div>';
 }
@@ -903,7 +951,7 @@ var AUTO_WAIT=10*60*1000,autoTimer=null;
 function daysUntil(d,t){return Math.round((nrPd(d)-nrPd(t))/864e5)}
 function inAuto(d,C){return C.cfg.auto>0&&d>=C.t&&daysUntil(d,C.t)<=C.cfg.auto}
 function confirmDay(d,s,auto){
-  var rows=s.asg.map(function(a){return {vid:a.vid,floor:a.floor,units:a.units,ev:a.ev||null,to:a.to||null,ret:a.ret||null,n:vname(a.vid)}});
+  var rows=s.asg.map(function(a){var o={vid:a.vid,floor:a.floor,units:a.units,ev:a.ev||null,to:a.to||null,ret:a.ret||null,n:vname(a.vid)};if(a.rets)o.rets=a.rets;return o});
   var o={rows:rows,at:nowIso(),by:who(),hist:[histEntry(auto?"自動で確定":"確定")]};if(auto)o.auto=true;put("confirmed",d,o);notifyConfirm(d,o);
 }
 /* 搬出日の設定日数前(初期値2日前)になった回収日を、配分どおりに確定する。書き込めるのは管理者だけなので、管理者が開いたときに行う */
@@ -937,7 +985,7 @@ function backBox(){
     (D.confirmed[d].rows||[]).forEach(function(r){if(r.vid===ENV.vid&&r.back)list.push({d:d,r:r})})});
   if(!list.length)return "";
   var h='<div class="todaybox back" role="status"><h3>↩ 戻しのお知らせ</h3><ul>';
-  list.forEach(function(x){var r=x.r,b=r.back;h+='<li>'+fmtD(x.d)+'に搬出した<b>'+r.floor+'階の'+nrNum(r.units)+'台</b> → <b>'+(nrNum(r.ret)||r.floor)+'階へ'+nrNum(b.u)+'台戻しました</b>'+(b.ev?'(EV'+b.ev+')':'')+(b.at?' <span class="hint" style="margin:0">'+esc(fmtAt(b.at))+'</span>':'')+'</li>'});
+  list.forEach(function(x){var r=x.r,b=r.back;h+='<li>'+fmtD(x.d)+'に搬出した<b>'+r.floor+'階の'+nrNum(r.units)+'台</b> → <b>'+(Array.isArray(r.rets)?Object.keys(retSplit(r,b.u)).map(function(f){return f+'階へ'+retSplit(r,b.u)[f]+'台'}).join('、'):(nrNum(r.ret)||r.floor)+'階へ'+nrNum(b.u)+'台')+'戻しました</b>'+(b.ev?'(EV'+b.ev+')':'')+(b.at?' <span class="hint" style="margin:0">'+esc(fmtAt(b.at))+'</span>':'')+'</li>'});
   return h+'</ul><p>保有台数は自動で更新されています。</p></div>';
 }
 /* 業者・揚重業者: 今日・明日の連絡(備考)。業者は自社の予定がある日だけ */
@@ -1034,7 +1082,7 @@ function renderDay(C){
   if(cf)h+=dayRowsTable(k);
   else if(asg.length){
     h+='<div class="tablewrap"><table><thead><tr><th class="l">順位</th><th class="l">業者</th><th>階</th><th>台数</th><th class="l">集積</th><th class="l">戻し階</th></tr></thead><tbody>';
-    asg.forEach(function(a){h+='<tr><td class="l">'+a.rank+(a.sc&&a.sc.crit?' <span class="st bad">余力なし</span>':'')+(a.extra?' <span class="st warn">曜日外</span>':'')+'</td><td class="l vn"><i class="chip" style="background:'+vcolor(a.vid)+'"></i>'+esc(vname(a.vid))+'</td><td>'+a.floor+'階</td><td><b>'+a.units+'</b></td><td class="l">'+evCell(a)+'</td><td class="l">'+retText(a.ret)+'</td></tr>'});
+    asg.forEach(function(a){h+='<tr><td class="l">'+a.rank+(a.sc&&a.sc.crit?' <span class="st bad">余力なし</span>':'')+(a.extra?' <span class="st warn">曜日外</span>':'')+'</td><td class="l vn"><i class="chip" style="background:'+vcolor(a.vid)+'"></i>'+esc(vname(a.vid))+'</td><td>'+a.floor+'階</td><td><b>'+a.units+'</b></td><td class="l">'+evCell(a)+'</td><td class="l">'+esc(retLabel(a))+'</td></tr>'});
     h+='</tbody></table></div>';
   }else h+='<p class="empty">配分できる搬出希望がありません。</p>';
   if(!cf)h+=renderStage(C,k,s,elev);
@@ -1115,7 +1163,7 @@ function renderConfirmed(C){
     (cf.rows||[]).forEach(function(r,i){
       h+='<tr><td class="l vn"><i class="chip" style="background:'+vcolor(r.vid)+'"></i>'+esc(vname(r.vid))+'</td><td>'+r.floor+'階</td>'
        +'<td><input type="number" min="0" id="cu-'+d+'-'+i+'" data-f="cunits" data-d="'+d+'" data-i="'+i+'" value="'+nrNum(r.units)+'" aria-label="台数"></td>'
-       +'<td class="l">'+evCell(r)+'</td><td class="l">'+retText(r.ret)+'</td>'
+       +'<td class="l">'+evCell(r)+'</td><td class="l">'+esc(retLabel(r))+'</td>'
        +'<td><button class="btn sm danger" data-act="cdel" data-d="'+d+'" data-i="'+i+'">削除</button></td></tr>';
     });
     h+='</tbody></table></div><div class="mvbox" data-d="'+d+'" style="margin-top:8px"><span style="font-size:12px;color:var(--muted)">業者を追加</span><select data-keep data-role="to" aria-label="追加する業者">'+opts+'</select><input type="number" min="'+LIM.fmin+'" max="'+LIM.fmax+'" data-keep data-role="fl" placeholder="階" aria-label="階"><input type="number" min="1" data-keep data-role="q" value="1" aria-label="台数"><button class="btn sm" data-act="cadd">追加</button></div></div>';
@@ -1143,6 +1191,16 @@ function vendorPicker(C){
    +(ui.vsel&&D.vendors[ui.vsel]&&D.vendors[ui.vsel].manual?'<button class="btn danger" data-act="vdel">'+(ui.confirm==="vdel"?'もう一度押すと削除':'削除')+'</button>':'')+'</div></div>';
   return h;
 }
+/* 階の入力から、戻し先の一覧 [{f,u}] を作る(昔の形 r だけのときは、出したい台数の全部をその階へ) */
+function rsOf(e,ww){
+  if(!e||e.same!==false)return [];
+  if(Array.isArray(e.rs)&&e.rs.length)return e.rs.map(function(x){return {f:nrNum(x.f),u:nrNum(x.u)}});
+  return [{f:nrNum(e.r),u:nrNum(e.r)?ww:0}];
+}
+/* 戻し先の台数の合計が、出したい台数を超えないように下から削る */
+function rsClip(e){
+  var left=nrNum(e.w);e.rs=(e.rs||[]).map(function(x){var u=Math.min(nrNum(x.u),left);left-=u;return {f:Math.min(LIM.fmax,nrNum(x.f)),u:u}});delete e.r;
+}
 function renderVin(C){
   var vid=ENV.admin?ui.vsel:ENV.vid,h='<section class="panel"><h2 style="margin-bottom:10px">搬出の入力</h2>';
   if(ENV.admin){h+=vendorPicker(C);vid=ui.vsel}
@@ -1165,14 +1223,14 @@ function renderVin(C){
   }
   var wds=C.cfg.wd[vid];if(wds)h+='<p class="hint" style="margin:0 0 8px">回収曜日: <b>'+wds.map(function(w){return WD[w]}).join("・")+'</b>(積載に余裕がある日は、ほかの曜日にも回収することがあります)</p>';
   h+='<div class="sum"><div><small>保有台数(合計)</small><b>'+th+'台</b></div><div><small>搬出希望(合計)</small><b>'+tw+'台</b></div></div>'
-   +'<p class="hint" style="margin:0 0 8px">各階のNRボックスの保有台数と、その階から出したい台数を入力します。先に出してほしい階は「先に出す」に☑を付け、順位(1が最初)と先に出す台数を入れます。追加で欲しい階は「追加希望数」に台数を入れると注文になり、追加する日が決まると「備考(追加)」に出ます。戻してほしい階が同じ階でないときは「同じ階」のチェックを外して階を選びます。入力は自動で保存されます。</p>'
+   +'<p class="hint" style="margin:0 0 8px">各階のNRボックスの保有台数と、その階から出したい台数を入力します。先に出してほしい階は「先に出す」に☑を付け、順位(1が最初)と先に出す台数を入れます。追加で欲しい階は「追加希望数」に台数を入れると注文になり、追加する日が決まると「備考(追加)」に出ます。戻してほしい階が同じ階でないときは「同じ階」のチェックを外し、戻す階と台数を入れます(「＋戻し先を追加」で複数の階に分けられます。合計は出したい台数まで)。入力は自動で保存されます。</p>'
    +'<label class="chk" style="margin-bottom:8px"><input type="checkbox" id="only" data-f="only"'+(ui.only?' checked':'')+'>入力のある階だけ表示</label>'
    +'<div class="floors"><table class="rtable"><thead><tr><th class="l">階</th><th>保有台数</th><th>追加希望数</th><th class="l">備考(追加)</th><th>出したい台数</th><th class="l">先に出す(順位・台数)</th><th class="l">戻してほしい階</th><th class="l">状態</th></tr></thead><tbody>';
   var fo=floorOrders(vid);
   for(var f=LIM.fmax;f>=LIM.fmin;f--){
     var e=fl[f],hh=e?nrNum(e.h):0,ww=e?nrNum(e.w):0,fx=fo[f]||{req:0,notes:[]};
     if(ui.only&&!hh&&!ww&&!fx.req&&!fx.notes.length)continue;
-    var over=ww>hh,same=!e||e.same!==false,rt=e?nrNum(e.r):0,state='',pp=e?nrNum(e.p):0,pq=e?nrNum(e.pq):0;
+    var over=ww>hh,same=!e||e.same!==false,rsl=rsOf(e,ww),rsum=rsl.reduce(function(a,x){return a+nrNum(x.u)},0),rt=rsl.some(function(x){return nrNum(x.f)&&nrNum(x.u)})?1:0,state='',pp=e?nrNum(e.p):0,pq=e?nrNum(e.pq):0;
     if(over)state='<span class="st bad">保有を超えています</span>';
     else if(ww&&!same&&!rt)state='<span class="st warn">戻し階を選択</span>';
     else if(ww&&hh&&ww/hh*100>=C.cfg.crit)state='<span class="st bad">余力なし・最優先</span>';
@@ -1184,7 +1242,8 @@ function renderVin(C){
      +'<td><input type="number" min="0" id="w-'+f+'" data-f="floor" data-fl="'+f+'" data-k="w" value="'+(ww||"")+'"'+(over?' class="bad"':'')+' aria-label="'+f+'階の出したい台数"></td>'
      +'<td class="l prio">'+(hh?'<label class="chk"><input type="checkbox" id="p-'+f+'" data-f="prio" data-fl="'+f+'"'+(pp?' checked':'')+' aria-label="'+f+'階を先に出す">先に出す</label>'
        +(pp?'<div class="prow"><span>順位</span><input type="number" min="1" id="pn-'+f+'" data-f="prank" data-fl="'+f+'" value="'+pp+'" aria-label="'+f+'階の先行の順位"></div><div class="prow"><span>台数</span><input type="number" min="0" id="pq-'+f+'" data-f="pqty" data-fl="'+f+'" value="'+(pq?Math.min(pq,ww||pq):(ww||""))+'" aria-label="'+f+'階から先に出す台数"></div>':''):'')+'</td>'
-     +'<td class="l">'+(ww?'<label class="chk"><input type="checkbox" id="s-'+f+'" data-f="same" data-fl="'+f+'"'+(same?' checked':'')+'>同じ階</label>'+(same?'':' <input type="number" min="'+LIM.fmin+'" max="'+LIM.fmax+'" id="r-'+f+'" data-f="ret" data-fl="'+f+'" value="'+(rt||"")+'" aria-label="'+f+'階から出す分を戻してほしい階"> 階'):'')+'</td>'
+     +'<td class="l">'+(ww?'<label class="chk"><input type="checkbox" id="s-'+f+'" data-f="same" data-fl="'+f+'"'+(same?' checked':'')+'>同じ階</label>'+(same?'':'<div class="rsbox">'+rsl.map(function(x,i){return '<div class="prow"><input type="number" min="'+LIM.fmin+'" max="'+LIM.fmax+'" id="rf-'+f+'-'+i+'" data-f="rsf" data-fl="'+f+'" data-i="'+i+'" value="'+(nrNum(x.f)||"")+'" aria-label="'+f+'階から出す分を戻してほしい階"><span>階へ</span><input type="number" min="0" id="ru-'+f+'-'+i+'" data-f="rsu" data-fl="'+f+'" data-i="'+i+'" value="'+(nrNum(x.u)||"")+'" aria-label="その階に戻す台数"><span>台</span>'+(rsl.length>1?'<button class="btn sm" data-act="rsdel" data-fl="'+f+'" data-i="'+i+'" aria-label="この戻し先を消す">×</button>':'')+'</div>'}).join("")
+        +'<div class="prow"><button class="btn sm" data-act="rsadd" data-fl="'+f+'"'+(rsum>=ww?' disabled':'')+'>＋戻し先を追加</button>'+(rsum<ww?'<span class="hint" style="margin:0;width:auto">残り'+(ww-rsum)+'台は同じ階</span>':'')+'</div></div>'):'')+'</td>'
      +'<td class="l">'+state+'</td></tr>';
   }
   h+='</tbody></table></div><div class="lbl" style="margin-top:12px"><label for="vnote">備考(自由入力)</label><textarea id="vnote" data-f="vnote" maxlength="500" placeholder="例: 午前中に搬出できる台数に限りがあります">'+esc(v.note||"")+'</textarea></div>';
@@ -1199,7 +1258,7 @@ function renderMine(C){
     h+='<p class="hint" style="margin:0 0 8px">管理者が確定した回収予定です。NRボックスを集積場所のエレベーター前まで運んだら、置いたエレベーターを選んで「配置した」にチェックしてください。「前日までに移動」の行は、回収日の前日までに指定の階のEV前へ移しておきます。</p>'
      +'<div class="tablewrap"><table class="rtable"><thead><tr><th class="l">日付・時間</th><th>階・台数</th><th class="l">集積 / 戻し階</th><th class="l">配置</th><th class="l">戻し</th></tr></thead><tbody>';
     mr.forEach(function(x){var day=D.days[x.d]||{};
-      h+='<tr><td class="l">'+fmtD(x.d)+(x.d<C.t?' <span class="st off">終了</span>':'')+'<div class="hint" style="margin:2px 0 0">'+esc(fmtTime(day))+'</div></td><td>'+x.r.floor+'階 <b>'+nrNum(x.r.units)+'台</b></td><td class="l" style="white-space:normal;min-width:96px">'+evCell(x.r)+'<div class="hint" style="margin:2px 0 0">戻し: '+retText(x.r.ret)+'</div></td><td class="l">'+placedCell(x.d,x.r)+'</td><td class="l">'+backCell(x.d,x.r,x.i)+'</td></tr>'});
+      h+='<tr><td class="l">'+fmtD(x.d)+(x.d<C.t?' <span class="st off">終了</span>':'')+'<div class="hint" style="margin:2px 0 0">'+esc(fmtTime(day))+'</div></td><td>'+x.r.floor+'階 <b>'+nrNum(x.r.units)+'台</b></td><td class="l" style="white-space:normal;min-width:96px">'+evCell(x.r)+'<div class="hint" style="margin:2px 0 0">戻し: '+esc(retLabel(x.r))+'</div></td><td class="l">'+placedCell(x.d,x.r)+'</td><td class="l">'+backCell(x.d,x.r,x.i)+'</td></tr>'});
     h+='</tbody></table></div>';
   }
   return h+'</section>';
@@ -1227,7 +1286,7 @@ function renderRec(C){
    +'<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px"><button class="btn primary" data-act="recadd">記録する</button></div></section>';
   var list=[];
   Object.keys(D.plans).forEach(function(vid){((D.plans[vid]||{}).logs||[]).forEach(function(l){list.push({k:l.k==="stock"?"stock":"add",d:l.d,vid:vid,f:l.f,u:l.u,e:l.e,m:l.m||"",id:l.id})})});
-  Object.keys(D.confirmed).forEach(function(d){((D.confirmed[d]||{}).rows||[]).forEach(function(r){if(r.back)list.push({k:"back",d:d,vid:r.vid,f:r.ret||r.floor,u:r.back.u,e:r.back.ev,m:r.floor+"階から回収した分"})})});
+  Object.keys(D.confirmed).forEach(function(d){((D.confirmed[d]||{}).rows||[]).forEach(function(r){if(r.back){var sp=retSplit(r,r.back.u);Object.keys(sp).forEach(function(f){list.push({k:"back",d:d,vid:r.vid,f:Number(f),u:sp[f],e:r.back.ev,m:r.floor+"階から回収した分"})})}})});
   list.sort(function(a,b){return a.d<b.d?1:a.d>b.d?-1:0});
   /* 業者ごとの保有総数と、そのうち管理者が追加した台数 */
   var tv=Object.keys(C.am).sort(function(a,b){return vname(a)<vname(b)?-1:1});
@@ -1321,7 +1380,7 @@ function monthData(m){
   Object.keys(D.confirmed).sort().forEach(function(d){if(d.slice(0,7)!==m)return;var day=D.days[d]||{};
     (D.confirmed[d].rows||[]).forEach(function(r){if(nrNum(r.units)<=0)return;var v=V(r.vid),c=r.chk,b=r.back,pe=placedEv(d,r);
       v.out+=nrNum(r.units);v.times++;if(b)v.back+=nrNum(b.u);if(c&&c.k==="none")v.none++;if(c&&c.k==="short")v.short++;
-      det.push([d,fmtTime(day),vname(r.vid),r.floor,nrNum(r.units),r.ev?"EV"+r.ev:"",r.to||"",nrNum(r.ret)||r.floor,isPlaced(d,r)?"済"+(pe?"(EV"+pe+")":""):"",c?(c.k==="ok"?"揃っている":c.k==="none"?"無い":"不足 "+nrNum(c.got)):"",c&&c.by||"",b?nrNum(b.u):"",b?"EV"+b.ev:"",b&&b.by||""])})});
+      det.push([d,fmtTime(day),vname(r.vid),r.floor,nrNum(r.units),r.ev?"EV"+r.ev:"",r.to||"",Array.isArray(r.rets)?retLabel(r):(nrNum(r.ret)||r.floor),isPlaced(d,r)?"済"+(pe?"(EV"+pe+")":""):"",c?(c.k==="ok"?"揃っている":c.k==="none"?"無い":"不足 "+nrNum(c.got)):"",c&&c.by||"",b?nrNum(b.u):"",b?"EV"+b.ev:"",b&&b.by||""])})});
   Object.keys(D.plans).forEach(function(vid){((D.plans[vid]||{}).logs||[]).forEach(function(l){if((l.d||"").slice(0,7)!==m)return;var v=V(vid);if(l.k==="stock")v.stock+=Number(l.u)||0;else v.add+=nrNum(l.u)})});
   Object.keys(D.orders).forEach(function(vid){var it=(D.orders[vid]||{}).items||{};Object.keys(it).forEach(function(k){if((it[k].at||"").slice(0,7)===m&&it[k].st!=="cancel")V(vid).ord++})});
   return {by:by,det:det};
@@ -1372,13 +1431,13 @@ function renderRet(C){
   var list=[],from=nrDs(new Date(Date.now()-7*864e5));
   Object.keys(D.confirmed).sort().forEach(function(d){if(d<from||d>C.t)return;
     (D.confirmed[d].rows||[]).forEach(function(r,i){if(nrNum(r.units)>0)list.push({d:d,i:i,r:r})})});
-  list.sort(function(a,b){return (a.r.back?1:0)-(b.r.back?1:0)||(a.d<b.d?-1:a.d>b.d?1:0)||nrNum(a.r.ret||a.r.floor)-nrNum(b.r.ret||b.r.floor)});
+  list.sort(function(a,b){return (a.r.back?1:0)-(b.r.back?1:0)||(a.d<b.d?-1:a.d>b.d?1:0)||retMain(a.r)-retMain(b.r)});
   var left=list.filter(function(x){return !x.r.back}).length;
   var h='<section class="panel"><h2 style="margin-bottom:6px">戻し一覧</h2><p class="hint" style="margin:0 0 10px">この1週間から今日までに搬出した分です。戻したら「戻した」にチェックすると完了✅になり、その業者の台数にも反映されます。未完了 '+left+'件。</p>';
   if(!list.length)return h+'<p class="empty">戻すものはありません。</p></section>';
   h+='<div class="tablewrap"><table><thead><tr><th>戻し階</th><th class="l">業者・台数</th><th class="l">完了</th></tr></thead><tbody>';
   list.forEach(function(x){var r=x.r;
-    h+='<tr'+(r.back?' style="opacity:.6"':'')+'><td><b style="font-size:18px">'+(nrNum(r.ret)||r.floor)+'階</b>'+(r.ret?'':'<div class="hint" style="margin:0">同じ階</div>')+'</td><td class="l" style="white-space:normal"><b>'+esc(rowName(r))+' '+nrNum(r.units)+'台</b><div class="hint" style="margin:0">'+fmtD(x.d)+' '+r.floor+'階から・'+evLabel(r.ev,r.to)+'</div></td><td class="l">'+backCell(x.d,r,x.i)+'</td></tr>'});
+    h+='<tr'+(r.back?' style="opacity:.6"':'')+'><td><b style="font-size:18px">'+(Array.isArray(r.rets)?esc(retLabel(r)).replace(/・/g,"<br>"):(nrNum(r.ret)||r.floor)+'階')+'</b>'+(r.ret||Array.isArray(r.rets)?'':'<div class="hint" style="margin:0">同じ階</div>')+'</td><td class="l" style="white-space:normal"><b>'+esc(rowName(r))+' '+nrNum(r.units)+'台</b><div class="hint" style="margin:0">'+fmtD(x.d)+' '+r.floor+'階から・'+evLabel(r.ev,r.to)+'</div></td><td class="l">'+backCell(x.d,r,x.i)+'</td></tr>'});
   return h+'</tbody></table></div></section>';
 }
 function renderReg(){
@@ -1752,6 +1811,10 @@ function onClick(ev){
       }
     }
   }
+  else if(act==="rsadd"||act==="rsdel"){var rvid=ENV.admin?ui.vsel:ENV.vid,rfl=b.getAttribute("data-fl"),rdi=Number(b.getAttribute("data-i"));
+    mutVendor(rvid,function(v){var e=v.floors[rfl];if(!e)return;var l=rsOf(e,nrNum(e.w));
+      if(act==="rsadd"){var used=l.reduce(function(a,x){return a+nrNum(x.u)},0);l.push({f:0,u:Math.max(0,nrNum(e.w)-used)})}else l.splice(rdi,1);
+      e.rs=l;rsClip(e);if(!e.rs.length)e.rs=[{f:0,u:0}]})}
   else if(act==="joincancel"){ui.jcPending=null;ui.jcOpen=false}
   else if(act==="joinopen"){ui.jcOpen=true}
   else if(act==="joinco"){
@@ -1823,6 +1886,7 @@ function onChange(ev){
     mutVendor(vid,function(v){
       var e=v.floors[fl]||{h:0,w:0},old=nrNum(e.w);e[k]=val;
       if(k==="w"&&val>0&&!(old>0))e.s=today();
+      if(k==="w"&&Array.isArray(e.rs))rsClip(e);
       if(!nrNum(e.h)&&!nrNum(e.w))delete v.floors[fl];else v.floors[fl]=e;
     });
   }
@@ -1845,8 +1909,11 @@ function onChange(ev){
       /* 出したい台数より多く入れたら、出したい台数も合わせて増やす。出したい台数と同じ(全部)なら pq は持たない */
       if(pv>nrNum(e.w)){if(!(nrNum(e.w)>0))e.s=today();e.w=pv}
       if(pv>0&&pv<nrNum(e.w))e.pq=pv;else delete e.pq})}
-  else if(f==="same"){var fl2=el.getAttribute("data-fl");mutVendor(vid,function(v){var e=v.floors[fl2];if(!e)return;e.same=el.checked;if(el.checked)delete e.r})}
-  else if(f==="ret"){var fl3=el.getAttribute("data-fl");mutVendor(vid,function(v){var e=v.floors[fl3];if(!e)return;e.r=Math.min(LIM.fmax,nrNum(el.value))})}
+  else if(f==="same"){var fl2=el.getAttribute("data-fl");mutVendor(vid,function(v){var e=v.floors[fl2];if(!e)return;e.same=el.checked;if(el.checked){delete e.r;delete e.rs}})}
+  else if(f==="rsf"||f==="rsu"){var fl3=el.getAttribute("data-fl"),ri=Number(el.getAttribute("data-i"));mutVendor(vid,function(v){var e=v.floors[fl3];if(!e)return;
+      var l=rsOf(e,nrNum(e.w));if(!l[ri])return;
+      if(f==="rsf"){l[ri].f=nrNum(el.value);if(!l[ri].u&&l.length===1)l[ri].u=nrNum(e.w)}else l[ri].u=nrNum(el.value);
+      e.rs=l;rsClip(e)})}
   else if(f==="placed"){
     var pd=el.getAttribute("data-d"),pv=el.getAttribute("data-vid"),pf=el.getAttribute("data-fl");
     var ps=document.getElementById("pe-"+pd+"-"+pv+"-"+pf),pe=ps?nrNum(ps.value)||null:null;
@@ -1861,13 +1928,14 @@ function onChange(ev){
     var fx=null,r=((D.confirmed[bd]||{}).rows||[])[bi];
     if(r){var bk=r.back?clone(r.back):null;
       if(f==="back"){
-        if(el.checked&&!bk){bk={ev:placedEv(bd,r)||r.ev||((D.days[bd]||{}).elev||[])[0]||1,u:nrNum(r.units),at:nowIso(),by:who()};bk.adj=backAdj(r,bk.u);fx=[r.vid,bk.adj,1];setRowSt(bd,r,{back:bk},(r.n||vname(r.vid))+" "+r.floor+"階 戻した: "+(nrNum(r.ret)||r.floor)+"階へ"+bk.u+"台 EV"+bk.ev)}
+        if(el.checked&&!bk){bk={ev:placedEv(bd,r)||r.ev||((D.days[bd]||{}).elev||[])[0]||1,u:nrNum(r.units),at:nowIso(),by:who()};bk.adj=backAdj(r,bk.u);fx=[r.vid,bk.adj,1];setRowSt(bd,r,{back:bk},(r.n||vname(r.vid))+" "+r.floor+"階 戻した: "+retLabel(r)+(Array.isArray(r.rets)?"":"へ"+bk.u+"台")+" EV"+bk.ev)}
         else if(!el.checked&&bk){if(bk.adj)fx=[r.vid,bk.adj,-1];setRowSt(bd,r,{back:null},(r.n||vname(r.vid))+" "+r.floor+"階 戻しを取り消し")}
       }
       else if(bk){
         if(f==="backev")bk.ev=nrNum(el.value)||1;
-        else{var nu=nrNum(el.value),du=nu-nrNum(bk.u),to=String(nrNum(r.ret)||r.floor);bk.u=nu;
-          if(bk.adj&&du){var one={};one[to]={h:du,w:0};bk.adj[to]=bk.adj[to]||{h:0,w:0};bk.adj[to].h+=du;fx=[r.vid,one,1]}}
+        else{var nu=nrNum(el.value),s0=retSplit(r,bk.u),s1=retSplit(r,nu),one={},chg=false;bk.u=nu;
+          /* 戻す台数を変えたら、戻し先ごとの差だけを足し引きする */
+          if(bk.adj){Object.keys(s0).concat(Object.keys(s1)).forEach(function(to){if(one[to])return;var du=(s1[to]||0)-(s0[to]||0);if(!du)return;one[to]={h:du,w:0};chg=true;bk.adj[to]=bk.adj[to]||{h:0,w:0};bk.adj[to].h+=du});if(chg)fx=[r.vid,one,1]}}
         bk.at=nowIso();bk.by=who();setRowSt(bd,r,{back:bk},(r.n||vname(r.vid))+" "+r.floor+"階 戻しを修正: "+bk.u+"台 EV"+bk.ev);
       }
     }

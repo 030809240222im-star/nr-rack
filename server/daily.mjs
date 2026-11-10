@@ -67,7 +67,7 @@ for (const app of APPS) {
       const until = Math.round((nrPd(d) - nrPd(today)) / 864e5);
       if (D.confirmed[d] || day.hold || !nrNum(day.cap) || !(day.elev || []).length || d < today || until > cfg.auto || !s || !s.asg.length) continue;
       if (day.edited && Date.now() - Date.parse(day.edited) < 10 * 60 * 1000) continue;
-      const rows = s.asg.map(a => ({ vid: a.vid, floor: a.floor, units: a.units, ev: a.ev || null, to: a.to || null, ret: a.ret || null, n: vname(D, a.vid) }));
+      const rows = s.asg.map(a => { const o = { vid: a.vid, floor: a.floor, units: a.units, ev: a.ev || null, to: a.to || null, ret: a.ret || null, n: vname(D, a.vid) }; if (a.rets) o.rets = JSON.parse(JSON.stringify(a.rets)); return o; });
       const at = new Date().toISOString();
       await db.collection(app.prefix + "confirmed").doc(d).set({ rows, at, by: "毎朝の自動処理", auto: true, hist: [{ at, by: "毎朝の自動処理", t: "自動で確定" }] });
       D.confirmed[d] = { rows };
