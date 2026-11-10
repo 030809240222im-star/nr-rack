@@ -784,6 +784,25 @@ function problemRows(){
     (D.confirmed[d].rows||[]).forEach(function(r,i){if(nrNum(r.units)>0&&r.chk&&r.chk.k!=="ok"&&!r.back&&(ENV.admin||ENV.crew||r.vid===ENV.vid))out.push({d:d,i:i,r:r})})});
   return out;
 }
+/* 管理者が指定したエレベーター以外に、業者が置いた行(管理者・揚重業者に知らせる)。確認済みで、置いたEVが変わっていなければ出さない */
+function offRows(){
+  if(!(ENV.admin||ENV.crew))return [];
+  var out=[],from=nrDs(new Date(Date.now()-3*864e5));
+  Object.keys(D.confirmed).sort().forEach(function(d){if(d<from)return;
+    var el=(D.days[d]||{}).elev||[],cf=D.confirmed[d];if(!el.length)return;
+    (cf.rows||[]).forEach(function(r,i){if(nrNum(r.units)<=0||r.back)return;var pe=placedEv(d,r);
+      if(!pe||el.indexOf(pe)>=0)return;
+      var a=((cf.st||{})[rowKey(r)]||{}).pack;if(a&&a.ev===pe)return;
+      out.push({d:d,i:i,r:r,pe:pe,el:el})})});
+  return out;
+}
+function offBox(){
+  var o=offRows();if(!o.length)return "";
+  var h='<div class="todaybox alert" role="alert"><h3>⚠ 指定外のエレベーターに置かれています('+o.length+'件)</h3><ul>';
+  o.forEach(function(x){var r=x.r;
+    h+='<li>'+fmtD(x.d)+' '+esc(rowName(r))+' <b>'+r.floor+'階 '+nrNum(r.units)+'台</b> が <b>EV'+x.pe+'</b> に置かれています(指定: '+x.el.map(function(e){return "EV"+e}).join("・")+') <button class="btn sm" data-act="packok" data-d="'+x.d+'" data-i="'+x.i+'">確認した</button></li>'});
+  return h+'</ul><p>運び直すか、そのままでよいときは「確認した」を押してください(押すと消えます)。置き直されたら、また通知されます。</p></div>';
+}
 function isPlaced(d,r){var v=D.vendors[r.vid];return !!(v&&v.placed&&v.placed[d+"|"+r.floor])}
 /* 業者が置いたエレベーター。古い記録は時刻だけなので null */
 function placedEv(d,r){var v=D.vendors[r.vid],p=v&&v.placed&&v.placed[d+"|"+r.floor];return p&&typeof p==="object"?nrNum(p.ev)||null:null}
@@ -876,15 +895,17 @@ function who(){
 /* 配置(業者)と戻し(管理者)のチェック欄 */
 function placedCell(d,r){
   var on=isPlaced(d,r),can=ENV.admin||r.vid===ENV.vid;
-  if(ENV.crew){var pe0=placedEv(d,r);return on?'<span class="st ok">✅ 配置済み'+(pe0?'(EV'+pe0+')':'')+'</span>':'<span class="st off">未配置</span>'}
+  var del=((D.days[d]||{}).elev||[]).slice().sort();
+  if(ENV.crew){var pe0=placedEv(d,r);return on?'<span class="st ok">✅ 配置済み'+(pe0?'(EV'+pe0+')':'')+'</span>'+(pe0&&del.length&&del.indexOf(pe0)<0?' <span class="st bad">指定外のEV</span>':''):'<span class="st off">未配置</span>'}
   if(!can)return '<span class="muted">—</span>';
-  var el=((D.days[d]||{}).elev||[]).slice().sort(),pe=placedEv(d,r),cur=pe||r.ev||el[0]||1,opts=el.length?el.slice():evList();
-  if(opts.indexOf(cur)<0)opts.push(cur);
+  /* 置く場所は、すべてのエレベーターから選べる。管理者が指定したEV以外に置いたときは、管理者と揚重業者に通知される */
+  var el=del,pe=placedEv(d,r),cur=pe||r.ev||el[0]||1,opts=evList();
   var h='<div class="mvbox" style="margin-bottom:4px"><select id="pe-'+d+'-'+esc(r.vid)+'-'+r.floor+'" data-keep data-f="placedev" data-d="'+d+'" data-vid="'+esc(r.vid)+'" data-fl="'+r.floor+'" aria-label="置いたエレベーター">';
-  opts.forEach(function(e){h+='<option value="'+e+'"'+(e===cur?' selected':'')+'>EV'+e+'</option>'});
+  opts.forEach(function(e){h+='<option value="'+e+'"'+(e===cur?' selected':'')+'>EV'+e+(el.length&&el.indexOf(e)<0?'(指定外)':'')+'</option>'});
   h+='</select><span class="hint" style="margin:0">に</span></div>';
+  if(el.length)h+='<div class="hint" style="margin:0 0 4px">指定: '+el.map(function(e){return "EV"+e}).join("・")+'。それ以外に置くと、管理者と揚重業者に通知されます。</div>';
   h+='<label class="chk ck'+(on?' on':'')+'"><input type="checkbox" data-f="placed" data-d="'+d+'" data-vid="'+esc(r.vid)+'" data-fl="'+r.floor+'"'+(on?' checked':'')+'>'+(on?'配置済み':'配置した')+'</label>';
-  if(on&&pe)h+='<div class="hint" style="margin:2px 0 0">EV'+pe+'に配置</div>';
+  if(on&&pe)h+='<div class="hint" style="margin:2px 0 0">EV'+pe+'に配置'+(el.length&&el.indexOf(pe)<0?' <span class="st bad">指定外のEV</span>':'')+'</div>';
   return h;
 }
 function backCell(d,r,i){
@@ -1066,7 +1087,7 @@ function autoConfirm(C){
 function sesKeysOr(d){var ks=sesKeys(d);return ks.length?ks:[d]}
 function todayBox(C){
   var t=C.t,tm=nrDs(new Date(nrPd(t).getTime()+864e5));
-  return noticeBox()+noteBox(t,tm)+problemBox()+backBox()+orderBox(C)+sesKeysOr(t).map(function(k){return dayNotice(k,true)}).join("")+sesKeysOr(tm).map(function(k){return dayNotice(k,false)}).join("");
+  return noticeBox()+noteBox(t,tm)+problemBox()+offBox()+backBox()+orderBox(C)+sesKeysOr(t).map(function(k){return dayNotice(k,true)}).join("")+sesKeysOr(tm).map(function(k){return dayNotice(k,false)}).join("");
 }
 /* 業者向け: 揚重(盛替え)業者や管理者が戻した分のお知らせ(3日以内) */
 function backBox(){
@@ -1792,6 +1813,8 @@ function onClick(ev){
   else if(act==="next"){ui.month=new Date(ui.month.getFullYear(),ui.month.getMonth()+1,1,12)}
   else if(act==="today"){var t=new Date();ui.month=new Date(t.getFullYear(),t.getMonth(),1,12);ui.sel=today()}
   else if(act==="sel"){var sd0=b.getAttribute("data-date");ui.sel=sesKeys(sd0)[0]||sd0}
+  else if(act==="packok"){var pkd=b.getAttribute("data-d"),pki=Number(b.getAttribute("data-i")),pkr=((D.confirmed[pkd]||{}).rows||[])[pki];
+    if(pkr){var pke=placedEv(pkd,pkr);setRowSt(pkd,pkr,{pack:{ev:pke,at:nowIso(),by:who()}},rowName(pkr)+" "+pkr.floor+"階 指定外のEV"+pke+"への配置を確認")}}
   else if(act==="sesel"){ui.sel=b.getAttribute("data-k")}
   else if(act==="sesadd"){
     var sb=nrBase(ui.sel),sks=sesKeys(sb),sprev=D.days[ui.sel]||D.days[sks[0]]||{},sno=0;sks.forEach(function(x){sno=Math.max(sno,nrSesNo(x))});sno++;
