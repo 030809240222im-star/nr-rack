@@ -540,6 +540,28 @@ function nrSimulate(vendors,days,cfg,startStr,confirmed){
         if(bv===null)break;
         give(by[bv][0],1);
       }
+    }else if(Object.keys(cfg.wd).length&&!(cfg.wdFrom&&nrBase(d)<cfg.wdFrom)){
+      /* 曜日の指定を使う日: その曜日の担当業者がいれば、担当業者どうしで均等に割る(1台ずつ、その日に回収した台数が少ない業者から)。
+         残りの積載は、ほかの業者を逼迫している順に入れる。担当業者がいない曜日は、全業者を逼迫している順に入れる */
+      var wdw=nrPd(d).getDay(),ass=cand.filter(function(c){var a=cfg.wd[c.vid];return a&&a.indexOf(wdw)>=0}),rest=cand.filter(function(c){var a=cfg.wd[c.vid];return !(a&&a.indexOf(wdw)>=0)});
+      if(ass.length){
+        var by2={},vs2=[],du={};
+        nrPrio(ass.slice().sort(nrCmp)).forEach(function(c){if(!by2[c.vid]){by2[c.vid]=[];vs2.push(c.vid)}by2[c.vid].push(c)});
+        while(left>0){
+          var pv=null;
+          vs2.forEach(function(v){var l=by2[v];while(l.length&&(l[0].q<=0||l[0].it.rem<=0))l.shift();if(!l.length)return;
+            var x=du[v]||0,y=pv===null?0:(du[pv]||0);
+            if(pv===null||x<y||(x===y&&nrCmp(l[0],by2[pv][0])<0))pv=v});
+          if(pv===null)break;
+          give(by2[pv][0],1);du[pv]=(du[pv]||0)+1;
+        }
+        rest.sort(nrUrgCmp);
+      }else{rest.sort(nrUrgCmp)}
+      nrPrio(rest).forEach(function(c){
+        if(left<=0)return;
+        var take=Math.min(c.q,c.it.rem,left);if(take<=0)return;
+        give(c,take);
+      });
     }else nrPrio(mine).concat(nrPrio(other)).forEach(function(c){
       if(left<=0)return;
       var take=Math.min(c.q,c.it.rem,left);if(take<=0)return;
@@ -1249,8 +1271,8 @@ function renderDay(C){
   var trucks=Math.ceil(cap/pt),s=C.sim.byDate[k],asg=s?s.asg:[],used=s?cap-s.left:0,elev=doc.elev||[];
   if(C.cfg.wdFrom&&nrBase(k)<C.cfg.wdFrom)h+='<p class="hint" style="margin:0 0 8px">この日は曜日の振り分け開始('+esc(fmtD(C.cfg.wdFrom))+')より前なので、曜日に関係なく、これまでどおり割り当てます。</p>';
   else{var wl=wdByDay(C).days[nrPd(k).getDay()];
-    if(!wl.length&&Object.keys(C.cfg.wd).length)h+='<p class="hint" style="margin:0 0 8px"><b>'+WD[nrPd(k).getDay()]+'曜日の担当業者はいません。</b>曜日を決めていない業者と、曜日外の業者を逼迫している順に割り当てます。</p>';
-    if(wl.length){h+='<p class="hint" style="margin:0 0 8px"><b>'+WD[nrPd(k).getDay()]+'曜日の担当:</b> '+wl.map(function(v){return esc(vname(v))}).join("・")+(s0eq(C,k)?'(祝日がある週なので、この週は全業者に等分します)':'')+'</p>';
+    if(!wl.length&&Object.keys(C.cfg.wd).length)h+='<p class="hint" style="margin:0 0 8px"><b>'+WD[nrPd(k).getDay()]+'曜日の担当業者はいません。</b>全業者を、逼迫している順(余力なしが先)に割り当てます。</p>';
+    if(wl.length){h+='<p class="hint" style="margin:0 0 8px"><b>'+WD[nrPd(k).getDay()]+'曜日の担当:</b> '+wl.map(function(v){return esc(vname(v))}).join("・")+(s0eq(C,k)?'(祝日がある週なので、この週は全業者に等分します)':'(担当業者どうしで均等に割ります)')+'</p>';
       if(cf){var off=(cf.rows||[]).filter(function(r){return nrNum(r.units)>0&&!nrOnDay(r.vid,k,C.cfg)}).map(function(r){return vname(r.vid)});
         if(off.length&&!s0eq(C,k))h+='<div class="note" style="margin:0 0 8px"><span>確定済みのため、曜日の担当外の業者('+esc([...new Set(off)].join("・"))+')が入っています。曜日どおりに組み直すときは「確定を取り消す」→「今すぐ確定」を行ってください。</span></div>'}}}
   var hnm=nrHolName(k,C.cfg);
@@ -1506,7 +1528,7 @@ function wdBoard(C){
 function renderWd(C){
   var ids=Object.keys(C.am).sort(function(a,b){return vname(a)<vname(b)?-1:1}),h='<section class="panel"><h2 style="margin-bottom:8px">業者ごとの回収曜日</h2>'
    +'<div class="field"><label>曜日の振り分けを始める日 <input type="date" data-f="wdfrom" value="'+esc(C.cfg.wdFrom||'')+'" aria-label="曜日の振り分けを始める日"></label><span class="hint" style="margin:0">この日より前の回収日は、曜日に関係なく、これまでどおり全業者を逼迫度の順に割り当てます。空にすると、すべての日で曜日を使います。</span></div>'
-   +'<p class="hint" style="margin:0 0 8px">回収日には、その曜日に割り当てた業者を先に回収します。積載に余裕が残ったら、曜日外の業者を逼迫している順(余力なし → 逼迫度が高い順)に入れます。曜日を何も選ばない業者は、どの曜日でも回収します。</p>';
+   +'<p class="hint" style="margin:0 0 8px">曜日の振り分けを始める日以降は、その曜日に割り当てた業者どうしで、積載を均等に割ります(希望が少ない業者は、その分を満たしたあと、残りをほかの担当業者で分けます)。それでも積載に余裕が残ったら、ほかの業者を逼迫している順(余力なし → 逼迫度が高い順)に入れます。担当の業者が1社もいない曜日は、全業者を逼迫している順に入れます。曜日を何も選ばない業者は、担当の業者ではなく、余った積載に逼迫している順で入ります。</p>';
   if(!ids.length)return h+'<p class="empty">利用中の業者がまだありません。</p></section>';
   h+='<div class="tablewrap"><table><thead><tr><th class="l">業者</th>'+WD.map(function(w){return '<th>'+w+'</th>'}).join("")+'</tr></thead><tbody>';
   ids.forEach(function(v){var a=C.cfg.wd[v]||[];
