@@ -1833,7 +1833,8 @@ function renderRet(C){
   var list=[],from=nrDs(new Date(Date.now()-7*864e5));
   Object.keys(D.confirmed).sort().forEach(function(d){if(d<from||d>C.t)return;
     (D.confirmed[d].rows||[]).forEach(function(r,i){if(nrNum(r.units)>0)list.push({d:d,i:i,r:r})})});
-  list.sort(function(a,b){return (a.r.back?1:0)-(b.r.back?1:0)||(a.d<b.d?-1:a.d>b.d?1:0)||retMain(a.r)-retMain(b.r)});
+  /* ✅を付けても行の位置は動かさない(日付・戻し階の順のまま) */
+  list.sort(function(a,b){return (a.d<b.d?-1:a.d>b.d?1:0)||retMain(a.r)-retMain(b.r)||a.i-b.i});
   var left=list.filter(function(x){return !x.r.back}).length;
   var h='<section class="panel"><h2 style="margin-bottom:6px">戻し一覧</h2><p class="hint" style="margin:0 0 10px">この1週間から今日までに搬出した分です。戻したら「戻した」にチェックすると完了✅になり、その業者の台数にも反映されます。未完了 '+left+'件。</p>';
   if(!list.length)return h+'<p class="empty">戻すものはありません。</p></section>';
@@ -2017,7 +2018,10 @@ function render(remote){
   });
   /* 差し替え中に入力欄が外れると blur → change → render が入れ子で走るので、終わってからやり直す */
   if(morphing){morphAgain=true;return}
+  /* 押した場所が画面の同じ位置に残るよう、描き直しの前後でずれた分だけスクロールを戻す(上にお知らせが出ても動かない) */
+  var anc=ANCHOR&&Date.now()-ANCHOR.t<8000?(ANCHOR.el.isConnected?ANCHOR.el:ANCHOR.sel&&document.querySelector(ANCHOR.sel)):null,ay=anc?anc.getBoundingClientRect().top:0;
   morphing=true;try{morphKids(document.getElementById("app"),box,remote)}finally{morphing=false}
+  if(anc){if(!anc.isConnected)anc=ANCHOR.sel&&document.querySelector(ANCHOR.sel);if(anc){ANCHOR.el=anc;var dy=anc.getBoundingClientRect().top-ay;if(Math.abs(dy)>1)window.scrollBy(0,dy)}}
   if(morphAgain){morphAgain=false;render(remote)}
 }
 
@@ -2427,6 +2431,16 @@ function onChange(ev){
   render();
 }
 var app=document.getElementById("app");
+/* 押した部品の目印(描き直しで部品が入れ替わっても、同じものを探し直せるように) */
+function anchorSel(el){
+  for(var x=el,n=0;x&&x.id!=="app"&&n<4;x=x.parentElement,n++){
+    if(x.id)return "#"+CSS.escape(x.id);
+    var at=["data-f","data-act","data-d","data-i","data-vid","data-fl","data-e","data-id","data-key"].filter(function(a){return x.hasAttribute(a)});
+    if(at.length&&(x.hasAttribute("data-f")||x.hasAttribute("data-act")))return x.tagName.toLowerCase()+at.map(function(a){return "["+a+'="'+CSS.escape(x.getAttribute(a))+'"]'}).join("");
+  }
+  return null;
+}
+var ANCHOR=null;document.addEventListener("pointerdown",function(e){var t=e.target;if(t&&t.closest&&t.closest("#app")&&!t.closest(".tabs,[data-act=sel],[data-act=prev],[data-act=next],[data-act=today]"))ANCHOR={el:t,sel:anchorSel(t),t:Date.now()};else ANCHOR=null},true);
 /* −/＋: 押した瞬間に1つ動かし、0.4秒押し続けると連続で動かす。保存は離したとき1回だけ */
 var spin=null;
 function spinInput(b){return b.closest(".stepper").querySelector("input")}
