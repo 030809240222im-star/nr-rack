@@ -1308,7 +1308,6 @@ function renderDay(C){
     asg.forEach(function(a){h+='<tr><td class="l">'+a.rank+(a.sc&&a.sc.crit?' <span class="st bad">余力なし</span>':'')+(a.extra?' <span class="st warn">曜日外</span>':'')+'</td><td class="l vn"><i class="chip" style="background:'+vcolor(a.vid)+'"></i>'+esc(vname(a.vid))+'</td><td>'+a.floor+'階</td><td><b>'+a.units+'</b></td><td class="l">'+evCell(a)+'</td><td class="l">'+esc(retLabel(a))+'</td></tr>'});
     h+='</tbody></table></div>';
   }else h+='<p class="empty">配分できる搬出希望がありません。</p>';
-  if(!cf)h+=renderStage(C,k,s,elev);
   h+='<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">';
   if(cf)h+='<button class="btn" data-act="goconf">確定内容の再振り分け</button><button class="btn danger" data-act="unconfirm">'+(ui.confirm==="unconfirm"?'もう一度押すと取り消し':'確定を取り消す')+'</button>';
   else h+='<button class="btn primary" data-act="confirm"'+(asg.length?'':' disabled')+'>'+(doc.hold?'この日の配分を確定':'今すぐ確定')+'</button>';
@@ -1370,31 +1369,7 @@ function renderStageTab(C){
      +'<td class="l" style="white-space:normal">'+why.join('<br>')+'</td>'
      +'<td class="l" style="white-space:normal;min-width:240px">'+(cur||'')+form+'</td></tr>';
   });
-  return h+'</tbody></table></div><p class="hint" style="margin:8px 0 0">指示を出した日の画面にも同じ指示が出ます(カレンダーでその日を選ぶ)。指示のある階は、前日のお知らせに「今日中に移動」と出ます。</p></section>';
-}
-/* 指定EVが停まらない階の希望と、前日までの集積指示 */
-function renderStage(C,k,s,elev){
-  if(!elev.length)return "";
-  var moves=(D.days[k]||{}).moves||{},mk=Object.keys(moves),ex=(s&&s.excl)||[],h='';
-  if(!mk.length&&!ex.length)return "";
-  h+='<div class="cday"><h3>停まらない階の集積指示</h3><p class="hint" style="margin:0 0 8px">この日のエレベーターが停まらない階の希望です。逼迫度が高い階は、前日までにどの階のどのEV前へ集積しておくか指示すると、この日の配分に入ります。集積するEVは、この日に指定したEV以外も含め、すべてのEVから選べます。</p>';
-  if(mk.length){
-    h+='<div class="tablewrap"><table><thead><tr><th class="l">業者</th><th>階</th><th class="l">前日までの集積先</th><th></th></tr></thead><tbody>';
-    mk.sort().forEach(function(key){var p=key.split("|"),m=moves[key];
-      h+='<tr><td class="l vn"><i class="chip" style="background:'+vcolor(p[0])+'"></i>'+esc(vname(p[0]))+'</td><td>'+esc(p[1])+'階</td><td class="l">'+evLabel(nrNum(m.ev),nrNum(m.to))+(elev.indexOf(nrNum(m.ev))<0?' <span class="st warn">指定のEV以外</span>':'')+'</td><td><button class="btn sm danger" data-act="unstage" data-key="'+esc(key)+'">指示を外す</button></td></tr>'});
-    h+='</tbody></table></div>';
-  }
-  if(ex.length){
-    h+='<div class="tablewrap" style="margin-top:8px"><table><thead><tr><th class="l">業者</th><th>階</th><th>希望</th><th>逼迫度</th><th>評価点</th><th class="l">集積先を指示</th></tr></thead><tbody>';
-    ex.forEach(function(x,i){
-      var e0=elev[0],near=null;evList().forEach(function(e){var n=nrStops(x.floor,e,C.cfg)?x.floor:nrNearest(x.floor,e,C.cfg);if(n!==null&&(near===null||Math.abs(n-x.floor)<Math.abs(near-x.floor))){near=n;e0=e}});
-      h+='<tr><td class="l vn"><i class="chip" style="background:'+vcolor(x.vid)+'"></i>'+esc(vname(x.vid))+'</td><td>'+x.floor+'階</td><td>'+x.rem+'</td><td>'+x.sc.pr.toFixed(0)+'%'+(x.sc.crit?' <span class="st bad">余力なし</span>':'')+'</td><td>'+x.sc.total.toFixed(0)+'</td>'
-       +'<td class="l"><div class="mvbox" data-vid="'+esc(x.vid)+'" data-fl="'+x.floor+'"><select id="sg-e-'+k+'-'+i+'" data-keep data-role="ev" aria-label="集積するエレベーター">'+evList().map(function(e){return '<option value="'+e+'"'+(e===e0?' selected':'')+'>EV'+e+(elev.indexOf(e)<0?'(指定外)':'')+'</option>'}).join("")+'</select>'
-       +'<input type="number" min="'+LIM.fmin+'" max="'+LIM.fmax+'" id="sg-t-'+k+'-'+i+'" data-keep data-role="to" value="'+(near||"")+'" aria-label="集積する階"><span class="hint" style="margin:0">階</span><button class="btn sm primary" data-act="stage">指示</button></div></td></tr>';
-    });
-    h+='</tbody></table></div><p class="hint">集積する階の初期値は、いちばん近い階に停まるEVと、その階です。</p>';
-  }
-  return h+'</div>';
+  return h+'</tbody></table></div><p class="hint" style="margin:8px 0 0">集積指示は、この一覧だけで出します。指示のある階は、その日の配分の集積の欄に「前日までに移動」、前日のお知らせに「今日中に移動」と出ます。</p></section>';
 }
 /* ---- 階マップ(管理者用) ---- 建物を横から見た図。各階の保有(または搬出希望)台数を、業者の色で積み上げて表示する */
 function renderMap(C){
@@ -1931,7 +1906,7 @@ function morphNode(a,b,remote){
   var i,at;
   for(i=a.attributes.length-1;i>=0;i--){at=a.attributes[i].name;if(!b.hasAttribute(at))a.removeAttribute(at)}
   for(i=0;i<b.attributes.length;i++){at=b.attributes[i];if(a.getAttribute(at.name)!==at.value)a.setAttribute(at.name,at.value)}
-  var keep=b.hasAttribute("data-keep")||(remote&&a===document.activeElement),tag=a.nodeName;
+  var keep=b.hasAttribute("data-keep")||(remote&&a===document.activeElement)||(a.__stp&&((spin&&spin.inp===a)||(spinSave&&spinSave.inp===a)||Date.now()-a.__stp<1500)),tag=a.nodeName;
   if(tag==="TEXTAREA"){if(!keep&&a.value!==b.value)a.value=b.value;return}
   var selv=null;
   if(tag==="SELECT"){var so=b.querySelector("option[selected]")||b.querySelector("option");selv=so?so.value:""}
@@ -2418,10 +2393,15 @@ function spinStep(inp,n){
   if(mn!=null&&mn!==""&&v<Number(mn))v=Number(mn);if(mx!=null&&mx!==""&&v>Number(mx))v=Number(mx);
   inp.value=String(v);
 }
-function spinEnd(){if(!spin)return;clearTimeout(spin.t);clearInterval(spin.iv);var inp=spin.inp;spin=null;inp.dispatchEvent(new Event("change",{bubbles:true}))}
+/* 続けて何回か押せるよう、保存(change)は最後に押してから0.6秒たってから1回だけ行う。その間は画面の描き直しで数字が戻らないようにする */
+var spinSave=null;
+function spinFlush(){if(!spinSave)return;clearTimeout(spinSave.t);var inp=spinSave.inp;spinSave=null;if(inp.isConnected)inp.dispatchEvent(new Event("change",{bubbles:true}))}
+function spinEnd(){if(!spin)return;clearTimeout(spin.t);clearInterval(spin.iv);var inp=spin.inp;spin=null;inp.__stp=Date.now();
+  if(spinSave&&spinSave.inp!==inp)spinFlush();if(spinSave)clearTimeout(spinSave.t);spinSave={inp:inp,t:setTimeout(spinFlush,600)}}
+window.addEventListener("pagehide",spinFlush);
 app.addEventListener("pointerdown",function(ev){
-  var b=ev.target.closest(".stp");if(!b)return;ev.preventDefault();spinEnd();
-  var inp=spinInput(b),n=Number(b.getAttribute("data-step"));spinStep(inp,n);
+  var b=ev.target.closest(".stp");if(!b){spinFlush();return}ev.preventDefault();spinEnd();
+  var inp=spinInput(b),n=Number(b.getAttribute("data-step"));if(spinSave&&spinSave.inp!==inp)spinFlush();if(spinSave)clearTimeout(spinSave.t);inp.__stp=Date.now();spinStep(inp,n);
   spin={inp:inp,t:setTimeout(function(){if(spin)spin.iv=setInterval(function(){spinStep(inp,n)},110)},400)};
 });
 ["pointerup","pointercancel","pointerleave"].forEach(function(t){app.addEventListener(t,function(ev){if(spin&&(t!=="pointerleave"||ev.target.closest(".stp")))spinEnd()})});
@@ -2439,7 +2419,7 @@ var AUTO_MS=3*60*1000;
 try{var sv=JSON.parse(sessionStorage.getItem("nr-auto")||"null");sessionStorage.removeItem("nr-auto");
   if(sv&&Date.now()-sv.t<60000){window.__AUTO=sv;if(sv.y)window.__AUTO_Y=sv.y}}catch(e){}
 setInterval(function(){
-  if(!window.NR_ACCOUNT||ENV.mode!=="db"||document.visibilityState!=="visible"||!navigator.onLine||PEND.n||ui.confirm)return;
+  if(!window.NR_ACCOUNT||ENV.mode!=="db"||document.visibilityState!=="visible"||!navigator.onLine||PEND.n||ui.confirm||spin||spinSave)return;
   var ae=document.activeElement;if(ae&&/^(INPUT|SELECT|TEXTAREA)$/.test(ae.tagName))return;
   try{sessionStorage.setItem("nr-auto",JSON.stringify({t:Date.now(),tab:ui.tab,sel:ui.sel,vsel:ui.vsel,month:ui.month&&ui.month.getTime(),y:window.scrollY}))}catch(e){}
   location.reload();
