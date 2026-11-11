@@ -673,6 +673,7 @@ async function boot(){
     if(window.NR_DEMO&&!raw){var sm=sample();Object.keys(sm.vendors).forEach(function(k){put("vendors",k,sm.vendors[k])});var sd=Object.keys(sm.days).sort();sd.forEach(function(k){put("days",k,sm.days[k])});if(sd.length){var f0=nrPd(sd[0]);ui.month=new Date(f0.getFullYear(),f0.getMonth(),1,12);ui.sel=sd[0]}}
   }
   ui.tab="cal";
+  var AV=window.__AUTO;if(AV){if(AV.tab)ui.tab=AV.tab;if(AV.sel)ui.sel=AV.sel;if(AV.vsel)ui.vsel=AV.vsel;if(AV.month)ui.month=new Date(AV.month);window.__AUTO=null}
   render();
 }
 /* 業者は、会社(vid)の文書を読む。会社が変わったら(管理者がまとめたとき)読み直す */
@@ -2382,6 +2383,17 @@ app.addEventListener("change",function(ev){
   if(ev.target.getAttribute&&ev.target.getAttribute("data-f")==="pv"){ui.pv=ev.target.value||null;render();return}
   asVendor(function(){onChange(ev)});
 });
+/* 3分ごとの自動リロード: 入力中・未送信・確認の途中・画面が裏のときは行わない(次の3分後に見直す)。見ていたタブと日は、リロード後も保つ */
+var AUTO_MS=3*60*1000;
+try{var sv=JSON.parse(sessionStorage.getItem("nr-auto")||"null");sessionStorage.removeItem("nr-auto");
+  if(sv&&Date.now()-sv.t<60000){window.__AUTO=sv;if(sv.y)window.__AUTO_Y=sv.y}}catch(e){}
+setInterval(function(){
+  if(!window.NR_ACCOUNT||ENV.mode!=="db"||document.visibilityState!=="visible"||!navigator.onLine||PEND.n||ui.confirm)return;
+  var ae=document.activeElement;if(ae&&/^(INPUT|SELECT|TEXTAREA)$/.test(ae.tagName))return;
+  try{sessionStorage.setItem("nr-auto",JSON.stringify({t:Date.now(),tab:ui.tab,sel:ui.sel,vsel:ui.vsel,month:ui.month&&ui.month.getTime(),y:window.scrollY}))}catch(e){}
+  location.reload();
+},AUTO_MS);
+window.addEventListener("load",function(){if(window.__AUTO_Y)setTimeout(function(){window.scrollTo(0,window.__AUTO_Y)},900)});
 window.nrBoot=boot;
 window.addEventListener("online",function(){render(true)});window.addEventListener("offline",function(){render(true)});
 })();
