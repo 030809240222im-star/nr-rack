@@ -46,6 +46,11 @@ button:disabled{opacity:.45;cursor:default}
 .tabs{display:flex;flex-wrap:wrap;gap:4px;background:var(--surface2);padding:3px;border-radius:8px;border:1px solid var(--line)}
 .tabs button{border:0;background:transparent;padding:7px 14px;border-radius:6px;color:var(--muted);font-weight:700}
 .tabs button[aria-selected="true"]{background:var(--surface);color:var(--fg);box-shadow:0 1px 2px rgba(0,0,0,.12)}
+/* 業者・揚重業者のタブは、押しやすく大きく。いま開いているタブは色を付ける */
+.tabs.big{gap:8px;padding:6px;border-radius:12px}
+.tabs.big button{font-size:18px;padding:12px 22px;min-height:48px;min-width:120px;border-radius:9px;background:var(--surface);border:1px solid var(--line);color:var(--fg)}
+.tabs.big button[aria-selected="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-fg);box-shadow:0 1px 3px rgba(0,0,0,.2)}
+@media (max-width:700px){.tabs.big{width:100%}.tabs.big button{flex:1 1 0;min-width:0;padding:12px 8px}}
 .tabs .cnt{display:inline-block;min-width:18px;margin-left:5px;padding:0 5px;border-radius:9px;background:var(--bad);color:#fff;font-size:11px;text-align:center}
 .note{background:var(--warnbg);color:var(--warn);border-radius:8px;padding:9px 12px;font-size:12.5px;display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;justify-content:space-between}
 .note.bad{background:var(--badbg);color:var(--bad)}
@@ -1275,7 +1280,7 @@ function stageRows(C){
 function stageTodo(C){return stageRows(C).filter(function(r){return r.days.length&&!r.moves.length}).length}
 function renderStageTab(C){
   var rows=stageRows(C),cfg=C.cfg,h='<section class="panel"><div class="mhead"><h2>不停止階の業者</h2></div>'
-   +'<p class="hint" style="margin:0 0 10px">「設定」で決めた不停止階(どれかのEVが停まらない階)と、どのEVも停まらない階に台数を持っている業者の一覧です。回収日のエレベーターが停まらない希望は、上に出ます。逼迫度が高い階は、前日までにどの階のどのEV前へ集積しておくか指示すると、その日の配分に入ります。集積するEVは、すべてのEVから選べます。</p>';
+   +'<p class="hint" style="margin:0 0 10px">「設定」で決めた不停止階(どれかのEVが停まらない階)と、どのEVも停まらない階に台数を持っている業者の一覧です。回収日のエレベーターが停まらない希望は、上に出ます。逼迫度が高い階は、前日までにどの階のどのEV前へ集積しておくか指示すると、その日の配分に入ります。集積するEVは、すべてのEVから選べます。タブの赤い数字は、回収日に回れず、まだ指示を出していない行の数です(指示を出す、その日が確定する、業者が入力を変えると減ります)。</p>';
   var open=C.sim.dates.filter(function(d){return d>=C.t&&C.sim.byDate[d]&&!C.sim.byDate[d].fixed});
   if(!rows.length)return h+'<p class="empty">不停止階に台数を持っている業者はいません。</p></section>';
   h+='<div class="tablewrap"><table class="rtable stgt"><thead><tr><th class="l">業者</th><th>階</th><th>保有 / 希望</th><th>逼迫度</th><th class="l">停まらない理由</th><th class="l">集積指示(前日まで)</th></tr></thead><tbody>';
@@ -1804,7 +1809,7 @@ function render(remote){
   if(!ENV.crew){if(!ENV.admin&&!vendorOk)ui.tab="reg";else if(!ENV.admin&&ui.tab!=="cal"&&ui.tab!=="vin")ui.tab="cal";}
   h='<div class="top"><div><h1>NRボックス ラック調整<span class="role">'+(ENV.admin?'管理者':ENV.crew?(D.crews[ENV.uid]?'盛替え業者':'未登録'):ENV.preview?'業者(プレビュー)':(vendorOk?'業者':'未登録'))+'</span></h1><p>業者が入力した階別の保有・搬出希望を、回収日ごとの台数・時間・エレベーター集積に合わせて自動で配分します</p>'+(window.NR_ACCOUNT?'<p class="acct">'+esc(window.NR_ACCOUNT.email||"")+' <button class="btn sm" data-act="logout">ログアウト</button> <button class="btn sm" data-act="reload">↻ 最新にする</button>'+(ui.synced?' <span class="muted" style="font-size:12px">'+p2(ui.synced.getHours())+':'+p2(ui.synced.getMinutes())+' 更新</span>':'')+'</p>':'')
    +(PEND.n&&(!navigator.onLine||Date.now()-PEND.since>3500)?'<div class="note warn" style="margin:8px 0 0"><span><b>未送信 '+PEND.n+'件</b> '+(navigator.onLine?'送信を待っています。':'電波がありません。')+'入力は端末に残っていて、つながると自動で送ります。画面は閉じても大丈夫です。</span></div>':'')
-   +(window.NR_DEMO?'<div class="note warn" style="margin:8px 0 0"><span><b>お試し版です。</b>データはこの端末のブラウザだけに保存され、本番のアプリとは関係ありません。業者・台数はすべて架空です。 <button class="btn sm" data-act="demoreset">最初からやり直す</button></span></div>':'')+'</div><div class="tabs" role="tablist">';
+   +(window.NR_DEMO?'<div class="note warn" style="margin:8px 0 0"><span><b>お試し版です。</b>データはこの端末のブラウザだけに保存され、本番のアプリとは関係ありません。業者・台数はすべて架空です。 <button class="btn sm" data-act="demoreset">最初からやり直す</button></span></div>':'')+'</div><div class="tabs'+(ENV.admin?'':' big')+'" role="tablist">';
   tabs.forEach(function(t){h+='<button role="tab" aria-selected="'+(ui.tab===t[0])+'" data-act="tab" data-tab="'+t[0]+'">'+t[1]+'</button>'});
   h+='</div></div>';
   if(ENV.preview){
