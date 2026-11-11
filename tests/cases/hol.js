@@ -1,4 +1,4 @@
-// 祝日の週の等分
+// 祝日の週(曜日を1日ずつずらす・収まらなければ等分)と休日の上書き
 const REPO=require('path').resolve(__dirname,'..','..')+'/';const WORK=process.cwd();
 const fs=require('fs'),vm=require('vm');const html=fs.readFileSync(REPO+'index.html','utf8');
 const core=html.match(/<script>\s*([\s\S]*?function nrRank[\s\S]*?)<\/script>/)[1];const c={};vm.createContext(c);vm.runInContext(core,c);
@@ -11,8 +11,8 @@ const F=(n)=>({floors:{[5]:{h:n,w:n,s:'2026-11-01'}}});
 const V={a:F(6),b:F(6),c:F(6)};
 const days={'2026-11-24':{cap:6,elev:[1]},'2026-11-25':{cap:6,elev:[1]},'2026-11-26':{cap:6,elev:[1]},'2026-11-27':{cap:6,elev:[1]}};
 function run(t,cf){const s=c.nrSimulate(V,days,cf,'2026-11-20',{});const tot={};console.log(t);for(const d of s.dates){console.log(' ',d,s.byDate[d].asg.map(a=>a.vid+'×'+a.units+(a.extra?'(曜日外)':'')).join(' '));s.byDate[d].asg.forEach(a=>tot[a.vid]=(tot[a.vid]||0)+a.units)}console.log('  週合計',J(tot))}
-run('等分あり(祝日の週)',cfg);
-run('等分なし',c.nrCfg({eq:false,wd:{a:[1,3],b:[2,4],c:[5]}}));
+run('祝日の週(1日ずつずらす)',cfg);
+run('祝日の扱いを止めた(曜日どおり)',c.nrCfg({eq:false,wd:{a:[1,3],b:[2,4],c:[5]}}));
 // 祝日でない週は従来どおり
 const d2={'2026-11-17':{cap:6,elev:[1]},'2026-11-18':{cap:6,elev:[1]},'2026-11-19':{cap:6,elev:[1]},'2026-11-20':{cap:6,elev:[1]}};
 const s2=c.nrSimulate(V,d2,cfg,'2026-11-16',{});for(const d of s2.dates)console.log('通常週',d,s2.byDate[d].asg.map(a=>a.vid+'×'+a.units).join(' '));

@@ -401,7 +401,18 @@ function nrCfg(c){
   o.wd={};Object.keys(c.wd||{}).forEach(function(v){var a=(c.wd[v]||[]).filter(function(x){return x>=0&&x<=6});if(a.length)o.wd[v]=a});
   return o;
 }
-function nrOnDay(vid,d,cfg){var a=cfg.wd[vid];if(cfg.wdFrom&&nrBase(d)<cfg.wdFrom)return true;return !a||a.indexOf(nrPd(d).getDay())>=0}
+function nrOnDay(vid,d,cfg){var a=cfg.wd[vid];if(cfg.wdFrom&&nrBase(d)<cfg.wdFrom)return true;if(!a)return true;
+  var m=nrWdMap(d,cfg),w=nrPd(d).getDay();return a.some(function(x){return (m&&m[x]!=null?m[x]:x)===w})}
+/* 祝日(休日)がある週は、業者の曜日を1日ずつ後ろへずらす。休日が2日あれば2日ずらす。
+   ずらした先が土曜より後になる業者がいるときは「その週に収まらない」として null(→ その週は全業者に等分) */
+function nrSlide(wk,cfg){
+  var used={},hol=[],m={};Object.keys(cfg.wd).forEach(function(v){cfg.wd[v].forEach(function(w){used[w]=1})});
+  for(var i=0;i<7;i++){var t=nrDs(new Date(nrPd(wk).getTime()+i*864e5));if(nrHolName(t,cfg))hol.push(i)}
+  var ok=true;Object.keys(used).forEach(function(w){var p=(Number(w)+6)%7;hol.forEach(function(h){if(p>=h)p++});if(p>5)ok=false;m[w]=(p+1)%7});
+  return ok?m:null;
+}
+/* その日の週の曜日の読み替え(ずらさない週は null) */
+function nrWdMap(d,cfg){if(!cfg.eq||(cfg.wdFrom&&nrBase(d)<cfg.wdFrom))return null;var wk=nrWeek(nrBase(d));return nrHolWeek(wk,cfg)?nrSlide(wk,cfg):null}
 /* 曜日外の業者で空きを埋めるときの順: 余力なし → 逼迫度が高い → 評価点 */
 function nrUrgCmp(a,b){return (b.sc.crit?1:0)-(a.sc.crit?1:0)||b.sc.pr-a.sc.pr||nrCmp(a,b)}
 /* 「930」「1030」「10:30」「10」などを「09:30」の形にする。空は""、読めないときは null */
@@ -490,7 +501,7 @@ function nrSimulate(vendors,days,cfg,startStr,confirmed){
   var wu={},hw={};/* wu: 週ごと・業者ごとに、すでに回収した台数(祝日の週の等分に使う) */
   dates.forEach(function(d){
     var day=days[d],elevs=(day.elev||[]).slice().sort(),moves=day.moves||{},cap=nrNum(day.cap),res={cap:cap,left:cap,elev:elevs,asg:[],excluded:0,excl:[],fixed:false},cf=confirmed[d];
-    var wk=nrWeek(d);if(hw[wk]===undefined)hw[wk]=!!cfg.eq&&nrHolWeek(wk,cfg);
+    var wk=nrWeek(d);if(hw[wk]===undefined)hw[wk]=!!cfg.eq&&nrHolWeek(wk,cfg)&&!nrSlide(wk,cfg);
     var eqWeek=hw[wk]&&!(cfg.wdFrom&&nrBase(d)<cfg.wdFrom);wu[wk]=wu[wk]||{};res.eq=eqWeek;
     if(cf){
       res.fixed=true;var sum=0;
@@ -530,7 +541,7 @@ function nrSimulate(vendors,days,cfg,startStr,confirmed){
       if(!first[key])first[key]=d;
     }
     if(eqWeek){
-      /* 祝日がある週は、曜日の指定をやめて、その週にこれまで回収した台数がいちばん少ない業者から1台ずつ割り当てる(全業者がほぼ同じ台数になる) */
+      /* 祝日がある週で、曜日を1日ずつずらしても週に収まらないときは、曜日の指定をやめて、その週にこれまで回収した台数がいちばん少ない業者から1台ずつ割り当てる(全業者がほぼ同じ台数になる) */
       var by={},vids=[];
       nrPrio(cand.slice().sort(nrCmp)).forEach(function(c){if(!by[c.vid]){by[c.vid]=[];vids.push(c.vid)}by[c.vid].push(c)});
       while(left>0){
@@ -544,11 +555,11 @@ function nrSimulate(vendors,days,cfg,startStr,confirmed){
     }else if(Object.keys(cfg.wd).length&&!(cfg.wdFrom&&nrBase(d)<cfg.wdFrom)){
       /* 曜日の指定を使う日: その曜日の担当業者がいれば、担当業者どうしで均等に割る(1台ずつ、その日に回収した台数が少ない業者から)。
          残りの積載は、ほかの業者を逼迫している順に入れる。担当業者がいない曜日は、全業者を逼迫している順に入れる */
-      var wdw=nrPd(d).getDay(),ass=cand.filter(function(c){var a=cfg.wd[c.vid];return a&&a.indexOf(wdw)>=0}),rest=cand.filter(function(c){var a=cfg.wd[c.vid];return !(a&&a.indexOf(wdw)>=0)});
+      var wdw=nrPd(d).getDay(),ass=cand.filter(function(c){return cfg.wd[c.vid]&&nrOnDay(c.vid,d,cfg)}),rest=cand.filter(function(c){return !(cfg.wd[c.vid]&&nrOnDay(c.vid,d,cfg))});
       if(ass.length){
         var by2={},vs2=[],du={};
         nrPrio(ass.slice().sort(nrCmp)).forEach(function(c){if(!by2[c.vid]){by2[c.vid]=[];vs2.push(c.vid)}by2[c.vid].push(c)});
-        var nAss=Object.keys(vendors).filter(function(v){var a=cfg.wd[v];return a&&a.indexOf(wdw)>=0}).length||vs2.length,share=Math.floor(left/nAss);/* 担当業者1社あたりの均等な台数。この日に搬出予定がない担当業者も数える */
+        var nAss=Object.keys(vendors).filter(function(v){return cfg.wd[v]&&nrOnDay(v,d,cfg)}).length||vs2.length,share=Math.floor(left/nAss);/* 担当業者1社あたりの均等な台数。この日に搬出予定がない担当業者も数える */
         while(left>0){
           var pv=null;
           vs2.forEach(function(v){var l=by2[v];while(l.length&&(l[0].q<=0||l[0].it.rem<=0))l.shift();if(!l.length||(du[v]||0)>=share)return;
@@ -1302,14 +1313,15 @@ function renderDay(C){
   }
   var trucks=Math.ceil(cap/pt),s=C.sim.byDate[k],asg=s?s.asg:[],used=s?cap-s.left:0,elev=doc.elev||[];
   if(C.cfg.wdFrom&&nrBase(k)<C.cfg.wdFrom)h+='<p class="hint" style="margin:0 0 8px">この日は曜日の振り分け開始('+esc(fmtD(C.cfg.wdFrom))+')より前なので、曜日に関係なく、これまでどおり割り当てます。</p>';
-  else{var wl=wdByDay(C).days[nrPd(k).getDay()];
+  else{var wl=Object.keys(C.am).filter(function(v){return D.vendors[v]&&C.cfg.wd[v]&&nrOnDay(v,k,C.cfg)}).sort(function(a,b){return vname(a)<vname(b)?-1:1}),wm=nrWdMap(k,C.cfg);
+    if(wm)h+='<p class="hint" style="margin:0 0 8px"><b>祝日がある週のため、業者の曜日を1日ずつずらしています</b>('+Object.keys(wm).filter(function(w){return Number(w)!==wm[w]}).sort(function(a,b){return (Number(a)+6)%7-(Number(b)+6)%7}).map(function(w){return WD[w]+'曜→'+WD[wm[w]]+'曜'}).join('・')+')。</p>';
     if(!wl.length&&Object.keys(C.cfg.wd).length)h+='<p class="hint" style="margin:0 0 8px"><b>'+WD[nrPd(k).getDay()]+'曜日の担当業者はいません。</b>全業者を、逼迫している順(余力なしが先)に割り当てます。</p>';
     if(wl.length){h+='<p class="hint" style="margin:0 0 8px"><b>'+WD[nrPd(k).getDay()]+'曜日の担当:</b> '+wl.map(function(v){return esc(vname(v))}).join("・")+(s0eq(C,k)?'(祝日がある週なので、この週は全業者に等分します)':'(担当業者どうしで均等に割ります)')+'</p>';
       if(cf){var off=(cf.rows||[]).filter(function(r){return nrNum(r.units)>0&&!nrOnDay(r.vid,k,C.cfg)}).map(function(r){return vname(r.vid)});
         if(off.length&&!s0eq(C,k))h+='<div class="note" style="margin:0 0 8px"><span>確定済みのため、曜日の担当外の業者('+esc([...new Set(off)].join("・"))+')が入っています。曜日どおりに組み直すときは「確定を取り消す」→「今すぐ確定」を行ってください。</span></div>'}}}
   var hnm=nrHolName(k,C.cfg);
   if(hnm)h+='<div class="note" style="margin:0 0 8px"><span><b>'+esc(hnm)+'</b>です。'+(cap?'この日は回収日として設定されています。':'')+'</span></div>';
-  if(s&&s.eq&&!cf)h+='<div class="note pv" style="margin:0 0 8px;display:block"><b>祝日がある週のため、この週は曜日の指定をやめて全業者に等分して割り振っています。</b>(設定タブの「祝日の扱い」で変えられます)</div>';
+  if(s&&s.eq&&!cf)h+='<div class="note pv" style="margin:0 0 8px;display:block"><b>祝日がある週で、業者の曜日を1日ずつずらすと週に収まらないため、この週は全業者に等分して割り振っています。</b>(設定タブの「祝日の扱い」で変えられます)</div>';
   h+='<div class="field"><span>回収車輌</span><button class="btn sm" data-act="tminus" aria-label="車輌を減らす">−</button><b>'+trucks+'台</b>'
    +'<button class="btn sm" data-act="tplus" aria-label="車輌を増やす">＋</button><span>(1台につきスクラップ台車'+pt+'台まで)</span></div>'
    +'<div class="field"><span>回収できるスクラップ台車</span><input type="number" min="0" id="cap" data-f="cap" value="'+cap+'" aria-label="回収できるスクラップ台車の台数"><span>台</span></div>'
@@ -1551,15 +1563,15 @@ function renderWd(C){
     h+='</tr>'});
   return h+'</tbody></table></div></section>';
 }
-/* 祝日の扱い: 祝日がある週は全業者に等分する。祝日の一覧は「回収する」にも「休み」にも変えられ、会社の休日も足せる */
+/* 祝日の扱い: 祝日がある週は業者の曜日を1日ずつずらし、収まらなければ全業者に等分する。祝日の一覧は「回収する」にも「休み」にも変えられ、会社の休日も足せる */
 function renderHol(C){
   var c=C.cfg,t=C.t,end=nrDs(new Date(nrPd(t).getTime()+400*864e5)),list={};
   [Number(t.slice(0,4)),Number(t.slice(0,4))+1,Number(t.slice(0,4))+2].forEach(function(y){var m=nrJpHol(y);Object.keys(m).forEach(function(d){list[d]=m[d]})});
   Object.keys(c.holx).forEach(function(d){if(c.holx[d])list[d]=typeof c.holx[d]==="string"?c.holx[d]:"休日"});
   var ds=Object.keys(list).filter(function(d){return d>=t&&d<=end}).sort();
   var h='<section class="panel"><h2 style="margin-bottom:8px">祝日の扱い</h2>'
-   +'<label class="chk" style="margin-bottom:6px"><input type="checkbox" id="s-eq" data-f="eq"'+(c.eq?' checked':'')+'>祝日がある週は、曜日の指定をやめて全業者に等分する</label>'
-   +'<p class="hint" style="margin:0 0 10px">業者ごとの回収曜日に使っている曜日に祝日(休日)が当たる週は、その週の回収日を、その週にこれまで回収した台数が少ない業者から順に割り当てます。回収日を作った順に、全業者がほぼ同じ台数になるまで1台ずつ回します(希望が少ない業者は、その分を満たしたあと、残りをほかの業者で分けます)。祝日でない週は、これまでどおり曜日の指定で回収します。</p>'
+   +'<label class="chk" style="margin-bottom:6px"><input type="checkbox" id="s-eq" data-f="eq"'+(c.eq?' checked':'')+'>祝日がある週は、業者の曜日を1日ずつずらす(その週に収まらないときは全業者に等分する)</label>'
+   +'<p class="hint" style="margin:0 0 10px">業者ごとの回収曜日に使っている曜日に祝日(休日)が当たる週は、その週の業者の曜日を1日ずつ後ろへずらします(例: 月曜が祝日なら、月曜の業者は火曜、火曜の業者は水曜…)。休日が2日あれば2日ずらします。ずらした先が土曜より後になる業者がいて、その週に収まらないときは、その週だけ曜日の指定をやめて、全業者に等分します(その週にこれまで回収した台数が少ない業者から1台ずつ)。祝日でない週は、これまでどおり曜日の指定で回収します。</p>'
    +'<h3 style="margin:10px 0 4px">これから1年ほどの休日</h3>';
   if(!ds.length)h+='<p class="empty">ありません。</p>';
   else{h+='<div class="tablewrap"><table><thead><tr><th class="l">日付</th><th class="l">名前</th><th>休み</th></tr></thead><tbody>';
