@@ -1204,9 +1204,11 @@ function autoConfirm(C){
 /* 当日と翌日の搬出のお知らせ(業者は自社の分、管理者はその日の全体)。カレンダーの一番上に目立つように出す */
 function sesKeysOr(d){var ks=sesKeys(d);return ks.length?ks:[d]}
 /* 盛替え業者への通知: 管理者が出した「前日までに○階へ盛替え」の指示(まだ回収日が来ていないもの) */
+/* 盛替え日の初期値: 回収日の前日。前日が過ぎていれば今日 */
+function mvDefault(d,t){var p=nrDs(new Date(nrPd(nrBase(d)).getTime()-864e5));return p<t?t:p}
 function moveBox(C){
   var out=[];Object.keys(D.days).sort().forEach(function(d){if(nrBase(d)<C.t)return;var mv=D.days[d].moves||{};
-    Object.keys(mv).sort().forEach(function(key){var q=key.split("|"),m=mv[key];out.push('<li><b>'+esc(fmtD(d))+'</b>の回収に向けて '+esc(vname(q[0]))+' '+q[1]+'階'+(nrNum(m.u)?' '+nrNum(m.u)+'台':'')+' → <b>前日までにEV'+nrNum(m.ev)+'前の'+nrNum(m.to)+'階へ盛替え</b></li>')})});
+    Object.keys(mv).sort().forEach(function(key){var q=key.split("|"),m=mv[key];out.push('<li><b>'+esc(fmtD(d))+'</b>の回収に向けて '+esc(vname(q[0]))+' '+q[1]+'階'+(nrNum(m.u)?' '+nrNum(m.u)+'台':'')+' → <b>'+(m.md?esc(fmtD(m.md))+'に':'前日までに')+'EV'+nrNum(m.ev)+'前の'+nrNum(m.to)+'階へ盛替え</b></li>')})});
   return out.length?'<div class="todaybox next" role="status"><h3>🔔 盛替えの指示があります</h3><ul>'+out.join("")+'</ul></div>':'';
 }
 function todayBox(C){
@@ -1372,7 +1374,7 @@ function stageRows(C){
   C.sim.dates.forEach(function(d){if(d<C.t)return;var s=C.sim.byDate[d];if(!s||s.fixed)return;
     (s.excl||[]).forEach(function(x){var r=row(x.vid,x.floor);r.days.push(d);r.rem=x.rem;r.sc=x.sc})});
   Object.keys(D.days).sort().forEach(function(d){if(d<C.t||D.confirmed[d])return;var mv=D.days[d].moves||{};
-    Object.keys(mv).forEach(function(key){var q=key.split("|"),r=row(q[0],Number(q[1]));r.moves.push({d:d,key:key,ev:nrNum(mv[key].ev),to:nrNum(mv[key].to)})})});
+    Object.keys(mv).forEach(function(key){var q=key.split("|"),r=row(q[0],Number(q[1]));r.moves.push({d:d,key:key,ev:nrNum(mv[key].ev),to:nrNum(mv[key].to),md:mv[key].md||null})})});
   C.rank.list.forEach(function(x){if(x.noEv){var r=row(x.vid,x.floor);r.rem=x.rem;r.sc=r.sc||x.sc;r.noEv=true}});
   /* 設定の不停止階(どれかのEVが停まらない階)や、どのEVも停まらない階に、台数を持っている業者は、希望がなくても出す */
   var cfg=C.cfg,ns={};evList().forEach(function(e){(cfg.ns[e]||[]).forEach(function(f){ns[f]=1})});
@@ -1396,9 +1398,10 @@ function renderStageTab(C){
     var stops=evList().filter(function(e){return nrStops(x.floor,e,cfg)});
     var e0=stops[0]||1,near=x.floor;
     if(!stops.length){e0=1;near=null;evList().forEach(function(e){var n=nrNearest(x.floor,e,cfg);if(n!==null&&(near===null||Math.abs(n-x.floor)<Math.abs(near-x.floor))){near=n;e0=e}})}
-    var cur=x.moves.map(function(m){return '<div style="margin:0 0 4px">'+esc(fmtD(m.d))+' → <b>'+evLabel(m.ev,m.to)+'</b> <button class="btn sm danger" data-act="unstage2" data-d="'+m.d+'" data-key="'+esc(x.vid+"|"+x.floor)+'">外す</button></div>'}).join("");
+    var cur=x.moves.map(function(m){return '<div style="margin:0 0 4px">'+(m.md?'盛替え '+esc(fmtD(m.md))+' / 回収 ':'')+esc(fmtD(m.d))+' → <b>'+evLabel(m.ev,m.to)+'</b> <button class="btn sm danger" data-act="unstage2" data-d="'+m.d+'" data-key="'+esc(x.vid+"|"+x.floor)+'">外す</button></div>'}).join("");
     var nostop=evList().filter(function(e){return stops.indexOf(e)<0});
     var form=!(x.rem>0||x.moves.length)?'<span class="hint" style="margin:0">搬出の希望はありません。</span>':open.length?'<div class="mvbox" data-vid="'+esc(x.vid)+'" data-fl="'+x.floor+'" data-u="'+(x.rem||x.want||0)+'"><label class="hint" style="margin:0">回収日</label><input type="date" id="sg2-d-'+i+'" data-keep data-role="d" min="'+open[0]+'" max="'+open[open.length-1]+'" value="'+(x.days[0]||open[0])+'" aria-label="回収日をカレンダーで選ぶ">'
+      +'<label class="hint" style="margin:0">盛替え日</label><input type="date" id="sg2-m-'+i+'" data-keep data-role="md" min="'+C.t+'" max="'+open[open.length-1]+'" value="'+mvDefault(x.days[0]||open[0],C.t)+'" aria-label="盛替えする日をカレンダーで選ぶ(今日から)">'
       +'<select id="sg2-e-'+i+'" data-keep data-role="ev" aria-label="集積するエレベーター">'+evList().map(function(e){return '<option value="'+e+'"'+(e===e0?' selected':'')+'>EV'+e+'</option>'}).join("")+'</select>'
       +'<span class="hint" style="margin:0">へ盛替え →</span><input type="number" min="'+LIM.fmin+'" max="'+LIM.fmax+'" id="sg2-t-'+i+'" data-keep data-role="to" value="'+(near||"")+'" aria-label="盛替え先の階"><span class="hint" style="margin:0">階</span><button class="btn sm primary" data-act="stage2">指示して通知</button></div>'
       :'<span class="hint" style="margin:0">指示できる回収日がありません(回収日を作るか、確定を取り消してください)。</span>';
@@ -1940,14 +1943,19 @@ function renderSet(C){
   return h;
 }
 /* 画面の差し替えは要素を作り直さずに中身だけ合わせる。スクロール位置・フォーカス・入力中の値がそのまま残る */
+function strongSame(a,b){return !!a&&!!b&&a.nodeType===1&&sameNode(a,b)&&(a.getAttribute("class")||"")===(b.getAttribute("class")||"")}
+function sameKind(a,b){return !!b&&strongSame(a,b)}
 function sameNode(a,b){return a.nodeType===b.nodeType&&a.nodeName===b.nodeName&&(a.nodeType!==1||(a.id||"")===(b.id||""))}
 function morphKids(a,b,remote){
   var bn=Array.prototype.slice.call(b.childNodes),i;
   for(i=0;i<bn.length;i++){
     var an=a.childNodes[i],nn=bn[i];
     if(!an)a.appendChild(nn);
-    else if(sameNode(an,nn))morphNode(an,nn,remote);
-    else a.replaceChild(nn,an);
+    else if(sameNode(an,nn)&&(an.nodeType!==1||strongSame(an,nn)||!sameKind(an,bn[i+1])))morphNode(an,nn,remote);
+    /* 上にお知らせなどが1つ増えたときは、そこへ差し込み、下の部品(入力中の欄)はそのまま使う */
+    else if(bn[i+1]&&strongSame(an,bn[i+1]))a.insertBefore(nn,an);
+    else{var mv=null;for(var j=i+1;j<Math.min(a.childNodes.length,i+6);j++)if(strongSame(a.childNodes[j],nn)){mv=a.childNodes[j];break}
+      if(mv){a.insertBefore(mv,an);morphNode(mv,nn,remote)}else if(sameNode(an,nn))morphNode(an,nn,remote);else a.replaceChild(nn,an)}
   }
   while(a.childNodes.length>bn.length)a.removeChild(a.lastChild);
 }
@@ -1960,8 +1968,9 @@ function morphNode(a,b,remote){
   if(tag==="TEXTAREA"){if(!keep&&a.value!==b.value)a.value=b.value;return}
   var selv=null;
   if(tag==="SELECT"){var so=b.querySelector("option[selected]")||b.querySelector("option");selv=so?so.value:""}
+  var keptSel=keep&&tag==="SELECT"?a.value:null;
   morphKids(a,b,remote);
-  if(keep)return;
+  if(keep){if(keptSel!==null&&a.value!==keptSel)a.value=keptSel;return}
   if(tag==="INPUT"){
     if(a.type==="checkbox"||a.type==="radio")a.checked=b.hasAttribute("checked");
     else{var v=b.getAttribute("value")||"";if(a.value!==v)a.value=v}
@@ -2139,12 +2148,13 @@ function onClick(ev){
     else mutDay(ui.sel,function(d){d.moves=d.moves||{};d.moves[sv+"|"+sf]={ev:se,to:st}});
   }
   else if(act==="stage2"){
-    var sb2=b.closest(".mvbox"),sv2=sb2.getAttribute("data-vid"),sf2=sb2.getAttribute("data-fl"),sd2=sb2.querySelector('[data-role="d"]').value,se2=nrNum(sb2.querySelector('[data-role="ev"]').value),st2=Math.min(LIM.fmax,nrNum(sb2.querySelector('[data-role="to"]').value));
+    var sb2=b.closest(".mvbox"),sv2=sb2.getAttribute("data-vid"),sf2=sb2.getAttribute("data-fl"),sd2=sb2.querySelector('[data-role="d"]').value,se2=nrNum(sb2.querySelector('[data-role="ev"]').value),st2=Math.min(LIM.fmax,nrNum(sb2.querySelector('[data-role="to"]').value)),mi2=sb2.querySelector('[data-role="md"]'),md2=mi2?mi2.value:"",tdy2=nrDs(new Date());
     if(!sd2||!se2||!st2){ui.msg="回収日・集積するエレベーター・階を入力してください。";ui.msgKind="bad"}
     else if(!nrStops(st2,se2,nrCfg(D.config))){ui.msg="EV"+se2+"は"+st2+"階に停まりません。停まる階を指定してください。";ui.msgKind="bad"}
+    else if(md2&&(md2<tdy2||md2>sd2)){ui.msg="盛替え日は、今日("+fmtD(tdy2)+")から回収日("+(/^\d{4}-\d{2}-\d{2}$/.test(sd2)?fmtD(sd2):"")+")までの日を選んでください。";ui.msgKind="bad"}
     else if(!D.days[sd2]||D.confirmed[sd2]||sd2<nrDs(new Date())){ui.msg=(/^\d{4}-\d{2}-\d{2}$/.test(sd2)?fmtD(sd2):"その日")+"は、まだ確定していない回収日ではありません。カレンダーで回収日を選び直してください。";ui.msgKind="bad"}
-    else{var su2=nrNum(sb2.getAttribute("data-u"));mutDay(sd2,function(d){d.moves=d.moves||{};d.moves[sv2+"|"+sf2]={ev:se2,to:st2,u:su2,at:nowIso()}});
-      mailOut("m-"+sd2+"-"+sv2+"-"+sf2,{to:"crew",d:sd2,msg:"盛替えの指示: "+fmtD(sd2)+"の回収に向けて "+vname(sv2)+" "+sf2+"階"+(su2?" "+su2+"台":"")+" → 前日までにEV"+se2+"前の"+st2+"階へ盛替えてください。"});ui.msg=fmtD(sd2)+"の回収に向けて、"+vname(sv2)+"の"+sf2+"階を、前日までにEV"+se2+"前の"+st2+"階へ盛替えるよう指示しました。盛替え業者の画面に表示されます。";ui.msgKind="ok"}
+    else{var su2=nrNum(sb2.getAttribute("data-u"));mutDay(sd2,function(d){d.moves=d.moves||{};d.moves[sv2+"|"+sf2]={ev:se2,to:st2,u:su2,at:nowIso(),md:md2||null}});
+      mailOut("m-"+sd2+"-"+sv2+"-"+sf2,{to:"crew",d:sd2,msg:"盛替えの指示: "+fmtD(sd2)+"の回収に向けて "+vname(sv2)+" "+sf2+"階"+(su2?" "+su2+"台":"")+" → "+(md2?fmtD(md2)+"に":"前日までに")+"EV"+se2+"前の"+st2+"階へ盛替えてください。"});ui.msg=fmtD(sd2)+"の回収に向けて、"+vname(sv2)+"の"+sf2+"階を、"+(md2?fmtD(md2)+"に":"前日までに")+"EV"+se2+"前の"+st2+"階へ盛替えるよう指示しました。盛替え業者の画面に表示されます。";ui.msgKind="ok"}
   }
   else if(act==="unstage2"){var ud=b.getAttribute("data-d"),uk2=b.getAttribute("data-key");mutDay(ud,function(d){if(d.moves){delete d.moves[uk2];if(!Object.keys(d.moves).length)delete d.moves}})}
   else if(act==="unstage"){var uk=b.getAttribute("data-key");mutDay(ui.sel,function(d){if(d.moves){delete d.moves[uk];if(!Object.keys(d.moves).length)delete d.moves}})}
@@ -2478,6 +2488,7 @@ app.addEventListener("pointerdown",function(ev){
 app.addEventListener("click",function(ev){var b=ev.target.closest(".stp");if(b&&ev.detail===0){var inp=spinInput(b);spinStep(inp,Number(b.getAttribute("data-step")));inp.dispatchEvent(new Event("change",{bubbles:true}))}});
 app.addEventListener("click",function(ev){if(!onPreview(ev))asVendor(function(){onClick(ev)})});
 app.addEventListener("change",function(ev){
+  if(ev.target.getAttribute&&ev.target.getAttribute("data-role")==="d"){var mb0=ev.target.closest(".mvbox"),mm=mb0&&mb0.querySelector('[data-role="md"]');if(mm&&/^\d{4}-\d{2}-\d{2}$/.test(ev.target.value))mm.value=mvDefault(ev.target.value,nrDs(new Date()))}
   if(ev.target.getAttribute&&ev.target.getAttribute("data-role")==="ev"){var mb=ev.target.closest(".mvbox"),mf=mb&&Number(mb.getAttribute("data-fl")),mt=mb&&mb.querySelector('[data-role="to"]');
     if(mf&&mt){var mc=nrCfg(D.config),me=nrNum(ev.target.value),mn=nrStops(mf,me,mc)?mf:nrNearest(mf,me,mc);if(mn!==null&&mn!==undefined)mt.value=mn}}
   if(ev.target.getAttribute&&ev.target.getAttribute("data-f")==="pv"){ui.pv=ev.target.value||null;render();return}

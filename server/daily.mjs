@@ -105,7 +105,7 @@ for (const app of APPS) {
   const mvLines = [];
   for (const k of Object.keys(D.days).sort()) {
     const b = nrBase(k); if (b < today || b > nrDs(new Date(nrPd(today).getTime() + 2 * 864e5))) continue;
-    Object.entries(D.days[k].moves || {}).forEach(([key, m]) => { const q = key.split("|"); mvLines.push("・" + fmtD(k) + sesLab(D, k) + "の回収: " + vname(D, q[0]) + " " + q[1] + "階" + (nrNum(m.u) ? " " + nrNum(m.u) + "台" : "") + " → 前日までに" + evLabel(nrNum(m.ev), nrNum(m.to)) + "へ盛替え"); });
+    Object.entries(D.days[k].moves || {}).forEach(([key, m]) => { const q = key.split("|"); mvLines.push("・" + fmtD(k) + sesLab(D, k) + "の回収: " + vname(D, q[0]) + " " + q[1] + "階" + (nrNum(m.u) ? " " + nrNum(m.u) + "台" : "") + " → " + (m.md ? fmtD(m.md) + "に" : "前日までに") + evLabel(nrNum(m.ev), nrNum(m.to)) + "へ盛替え"); });
   }
   if (mvLines.length) lines.push("【" + app.name + "】盛替えの指示", ...mvLines);
   let newOrders = 0; Object.values(D.orders).forEach(o => Object.values(o.items || {}).forEach(x => { if (x.st === "new") newOrders++; }));

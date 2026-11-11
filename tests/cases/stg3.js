@@ -23,7 +23,10 @@ if(n==='pc'){
  console.log(' date input type:',await p.locator('#sg2-d-'+idx).getAttribute('type'),await p.locator('#sg2-d-'+idx).inputValue());
  await p.selectOption('#sg2-e-'+idx,'2');console.log(' to after EV2:',await p.locator('#sg2-t-'+idx).inputValue());
  await p.selectOption('#sg2-e-'+idx,'1');console.log(' to after EV1:',await p.locator('#sg2-t-'+idx).inputValue());
- await p.fill('#sg2-d-'+idx,k2);await p.fill('#sg2-t-'+idx,'30');await p.locator('#sg2-t-'+idx).blur();
+ console.log(' move date: min',await p.locator('#sg2-m-'+idx).getAttribute('min'),'default',await p.locator('#sg2-m-'+idx).inputValue());
+ await p.fill('#sg2-m-'+idx,'2020-01-01');await p.click('[data-act=stage2] >> nth='+idx);await p.waitForTimeout(200);console.log(' past move date msg:',(await p.locator('.note').first().innerText()).slice(0,60));
+ await p.fill('#sg2-d-'+idx,k2);await p.locator('#sg2-d-'+idx).dispatchEvent('change');console.log(' move date after picking collection day:',await p.locator('#sg2-m-'+idx).inputValue());
+ const T=new Date();const td=T.getFullYear()+'-'+String(T.getMonth()+1).padStart(2,'0')+'-'+String(T.getDate()).padStart(2,'0');await p.fill('#sg2-m-'+idx,td);await p.fill('#sg2-t-'+idx,'30');await p.locator('#sg2-t-'+idx).blur();
  await p.locator('[data-act=stage2]').nth(idx).click();await p.waitForTimeout(400);
  const S=await p.evaluate(()=>JSON.parse(sessionStorage.__FS));console.log(' msg:',(await p.locator('.note').first().innerText()).slice(0,120));console.log(' moves saved:',JSON.stringify(S.days[k1].moves||S.days[k2].moves));
  console.log(' tab after:',(await p.locator('button[data-tab=stg]').innerText()).replace(/\n/g,''),'| current:',(await p.locator('table.rtable tbody tr').first().innerText()).replace(/\s+/g,' ').slice(0,120));
