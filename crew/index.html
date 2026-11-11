@@ -1235,7 +1235,7 @@ function renderDay(C){
     h+='</div></div>';
   }
   h+='</div>';
-  if(cf)h+=dayRowsTable(k);
+  if(cf)h+=dayRowsTable(k)+fillBox(C,k);
   else if(asg.length){
     h+='<div class="tablewrap"><table><thead><tr><th class="l">順位</th><th class="l">業者</th><th>階</th><th>台数</th><th class="l">集積</th><th class="l">戻し階</th></tr></thead><tbody>';
     asg.forEach(function(a){h+='<tr><td class="l">'+a.rank+(a.sc&&a.sc.crit?' <span class="st bad">余力なし</span>':'')+(a.extra?' <span class="st warn">曜日外</span>':'')+'</td><td class="l vn"><i class="chip" style="background:'+vcolor(a.vid)+'"></i>'+esc(vname(a.vid))+'</td><td>'+a.floor+'階</td><td><b>'+a.units+'</b></td><td class="l">'+evCell(a)+'</td><td class="l">'+esc(retLabel(a))+'</td></tr>'});
@@ -1355,6 +1355,53 @@ function vendorOpts(C,sel){
   var ids=Object.keys(C.am).sort(function(a,b){return vname(a)<vname(b)?-1:1});
   return ids.map(function(id){return '<option value="'+esc(id)+'"'+(id===sel?' selected':'')+'>'+esc(vname(id))+'</option>'}).join("");
 }
+/* ---- 空きが出たときに、逼迫した業者へ回す ----
+   確定した回収日に空きが出て、その日に回れる希望(まだ配分に入っていない分)があるとき、
+   「逼迫した業者に回しますか?」と尋ねる。はい=逼迫度の高い順に自動で割り当て、いいえ=管理者が業者と台数を選ぶ。
+   どちらも、追加された業者にだけ「予定が変わりました」のお知らせが出る */
+function fillItems(C){
+  if(C._fi)return C._fi;
+  var cd={};Object.keys(D.confirmed).forEach(function(d){if(D.days[d])cd[d]=D.days[d]});
+  return C._fi=nrSimulate(C.am,cd,C.cfg,C.t,D.confirmed).left.filter(function(it){return it.rem>0});
+}
+/* 管理者が自分で減らした・消した業者と階は、「空きを逼迫した業者に回す」の候補に入れない(減らしたのに、また戻らないように) */
+function markFillSkip(k,r){if(r&&D.days[k]){var o={};o[r.vid+"|"+r.floor]=1;patch("days",k,{skip:o})}}
+function fillCands(C,k){
+  var cf=D.confirmed[k],day=D.days[k]||{},cap=nrNum(day.cap);
+  if(!cf||!cap||k<C.t)return {free:0,list:[]};
+  var free=cap-rowsTotal(cf,-1);if(free<=0)return {free:free,list:[]};
+  var elevs=(day.elev||[]).slice().sort(),moves=day.moves||{},cfg=C.cfg,list=[],skip=day.skip||{},has={};
+  (cf.rows||[]).forEach(function(r){has[r.vid+"|"+r.floor]=1});
+  fillItems(C).forEach(function(it){
+    if(it.since>k||skip[it.vid+"|"+it.floor]||has[it.vid+"|"+it.floor])return;
+    var ev=null,to=null;
+    if(elevs.length){ev=nrElevFor(it.floor,elevs,cfg);
+      if(ev===null){var mv=moves[it.vid+"|"+it.floor];if(mv&&nrNum(mv.ev)>=1&&nrNum(mv.ev)<=cfg.evn){ev=nrNum(mv.ev);to=nrNum(mv.to)||null}else return}}
+    list.push({it:it,vid:it.vid,floor:it.floor,since:it.since,rem:it.rem,sc:nrScore(it,k,cfg),ev:ev,to:to})});
+  list.sort(nrUrgCmp);
+  return {free:free,list:list};
+}
+function fillBox(C,k){
+  if(!ENV.admin)return "";
+  var fc=fillCands(C,k);if(fc.free<=0||!fc.list.length)return "";
+  ui.fillHide=ui.fillHide||{};ui.fillMan=ui.fillMan||{};
+  if(ui.fillHide[k]===fc.free)return "";
+  var h='<div class="note pv fillbox" data-d="'+k+'" style="margin:10px 0;display:block"><b>空きが'+fc.free+'台あります。逼迫した業者に回しますか?</b>';
+  if(!ui.fillMan[k]){
+    h+='<div class="hint" style="margin:4px 0">候補(逼迫度の高い順): '+fc.list.slice(0,4).map(function(c){return esc(vname(c.vid))+' '+c.floor+'階 '+c.rem+'台'+(c.sc.crit?'(余力なし)':'')}).join('、')+(fc.list.length>4?' ほか'+(fc.list.length-4)+'件':'')+'</div>'
+     +'<div class="mvbox" style="flex-wrap:wrap"><button class="btn primary" data-act="fillauto" data-d="'+k+'">はい(逼迫度の高い順に自動で割り当てる)</button><button class="btn" data-act="fillman" data-d="'+k+'">いいえ(自分で選ぶ)</button><button class="btn sm" data-act="fillhide" data-d="'+k+'">閉じる</button></div>';
+  }else{
+    h+='<p class="hint" style="margin:4px 0">追加する業者と階にチェックを付け、台数を入れて「選んだ業者に追加して通知」を押します。チェックした業者にだけ、「予定が変わりました」のお知らせが出ます(空きは'+fc.free+'台まで)。</p>'
+     +'<div class="tablewrap"><table class="rtable"><thead><tr><th></th><th class="l">業者</th><th>階</th><th>残りの希望</th><th>逼迫度</th><th class="l">集積</th><th>追加する台数</th></tr></thead><tbody>';
+    fc.list.forEach(function(c,i){
+      h+='<tr><td><input type="checkbox" id="fc-'+k+'-'+i+'" data-keep data-fc="1" data-vid="'+esc(c.vid)+'" data-fl="'+c.floor+'" aria-label="'+esc(vname(c.vid))+' '+c.floor+'階を追加する"></td>'
+       +'<td class="l vn"><i class="chip" style="background:'+vcolor(c.vid)+'"></i>'+esc(vname(c.vid))+'</td><td>'+c.floor+'階</td><td>'+c.rem+'台</td>'
+       +'<td>'+c.sc.pr.toFixed(0)+'%'+(c.sc.crit?' <span class="st bad">余力なし</span>':'')+'</td><td class="l">'+evLabel(c.ev,c.to)+'</td>'
+       +'<td><input type="number" min="1" max="'+c.rem+'" id="fq-'+k+'-'+i+'" data-keep data-fq="1" value="'+Math.min(c.rem,fc.free)+'" aria-label="追加する台数"></td></tr>'});
+    h+='</tbody></table></div><div class="mvbox" style="flex-wrap:wrap;margin-top:6px"><button class="btn primary" data-act="fillgo" data-d="'+k+'">選んだ業者に追加して通知</button><button class="btn sm" data-act="fillhide" data-d="'+k+'">閉じる</button></div>';
+  }
+  return h+'</div>';
+}
 function renderConfirmed(C){
   var ds=Object.keys(D.confirmed).sort(),t=C.t;
   ds=ds.filter(function(d){return d>=t}).concat(ds.filter(function(d){return d<t}).reverse());
@@ -1372,7 +1419,7 @@ function renderConfirmed(C){
        +'<td class="l">'+evCell(r)+'</td><td class="l">'+esc(retLabel(r))+'</td>'
        +'<td><button class="btn sm danger" data-act="cdel" data-d="'+d+'" data-i="'+i+'">削除</button></td></tr>';
     });
-    h+='</tbody></table></div><div class="mvbox" data-d="'+d+'" style="margin-top:8px"><span style="font-size:12px;color:var(--muted)">業者を追加</span><select data-keep data-role="to" aria-label="追加する業者">'+opts+'</select><input type="number" min="'+LIM.fmin+'" max="'+LIM.fmax+'" data-keep data-role="fl" placeholder="階" aria-label="階"><input type="number" min="1" data-keep data-role="q" value="1" aria-label="台数"><button class="btn sm" data-act="cadd">追加</button></div></div>';
+    h+='</tbody></table></div>'+fillBox(C,d)+'<div class="mvbox" data-d="'+d+'" style="margin-top:8px"><span style="font-size:12px;color:var(--muted)">業者を追加</span><select data-keep data-role="to" aria-label="追加する業者">'+opts+'</select><input type="number" min="'+LIM.fmin+'" max="'+LIM.fmax+'" data-keep data-role="fl" placeholder="階" aria-label="階"><input type="number" min="1" data-keep data-role="q" value="1" aria-label="台数"><button class="btn sm" data-act="cadd">追加</button></div></div>';
   });
   return h+'</section>';
 }
@@ -1901,6 +1948,21 @@ function onClick(ev){
   else if(act==="sel"){var sd0=b.getAttribute("data-date");ui.sel=sesKeys(sd0)[0]||sd0}
   else if(act==="packok"){var pkd=b.getAttribute("data-d"),pki=Number(b.getAttribute("data-i")),pkr=((D.confirmed[pkd]||{}).rows||[])[pki];
     if(pkr){var pke=placedEv(pkd,pkr);setRowSt(pkd,pkr,{pack:{ev:pke,at:nowIso(),by:who()}},rowName(pkr)+" "+pkr.floor+"階 指定外のEV"+pke+"への配置を確認")}}
+  else if(act==="fillauto"||act==="fillgo"||act==="fillman"||act==="fillhide"){
+    var fk=b.getAttribute("data-d");ui.fillHide=ui.fillHide||{};ui.fillMan=ui.fillMan||{};
+    if(act==="fillman")ui.fillMan[fk]=true;
+    else if(act==="fillhide"){ui.fillHide[fk]=fillCands(compute(),fk).free;ui.fillMan[fk]=false}
+    else{
+      var fC=compute(),fc2=fillCands(fC,fk),picks=[];
+      if(act==="fillauto")fc2.list.forEach(function(c){picks.push({vid:c.vid,floor:c.floor,q:c.rem})});
+      else{var bx=b.closest(".fillbox");bx.querySelectorAll('input[data-fc]').forEach(function(cb,i){if(!cb.checked)return;var q=Math.min(nrNum(bx.querySelector('#fq-'+fk+'-'+i).value),(fc2.list[i]||{rem:0}).rem);if(q>0)picks.push({vid:cb.getAttribute("data-vid"),floor:Number(cb.getAttribute("data-fl")),q:q})})}
+      if(!picks.length){ui.msg="追加する業者と階を選んでください。";ui.msgKind="bad"}
+      else{var added=[];
+        mutConfirmed(fk,function(cf){picks.forEach(function(x){var n=addRow(cf,fk,x.vid,x.floor,x.q,false);if(n>0)added.push(vname(x.vid)+" "+x.floor+"階 "+n+"台")})});
+        ui.fillMan[fk]=false;
+        ui.msg=added.length?fmtD(fk)+"の空きに、"+added.join("、")+"を追加しました。追加した業者にお知らせを出しました。":"空きがなく、追加できませんでした。";ui.msgKind=added.length?"ok":"bad"}
+    }
+  }
   else if(act==="sesel"){ui.sel=b.getAttribute("data-k")}
   else if(act==="sesadd"){
     var sb=nrBase(ui.sel),sks=sesKeys(sb),sprev=D.days[ui.sel]||D.days[sks[0]]||{},sno=0;sks.forEach(function(x){sno=Math.max(sno,nrSesNo(x))});sno++;
@@ -1930,7 +1992,7 @@ function onClick(ev){
     if(ui.confirm==="unconfirm"){notifyChanges(ui.sel,D.confirmed[ui.sel],null);remove("confirmed",ui.sel);if(inAuto(ui.sel,compute()))mutDay(ui.sel,function(d){d.hold=true});ui.confirm=""}
     else{ui.confirm="unconfirm";keepConfirm=true}
   }
-  else if(act==="cdel"){var dd=b.getAttribute("data-d"),ii=Number(b.getAttribute("data-i"));mutConfirmed(dd,function(cf){cf.rows.splice(ii,1)})}
+  else if(act==="cdel"){var dd=b.getAttribute("data-d"),ii=Number(b.getAttribute("data-i"));markFillSkip(dd,((D.confirmed[dd]||{}).rows||[])[ii]);mutConfirmed(dd,function(cf){cf.rows.splice(ii,1)})}
   else if(act==="cadd"){
     var bx2=b.closest(".mvbox"),da=bx2.getAttribute("data-d"),av=boxVals(bx2),added=0;
     if(av.to&&av.fl&&av.q){mutConfirmed(da,function(cf){added=addRow(cf,da,av.to,av.fl,av.q,false)});
@@ -2211,7 +2273,9 @@ function onChange(ev){
   else if(f==="company"){var id2=el.getAttribute("data-id"),nm=el.value.trim();if(nm){companyMembers(id2).forEach(function(u){patch("approved",u,{company:nm})});var cc=(D.vendors[id2]||{}).code;if(cc)patch("codes",cc,{company:nm})}}
   else if(f==="cunits"){
     var d3=el.getAttribute("data-d"),i3=Number(el.getAttribute("data-i"));
-    mutConfirmed(d3,function(cf){var r=cf.rows[i3];if(!r)return;var cap=nrNum((D.days[d3]||{}).cap),room=Math.max(0,cap-rowsTotal(cf,i3));r.units=Math.min(nrNum(el.value),room)});
+    var nv3=nrNum(el.value),r3=((D.confirmed[d3]||{}).rows||[])[i3];/* 先に値を読む(書き込みで画面が描き直されると、欄の値が元に戻る) */
+    mutConfirmed(d3,function(cf){var r=cf.rows[i3];if(!r)return;var cap=nrNum((D.days[d3]||{}).cap),room=Math.max(0,cap-rowsTotal(cf,i3));r.units=Math.min(nv3,room)});
+    if(r3&&nv3<nrNum(r3.units))markFillSkip(d3,r3);
   }
   else if(f==="wd"){var wv=el.getAttribute("data-vid"),ww=Number(el.getAttribute("data-w"));c.wd=c.wd||{};
     var wa=(c.wd[wv]||[]).filter(function(x){return x!==ww});if(el.checked)wa.push(ww);wa.sort();if(wa.length)c.wd[wv]=wa;else delete c.wd[wv];putCfg(c)}
