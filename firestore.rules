@@ -146,6 +146,15 @@ service cloud.firestore {
         && request.resource.data.email is string && request.resource.data.email.size() <= 200
         && request.resource.data.kind in ['admin', 'vendor', 'crew'];
     }
+    // プッシュ通知の登録: 本人が自分の端末を登録・削除する。送るのは GitHub Actions(サーバー)
+    match /push/{id} {
+      allow read, delete: if isSelf(id) || isAdmin();
+      allow create, update: if isSelf(id)
+        && request.resource.data.keys().hasOnly(['subs', 'kind', 'at', 'email'])
+        && request.resource.data.subs is map && request.resource.data.subs.size() <= 10
+        && request.resource.data.kind in ['admin', 'vendor', 'crew']
+        && request.resource.data.at is string && request.resource.data.at.size() <= 40;
+    }
 
     // ===== スクラップ搬出(scrap_ で始まるコレクション) =====
     function isApprovedScrap() {
@@ -279,6 +288,15 @@ service cloud.firestore {
         && request.resource.data.at is string && request.resource.data.at.size() <= 40
         && request.resource.data.email is string && request.resource.data.email.size() <= 200
         && request.resource.data.kind in ['admin', 'vendor', 'crew'];
+    }
+    // プッシュ通知の登録: 本人が自分の端末を登録・削除する。送るのは GitHub Actions(サーバー)
+    match /scrap_push/{id} {
+      allow read, delete: if isSelf(id) || isAdmin();
+      allow create, update: if isSelf(id)
+        && request.resource.data.keys().hasOnly(['subs', 'kind', 'at', 'email'])
+        && request.resource.data.subs is map && request.resource.data.subs.size() <= 10
+        && request.resource.data.kind in ['admin', 'vendor', 'crew']
+        && request.resource.data.at is string && request.resource.data.at.size() <= 40;
     }
   }
 }
