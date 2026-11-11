@@ -23,3 +23,13 @@
 - 作業を始める前に必ず `git pull origin main` で最新にする(index.html は1ファイルなので、古いまま直すとぶつかる)。
 - 大きな変更はブランチを切ってプルリクエストにし、もう1人に見てもらってから main に入れる。小さな修正は main に直接でもよい。
 - ルール(firestore.rules)や管理者のメールアドレスを変えたら、Firebase に貼り直す人を決めて、相手にも伝える。
+
+## 動作確認(試験)
+
+`tests/` に、本番のFirebaseを使わない試験があります(Firebase の代わりに `tests/lib/fake-fb.js` を使う)。
+
+    npm install playwright   # 初回だけ(Chromium も必要: npx playwright install chromium)
+    node tests/run.js        # 全部
+    node tests/run.js fill   # 名前に fill を含むものだけ
+
+直したら、関係する試験と `ipad`(画面の幅)を動かしてから push する。新しい機能には `tests/cases/` に試験を足す。

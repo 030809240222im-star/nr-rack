@@ -78,7 +78,7 @@ for (const app of APPS) {
       const seen = {};
       for (const r of rows) {
         if (seen[r.vid] || (D.vendors[r.vid] && D.vendors[r.vid].manual)) continue; seen[r.vid] = 1;
-        const msg = fmtD(d) + sesLab(D, d) + " " + fmtTime(day) + " の予定が確定しました: " + rows.filter(x => x.vid === r.vid).map(x => x.floor + "階 " + x.units + "台 → " + evLabel(x.ev, x.to)).join("、");
+        const msg = fmtD(d) + sesLab(D, d) + " " + fmtTime(day) + " の予定が確定しました: " + rows.filter(x => x.vid === r.vid).map(x => x.floor + "階 " + x.units + "台(" + evLabel(x.ev, x.to) + ")").join("、");
         const id = "n" + Date.now().toString(36) + Math.floor(Math.random() * 1e4).toString(36);
         await db.collection(app.prefix + "notices").doc(r.vid).set({ items: { [id]: { d, kind: "confirm", msg, at, by: "毎朝の自動処理" } } }, { merge: true });
       }
