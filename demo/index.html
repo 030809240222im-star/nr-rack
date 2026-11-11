@@ -80,8 +80,8 @@ button:disabled{opacity:.45;cursor:default}
 .cell .dn em{font-style:normal;font-size:10px;font-weight:700;color:var(--bad);margin-right:auto;margin-left:3px}
 .cell.holi .dn b{color:var(--bad)}.cell.mine .dn em,.cell.now .dn em,.cell.mine.holi .dn b,.cell.now.holi .dn b{color:inherit}
 .cell.today .dn b{background:var(--accent);color:var(--accent-fg);border-radius:10px;padding:0 6px}
-.cell .cap{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
-.cell .evs{font-size:10.5px;font-weight:700;color:var(--accent);white-space:nowrap}
+.cell .cap{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:normal;overflow-wrap:anywhere;line-height:1.25}
+.cell .evs{font-size:10.5px;font-weight:700;color:var(--accent);white-space:normal;overflow-wrap:anywhere;line-height:1.25}
 .cell .evs.none{color:var(--bad)}
 .cell .bar{margin-top:auto;display:block;height:4px;border-radius:2px;background:var(--line);overflow:hidden}
 .cell .bar b{display:block;height:100%;background:var(--accent)}
@@ -271,7 +271,7 @@ body{touch-action:manipulation}
 .stp{flex:0 0 auto;width:auto!important;min-width:36px;margin:0!important;padding:0 6px;border:1px solid var(--line);background:var(--surface2);color:var(--fg);font-size:18px;line-height:1;cursor:pointer;touch-action:none;-webkit-user-select:none;user-select:none}
 .stp:first-child{border-radius:8px 0 0 8px;border-right:0}.stp:last-child{border-radius:0 8px 8px 0;border-left:0}
 .stp:active{background:var(--line);color:var(--fg)}
-.stepper input[type=number]{width:3.6em}
+.stepper input[type=number]{width:4.4em!important;padding-left:4px!important;padding-right:4px!important;text-align:center}
 .prio .prow{display:flex;align-items:center;gap:6px;margin-top:4px;flex:1 1 100%;width:100%}.prio .prow>span{font-size:12px;color:var(--muted);flex:none;width:2.4em}
 .rsbox .prow>span{width:auto}.rsbox .prow{flex-wrap:nowrap}
 .floors .rsbox .stepper{width:8.6em!important;max-width:none;flex:none}.floors .rsbox .stepper input{flex:1 1 auto!important;width:3em!important;min-width:3em;padding-left:2px;padding-right:2px;text-align:center}
