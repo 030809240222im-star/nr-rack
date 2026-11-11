@@ -101,6 +101,13 @@ for (const app of APPS) {
       if (pe && (day.elev || []).length && dg.indexOf(pe) < 0 && !r.back) lines.push("  ⚠ EV" + pe + "に置かれています(指定: " + dg.map(e => "EV" + e).join("・") + ")");
     });
   }
+  /* 盛替え業者への指示(管理者が出した「前日までに○階へ盛替え」。2日先までの回収日分) */
+  const mvLines = [];
+  for (const k of Object.keys(D.days).sort()) {
+    const b = nrBase(k); if (b < today || b > nrDs(new Date(nrPd(today).getTime() + 2 * 864e5))) continue;
+    Object.entries(D.days[k].moves || {}).forEach(([key, m]) => { const q = key.split("|"); mvLines.push("・" + fmtD(k) + sesLab(D, k) + "の回収: " + vname(D, q[0]) + " " + q[1] + "階" + (nrNum(m.u) ? " " + nrNum(m.u) + "台" : "") + " → 前日までに" + evLabel(nrNum(m.ev), nrNum(m.to)) + "へ盛替え"); });
+  }
+  if (mvLines.length) lines.push("【" + app.name + "】盛替えの指示", ...mvLines);
   let newOrders = 0; Object.values(D.orders).forEach(o => Object.values(o.items || {}).forEach(x => { if (x.st === "new") newOrders++; }));
   if (newOrders) lines.push("【" + app.name + "】新しい追加注文 " + newOrders + "件(アプリの「追加注文」で手配してください)");
 }
