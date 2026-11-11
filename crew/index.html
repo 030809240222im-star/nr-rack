@@ -189,6 +189,16 @@ body{touch-action:manipulation}
   .floors .stepper{width:100%;max-width:12em}
   .floors .stepper input{flex:1 1 auto;width:auto!important}
 }
+@container (min-width:861px) and (max-width:1100px){
+  table.rtable.stgt thead{display:table-header-group}
+  table.rtable.stgt{display:table;width:100%}
+  table.rtable.stgt tbody{display:table-row-group;width:auto}
+  table.rtable.stgt tr{display:table-row;padding:0;border-bottom:0}
+  table.rtable.stgt td{display:table-cell;padding:8px 8px!important;border-bottom:1px solid var(--line)!important;vertical-align:top}
+  table.rtable.stgt td::before{content:none}
+  table.rtable.stgt td:first-child{font-size:inherit;font-weight:inherit}
+  table.rtable.stgt td:first-child,table.rtable.stgt td:nth-child(2),table.rtable.stgt td:nth-child(3){white-space:nowrap!important}
+}
 @container (max-width:1100px){
 
   .floors{max-height:none;overflow:visible}
@@ -1267,7 +1277,7 @@ function renderStageTab(C){
    +'<p class="hint" style="margin:0 0 10px">「設定」で決めた不停止階(どれかのEVが停まらない階)と、どのEVも停まらない階に台数を持っている業者の一覧です。回収日のエレベーターが停まらない希望は、上に出ます。逼迫度が高い階は、前日までにどの階のどのEV前へ集積しておくか指示すると、その日の配分に入ります。集積するEVは、すべてのEVから選べます。</p>';
   var open=C.sim.dates.filter(function(d){return d>=C.t&&C.sim.byDate[d]&&!C.sim.byDate[d].fixed});
   if(!rows.length)return h+'<p class="empty">不停止階に台数を持っている業者はいません。</p></section>';
-  h+='<div class="tablewrap"><table class="rtable"><thead><tr><th class="l">業者</th><th>階</th><th>保有</th><th>希望</th><th>逼迫度</th><th class="l">停まらないEV</th><th class="l">停まるEV</th><th class="l">集積指示(前日まで)</th></tr></thead><tbody>';
+  h+='<div class="tablewrap"><table class="rtable stgt"><thead><tr><th class="l">業者</th><th>階</th><th>保有 / 希望</th><th>逼迫度</th><th class="l">停まらない理由</th><th class="l">集積指示(前日まで)</th></tr></thead><tbody>';
   rows.forEach(function(x,i){
     var stops=evList().filter(function(e){return nrStops(x.floor,e,cfg)});
     var e0=stops[0]||1,near=x.floor;
@@ -1278,10 +1288,13 @@ function renderStageTab(C){
       +'<select id="sg2-e-'+i+'" data-keep data-role="ev" aria-label="集積するエレベーター">'+evList().map(function(e){return '<option value="'+e+'"'+(e===e0?' selected':'')+'>EV'+e+'</option>'}).join("")+'</select>'
       +'<input type="number" min="'+LIM.fmin+'" max="'+LIM.fmax+'" id="sg2-t-'+i+'" data-keep data-role="to" value="'+(near||"")+'" aria-label="集積する階"><span class="hint" style="margin:0">階</span><button class="btn sm primary" data-act="stage2">指示</button></div>'
       :'<span class="hint" style="margin:0">指示できる回収日がありません(回収日を作るか、確定を取り消してください)。</span>';
-    h+='<tr><td class="l vn"><i class="chip" style="background:'+vcolor(x.vid)+'"></i>'+esc(vname(x.vid))+'</td><td>'+x.floor+'階</td><td>'+(x.held||0)+'</td><td>'+(x.want||0)+'</td>'
+    /* 停まらない理由: その回収日のEVが停まらないこと、停まる・停まらないEV(設定の不停止階) */
+    var why=[];
+    if(x.days.length){var d0=x.days[0],de=(D.days[d0]||{}).elev||[];why.push('<b>'+esc(fmtD(d0))+'</b>の回収EV('+(de.length?de.map(function(e){return 'EV'+e}).join("・"):'未指定')+')は'+x.floor+'階に停まりません'+(x.days.length>1?' ほか'+(x.days.length-1)+'日':''))}
+    why.push(stops.length?'停まるEV: '+stops.map(function(e){return 'EV'+e}).join("・")+(nostop.length?' / 停まらないEV: '+nostop.map(function(e){return 'EV'+e}).join("・"):''):'<span class="st bad">どのEVも停まりません</span>');
+    h+='<tr><td class="l vn"><i class="chip" style="background:'+vcolor(x.vid)+'"></i>'+esc(vname(x.vid))+'</td><td>'+x.floor+'階</td><td>'+(x.held||0)+' / '+(x.want||0)+'台</td>'
      +'<td>'+(x.sc?x.sc.pr.toFixed(0)+'%'+(x.sc.crit?' <span class="st bad">余力なし</span>':''):'—')+'</td>'
-     +'<td class="l">'+(nostop.length?nostop.map(function(e){return 'EV'+e}).join("・"):'—')+'</td>'
-     +'<td class="l">'+(stops.length?stops.map(function(e){return 'EV'+e}).join("・"):'<span class="st bad">どのEVも停まりません</span>')+'</td>'
+     +'<td class="l" style="white-space:normal">'+why.join('<br>')+'</td>'
      +'<td class="l" style="white-space:normal;min-width:240px">'+(cur||'')+form+'</td></tr>';
   });
   return h+'</tbody></table></div><p class="hint" style="margin:8px 0 0">指示を出した日の画面にも同じ指示が出ます(カレンダーでその日を選ぶ)。指示のある階は、前日のお知らせに「今日中に移動」と出ます。</p></section>';
