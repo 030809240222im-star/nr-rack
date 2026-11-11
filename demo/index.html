@@ -57,6 +57,9 @@ button:disabled{opacity:.45;cursor:default}
 .fm-s{display:flex;align-items:center;justify-content:center;min-width:1px;height:100%;overflow:hidden;font-style:normal;font-size:11px;color:#fff;text-shadow:0 0 2px rgba(0,0,0,.6)}.fm-s b{font-weight:700}
 .fm-t{text-align:right;font-weight:700;font-variant-numeric:tabular-nums}.fm-t em{font-style:normal;display:block;font-size:10.5px}
 @media (max-width:560px){.fm-h,.fm-r{grid-template-columns:3em 1fr 3em;gap:6px;padding:2px 8px}.fm-h span:nth-child(2),.fm-e{display:none}}
+.wdboard{margin:0 0 12px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface2)}.wdboard h3{margin:0 0 6px;font-size:14px}
+.wdgrid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}.wdgrid>div{min-width:0;font-size:12px}.wdgrid b{display:block;margin-bottom:2px}.wdn{display:block;overflow-wrap:anywhere;line-height:1.3;margin-bottom:1px}
+@media (max-width:700px){.wdgrid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .tabs.big{gap:8px;padding:6px;border-radius:12px}
 .tabs.big button{font-size:18px;padding:12px 22px;min-height:48px;min-width:120px;border-radius:9px;background:var(--surface);border:1px solid var(--line);color:var(--fg)}
 .tabs.big button[aria-selected="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-fg);box-shadow:0 1px 3px rgba(0,0,0,.2)}
@@ -315,6 +318,7 @@ tr.mine td{background:var(--surface2)}
 /* ---- 優先順位と日別配分のロジック(画面から独立) ---- */
 /* 建物の設定の上限。階は1〜200階、エレベーターは1〜12台まで設定できる */
 var NR_MAXF=200,NR_MAXE=12;
+var NR_WD_FROM="2026-11-16";/* 業者ごとの曜日振り分けを始める日の初期値(来週の月曜)。設定タブで変えられる */
 var NR_DEF={fmin:1,fmax:62,evn:5,perTruck:4,wP:1,wW:15,wH:2,crit:100,auto:2};
 function nrNum(v){v=parseInt(v,10);return isFinite(v)&&v>0?v:0}
 function nrW(v,d){var n=parseFloat(v);return isFinite(n)&&n>=0?n:d}
@@ -392,10 +396,11 @@ function nrCfg(c){
   /* 業者ごとの回収曜日 {業者:[0=日〜6=土]}。指定のない業者はどの曜日でも回収する */
   o.eq=c.eq==null?true:!!c.eq;
   o.holx={};Object.keys(c.holx||{}).forEach(function(d){if(/^\d{4}-\d{2}-\d{2}$/.test(d))o.holx[d]=c.holx[d]});
+  o.wdFrom=c.wdFrom==null?NR_WD_FROM:(/^\d{4}-\d{2}-\d{2}$/.test(c.wdFrom)?c.wdFrom:"");
   o.wd={};Object.keys(c.wd||{}).forEach(function(v){var a=(c.wd[v]||[]).filter(function(x){return x>=0&&x<=6});if(a.length)o.wd[v]=a});
   return o;
 }
-function nrOnDay(vid,d,cfg){var a=cfg.wd[vid];return !a||a.indexOf(nrPd(d).getDay())>=0}
+function nrOnDay(vid,d,cfg){var a=cfg.wd[vid];if(cfg.wdFrom&&nrBase(d)<cfg.wdFrom)return true;return !a||a.indexOf(nrPd(d).getDay())>=0}
 /* 曜日外の業者で空きを埋めるときの順: 余力なし → 逼迫度が高い → 評価点 */
 function nrUrgCmp(a,b){return (b.sc.crit?1:0)-(a.sc.crit?1:0)||b.sc.pr-a.sc.pr||nrCmp(a,b)}
 /* 「930」「1030」「10:30」「10」などを「09:30」の形にする。空は""、読めないときは null */
@@ -485,7 +490,7 @@ function nrSimulate(vendors,days,cfg,startStr,confirmed){
   dates.forEach(function(d){
     var day=days[d],elevs=(day.elev||[]).slice().sort(),moves=day.moves||{},cap=nrNum(day.cap),res={cap:cap,left:cap,elev:elevs,asg:[],excluded:0,excl:[],fixed:false},cf=confirmed[d];
     var wk=nrWeek(d);if(hw[wk]===undefined)hw[wk]=!!cfg.eq&&nrHolWeek(wk,cfg);
-    var eqWeek=hw[wk];wu[wk]=wu[wk]||{};res.eq=eqWeek;
+    var eqWeek=hw[wk]&&!(cfg.wdFrom&&nrBase(d)<cfg.wdFrom);wu[wk]=wu[wk]||{};res.eq=eqWeek;
     if(cf){
       res.fixed=true;var sum=0;
       (cf.rows||[]).forEach(function(r,i){
@@ -995,7 +1000,7 @@ function dayRowsTable(d){
 function renderCal(C){
   var y=ui.month.getFullYear(),m=ui.month.getMonth();
   var first=new Date(y,m,1,12).getDay(),n=new Date(y,m+1,0).getDate();
-  var h='<div class="main"><section class="panel">'+todayBox(C)+(ENV.crew?moveBox(C):'')+'<div class="mhead"><h2>'+y+'年'+(m+1)+'月</h2><div class="nav">'
+  var h='<div class="main"><section class="panel">'+todayBox(C)+(ENV.crew?moveBox(C):'')+(ENV.admin?wdBoard(C):'')+'<div class="mhead"><h2>'+y+'年'+(m+1)+'月</h2><div class="nav">'
    +'<button class="btn sm" data-act="prev">‹ 前月</button><button class="btn sm" data-act="today">今日</button><button class="btn sm" data-act="next">翌月 ›</button></div></div><div class="grid">';
   WD.forEach(function(w,i){h+='<div class="wd'+(i===0?' sun':'')+'">'+w+'</div>'});
   for(var i=0;i<first;i++)h+='<div class="cell blank"></div>';
@@ -1234,6 +1239,7 @@ function sesBar(k){
   if(ks.length>1)h+='<div class="field"><span>この回の名前</span><input type="text" maxlength="10" id="dlabel" data-f="dlabel" list="dl-ses" value="'+esc((D.days[k]||{}).lb||"")+'" placeholder="例: 午前" aria-label="この回の名前"><datalist id="dl-ses"><option value="午前"><option value="午後"><option value="夕方"></datalist></div>';
   return h;
 }
+function s0eq(C,k){var s=C.sim.byDate[k];return !!(s&&s.eq)}
 function renderDay(C){
   var k=ui.sel,doc=D.days[k],cap=doc?nrNum(doc.cap):0,pt=C.cfg.perTruck,cf=D.confirmed[k];
   var h='<section class="panel"><div class="dhead"><h2>'+fmtLong(k)+'</h2>'+(cf?'<span class="st ok">確定済み</span>':'')+'</div>'+sesBar(k);
@@ -1241,6 +1247,12 @@ function renderDay(C){
     return h+'<p class="empty">この日は回収の設定がありません。</p><button class="btn primary" data-act="dayon">この日を回収日にする</button></section>';
   }
   var trucks=Math.ceil(cap/pt),s=C.sim.byDate[k],asg=s?s.asg:[],used=s?cap-s.left:0,elev=doc.elev||[];
+  if(C.cfg.wdFrom&&nrBase(k)<C.cfg.wdFrom)h+='<p class="hint" style="margin:0 0 8px">この日は曜日の振り分け開始('+esc(fmtD(C.cfg.wdFrom))+')より前なので、曜日に関係なく、これまでどおり割り当てます。</p>';
+  else{var wl=wdByDay(C).days[nrPd(k).getDay()];
+    if(!wl.length&&Object.keys(C.cfg.wd).length)h+='<p class="hint" style="margin:0 0 8px"><b>'+WD[nrPd(k).getDay()]+'曜日の担当業者はいません。</b>曜日を決めていない業者と、曜日外の業者を逼迫している順に割り当てます。</p>';
+    if(wl.length){h+='<p class="hint" style="margin:0 0 8px"><b>'+WD[nrPd(k).getDay()]+'曜日の担当:</b> '+wl.map(function(v){return esc(vname(v))}).join("・")+(s0eq(C,k)?'(祝日がある週なので、この週は全業者に等分します)':'')+'</p>';
+      if(cf){var off=(cf.rows||[]).filter(function(r){return nrNum(r.units)>0&&!nrOnDay(r.vid,k,C.cfg)}).map(function(r){return vname(r.vid)});
+        if(off.length&&!s0eq(C,k))h+='<div class="note" style="margin:0 0 8px"><span>確定済みのため、曜日の担当外の業者('+esc([...new Set(off)].join("・"))+')が入っています。曜日どおりに組み直すときは「確定を取り消す」→「今すぐ確定」を行ってください。</span></div>'}}}
   var hnm=nrHolName(k,C.cfg);
   if(hnm)h+='<div class="note" style="margin:0 0 8px"><span><b>'+esc(hnm)+'</b>です。'+(cap?'この日は回収日として設定されています。':'')+'</span></div>';
   if(s&&s.eq&&!cf)h+='<div class="note pv" style="margin:0 0 8px;display:block"><b>祝日がある週のため、この週は曜日の指定をやめて全業者に等分して割り振っています。</b>(設定タブの「祝日の扱い」で変えられます)</div>';
@@ -1478,8 +1490,22 @@ function renderConfirmed(C){
   return h+'</section>';
 }
 /* 業者ごとの回収曜日 */
+/* 曜日ごとの担当業者(確定前でも見られる) */
+function wdByDay(C){var out=[[],[],[],[],[],[],[]],anyD=[];
+  Object.keys(C.am).forEach(function(v){if(!D.vendors[v])return;var a=C.cfg.wd[v];if(!a)anyD.push(v);else a.forEach(function(w){out[w].push(v)})});
+  var nm=function(l){return l.sort(function(a,b){return vname(a)<vname(b)?-1:1})};
+  return {days:out.map(nm),any:nm(anyD)};
+}
+function wdBoard(C){
+  var b=wdByDay(C),any=b.any,has=b.days.some(function(l){return l.length});if(!has)return "";
+  var order=[1,2,3,4,5,6,0],h='<div class="wdboard"><h3>曜日ごとの担当業者'+(C.cfg.wdFrom?'<span class="hint" style="margin:0 0 0 8px">'+esc(fmtD(C.cfg.wdFrom))+'の回収日から</span>':'')+'</h3><div class="wdgrid">';
+  order.forEach(function(w){h+='<div><b>'+WD[w]+'</b>'+(b.days[w].length?b.days[w].map(function(v){return '<span class="wdn"><i class="chip" style="background:'+vcolor(v)+'"></i>'+esc(vname(v))+'</span>'}).join(""):'<span class="hint" style="margin:0">なし</span>')+'</div>'});
+  h+='</div>'+(any.length?'<p class="hint" style="margin:6px 0 0">曜日を決めていない業者(どの曜日でも回収): '+esc(any.map(vname).join("・"))+'</p>':'')+'</div>';
+  return h;
+}
 function renderWd(C){
   var ids=Object.keys(C.am).sort(function(a,b){return vname(a)<vname(b)?-1:1}),h='<section class="panel"><h2 style="margin-bottom:8px">業者ごとの回収曜日</h2>'
+   +'<div class="field"><label>曜日の振り分けを始める日 <input type="date" data-f="wdfrom" value="'+esc(C.cfg.wdFrom||'')+'" aria-label="曜日の振り分けを始める日"></label><span class="hint" style="margin:0">この日より前の回収日は、曜日に関係なく、これまでどおり全業者を逼迫度の順に割り当てます。空にすると、すべての日で曜日を使います。</span></div>'
    +'<p class="hint" style="margin:0 0 8px">回収日には、その曜日に割り当てた業者を先に回収します。積載に余裕が残ったら、曜日外の業者を逼迫している順(余力なし → 逼迫度が高い順)に入れます。曜日を何も選ばない業者は、どの曜日でも回収します。</p>';
   if(!ids.length)return h+'<p class="empty">利用中の業者がまだありません。</p></section>';
   h+='<div class="tablewrap"><table><thead><tr><th class="l">業者</th>'+WD.map(function(w){return '<th>'+w+'</th>'}).join("")+'</tr></thead><tbody>';
@@ -2339,6 +2365,7 @@ function onChange(ev){
   else if(f==="wd"){var wv=el.getAttribute("data-vid"),ww=Number(el.getAttribute("data-w"));c.wd=c.wd||{};
     var wa=(c.wd[wv]||[]).filter(function(x){return x!==ww});if(el.checked)wa.push(ww);wa.sort();if(wa.length)c.wd[wv]=wa;else delete c.wd[wv];putCfg(c)}
   else if(f==="auto"){c.auto=Math.min(14,nrNum(el.value));putCfg(c)}
+  else if(f==="wdfrom"){c.wdFrom=/^\d{4}-\d{2}-\d{2}$/.test(el.value)?el.value:"";putCfg(c)}
   else if(f==="eq"){c.eq=el.checked;putCfg(c)}
   else if(f==="holon"){var hd=el.getAttribute("data-d"),nat=!!nrJpHol(Number(hd.slice(0,4)))[hd];c.holx=c.holx||{};
     if(el.checked){if(nat)delete c.holx[hd];else c.holx[hd]=c.holx[hd]||"休日"}else{if(nat)c.holx[hd]=0;else delete c.holx[hd]}
