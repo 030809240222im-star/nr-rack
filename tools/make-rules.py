@@ -140,6 +140,17 @@ BLOCK = """
         && request.resource.data.email is string && request.resource.data.email.size() <= 200
         && request.resource.data.kind in ['admin', 'vendor', 'crew'];
     }}
+    // メールの送信待ち: アプリが入れ、GitHub Actions(サーバー)が送って消す。業者・盛替え業者へのお知らせは管理者(と搬出確認の盛替え業者)だけが入れられる
+    match /{P}outbox/{{id}} {{
+      allow read, delete: if isAdmin();
+      allow create, update: if signedIn()
+        && request.resource.data.keys().hasOnly(['to', 'vid', 'd', 'msg', 'at', 'uid'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.msg is string && request.resource.data.msg.size() <= 600
+        && (isAdmin()
+            || request.resource.data.to == 'admin'
+            || (request.resource.data.to == 'vendor' && isCrew{S}()));
+    }}
 """
 
 HEAD = """rules_version = '2';

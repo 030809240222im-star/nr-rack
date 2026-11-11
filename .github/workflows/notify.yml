@@ -1,0 +1,33 @@
+# メールのお知らせ(10分ごと。GitHub の都合で遅れたり間が空いたりすることがあります)
+# アプリが入れた送信待ち(outbox)だけを読み、宛先ごとにまとめてメールで送ります。送信待ちがなければ読み取り1回で終わります。
+# 必要な設定(リポジトリの Settings → Secrets and variables → Actions):
+#   FIREBASE_SERVICE_ACCOUNT  Firebase のサービスアカウントの鍵(毎朝の自動処理と同じもの)
+#   MAIL_USER / MAIL_PASS     送信に使う Gmail のアドレスとアプリ パスワード(業者へのメールと同じもの)
+name: notify
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: notify
+  cancel-in-progress: false
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      TZ: Asia/Tokyo
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install --no-audit --no-fund
+        working-directory: server
+      - run: node server/notify.mjs
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          MAIL_USER: ${{ secrets.MAIL_USER }}
+          MAIL_PASS: ${{ secrets.MAIL_PASS }}

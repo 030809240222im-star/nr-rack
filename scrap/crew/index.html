@@ -1073,19 +1073,35 @@ function renderCal(C){
 function nid(){return "n"+Date.now().toString(36)+Math.floor(Math.random()*1e4).toString(36)}
 function notify(vid,d,kind,msg){
   if(!vid||(D.vendors[vid]&&D.vendors[vid].manual))return;
-  var it={};it[nid()]={d:d,kind:kind,msg:msg,at:nowIso(),by:who()};patch("notices",vid,{items:it});
+  var id=nid(),it={};it[id]={d:d,kind:kind,msg:msg,at:nowIso(),by:who()};patch("notices",vid,{items:it});
+  mailOut("n-"+vid+"-"+id,{to:"vendor",vid:vid,d:d,msg:msg});
+}
+/* ---- メールのお知らせ ----
+   送るものを outbox/{id} に入れておき、GitHub Actions(server/notify.mjs)が10分ごとにまとめてメールで送って消す。
+   同じ id で入れ直すと、まだ送っていない分は新しい文に置き換わる(同じ日の予定が何度も変わったときなど)。 */
+function mailOut(id,o){
+  if(ENV.mode!=="db"||window.NR_DEMO||ENV.preview||ui.pv)return;
+  o.at=nowIso();o.uid=ENV.realUid||ENV.uid;o.msg=String(o.msg||"").slice(0,600);
+  try{var pr=ENV.db.doc("outbox/"+String(id).replace(/[^\w-]/g,"_").slice(0,120)).set(o);if(pr&&pr.catch)pr.catch(function(){})}catch(e){}
+}
+/* 盛替え業者へ: その日の今の予定をまとめて(確定・変更・取りやめ) */
+function crewMail(d,cf,word){
+  var day=D.days[d]||{},rows=((cf&&cf.rows)||[]).filter(function(r){return nrNum(r.units)>0});
+  mailOut("c-"+d,{to:"crew",d:d,msg:fmtD(d)+" "+fmtTime(day)+" の搬出予定が"+word+"。"+(rows.length?"\n"+rows.map(function(r){return "・"+(r.n||vname(r.vid))+" "+rowText(r)}).join("\n"):"")});
 }
 /* 時間の変更は、まだ確認されていない10分以内のお知らせがあれば、それを書き換えて1件にまとめる(＋−を何度も押したとき用) */
 function notifyTime(vid,d,was,now){
   var n=D.notices[vid]||{},it=n.items||{},ack=n.ack||{},hit=null;
   Object.keys(it).forEach(function(id){var x=it[id];if(x.d===d&&x.t==="time"&&!ack[id]&&Date.now()-Date.parse(x.at)<10*60*1000)hit=id});
-  if(!hit){var o={};o[nid()]={d:d,kind:"change",t:"time",from:was,msg:fmtD(d)+" の回収時間が変わりました: "+was+" → "+now,at:nowIso(),by:who()};patch("notices",vid,{items:o});return}
+  if(!hit){var o={};o[nid()]={d:d,kind:"change",t:"time",from:was,msg:fmtD(d)+" の回収時間が変わりました: "+was+" → "+now,at:nowIso(),by:who()};patch("notices",vid,{items:o});mailOut("t-"+vid+"-"+d,{to:"vendor",vid:vid,d:d,msg:fmtD(d)+" の回収時間が変わりました: "+was+" → "+now});return}
   var u={};u[hit]={msg:fmtD(d)+" の回収時間が変わりました: "+it[hit].from+" → "+now,at:nowIso()};patch("notices",vid,{items:u});
+  mailOut("t-"+vid+"-"+d,{to:"vendor",vid:vid,d:d,msg:u[hit].msg});
 }
 function rowText(r){return r.floor+"階 "+nrNum(r.units)+"台("+evLabel(r.ev,r.to)+")"}
+function vendorRowsAll(cf){return ((cf&&cf.rows)||[]).some(function(r){return nrNum(r.units)>0})}
 function vendorRows(cf,vid){return ((cf&&cf.rows)||[]).filter(function(r){return r.vid===vid&&nrNum(r.units)>0})}
 function notifyConfirm(d,cf){
-  var day=D.days[d]||{},seen={};
+  var day=D.days[d]||{},seen={};crewMail(d,cf,"確定しました");
   (cf.rows||[]).forEach(function(r){if(seen[r.vid])return;seen[r.vid]=1;
     notify(r.vid,d,"confirm",fmtD(d)+" "+fmtTime(day)+" の予定が確定しました: "+vendorRows(cf,r.vid).map(rowText).join("、"))});
 }
@@ -1097,6 +1113,7 @@ function notifyText(before,after){
   return out;
 }
 function notifyChanges(d,before,after){
+  if(notifyText(before,after).length)crewMail(d,after,after&&vendorRowsAll(after)?"変わりました(変更後の予定)":"取りやめになりました");
   var ids={};((before&&before.rows)||[]).concat((after&&after.rows)||[]).forEach(function(r){ids[r.vid]=1});
   Object.keys(ids).forEach(function(vid){
     var a=vendorRows(before,vid),b=vendorRows(after,vid),ta=a.map(rowText).join("、"),tb=b.map(rowText).join("、");
@@ -1515,6 +1532,13 @@ function wdBoard(C){
   h+='</div>'+(any.length?'<p class="hint" style="margin:6px 0 0">曜日を決めていない業者(どの曜日でも回収): '+esc(any.map(vname).join("・"))+'</p>':'')+'</div>';
   return h;
 }
+/* メールのお知らせを受け取る管理者 */
+function renderMailSet(C){
+  var adm=(window.NR_CONFIG&&NR_CONFIG.adminEmails)||[],on=(D.config&&D.config.mailAdmins)||[];
+  var h='<section class="panel"><h2 style="margin-bottom:8px">メールのお知らせ</h2><p class="hint" style="margin:0 0 8px">お知らせを、10分ごとにまとめてメールで送ります(GitHubの都合で遅れることがあります)。業者には自社へのお知らせ(確定・変更・取りやめ・当日の連絡・搬出確認の「無い」「不足」)、盛替え業者には回収日の予定の確定・変更・取りやめと盛替えの指示を、登録したメールアドレスへ送ります。管理者には、下でチェックした人にだけ、追加注文・業者や盛替え業者の登録・搬出確認の「無い」「不足」を送ります。送るには、GitHubに FIREBASE_SERVICE_ACCOUNT・MAIL_USER・MAIL_PASS の設定が必要です。</p><div class="evpick" style="flex-direction:column;align-items:flex-start">';
+  adm.forEach(function(e){h+='<label><input type="checkbox" data-f="mailadm" data-e="'+esc(e)+'"'+(on.indexOf(e)>=0?' checked':'')+'>'+esc(e)+'</label>'});
+  return h+'</div></section>';
+}
 function renderWd(C){
   var ids=Object.keys(C.am).sort(function(a,b){return vname(a)<vname(b)?-1:1}),h='<section class="panel"><h2 style="margin-bottom:8px">業者ごとの回収曜日</h2>'
    +'<div class="field"><label>曜日の振り分けを始める日 <input type="date" data-f="wdfrom" value="'+esc(C.cfg.wdFrom||'')+'" aria-label="曜日の振り分けを始める日"></label><span class="hint" style="margin:0">この日より前の回収日は、曜日に関係なく、これまでどおり全業者を逼迫度の順に割り当てます。空にすると、すべての日で曜日を使います。</span></div>'
@@ -1894,7 +1918,7 @@ function renderSet(C){
      +'<label class="ns"><input type="text" id="ns'+e+'" data-f="ns" data-e="'+e+'" value="'+esc(c.nsStr[e])+'" placeholder="不停止階 例: 13,14,44-46" aria-label="EV'+e+'の不停止階"></label></div>'
      +'<div class="hint" style="margin:0 0 4px 48px">'+(c.ns[e].length?'不停止: '+esc(nrFmtFloors(c.ns[e])):'不停止階なし')+'</div>';
   }
-  h+='<p class="hint">指定した日のエレベーターが停まる階だけを回収対象にします。不停止階は「13,14,44-46」のように、カンマ区切りと範囲で入力します。</p></section>'+renderWd(C)+renderHol(C)
+  h+='<p class="hint">指定した日のエレベーターが停まる階だけを回収対象にします。不停止階は「13,14,44-46」のように、カンマ区切りと範囲で入力します。</p></section>'+renderWd(C)+renderHol(C)+renderMailSet(C)
    +'<section class="panel"><h2 style="margin-bottom:8px">このアプリのQRコード</h2><div class="qrbox"><div class="qrimg" role="img" aria-label="このアプリを開くQRコード">'+qrSvg()+'</div><div style="flex:1 1 240px;min-width:0"><p style="margin:0 0 4px">スマートフォンで読み取ると、このアプリが開きます。</p>'
    +'<p class="hint" style="margin:0">業者はこのURLを開いて新規登録し、会社名を登録するとすぐに使えます。</p><p class="hint" style="margin:6px 0 0">盛替え業者用のURL: <b>'+esc(APP_URL)+'crew/</b>(会社名を登録するとすぐ使えます)</p><div class="urlrow"><input type="text" id="appurl" readonly value="'+esc(APP_URL)+'" aria-label="アプリのURL"><button class="btn sm" data-act="copyurl">URLをコピー</button></div></div></div></section>'
    +'<section class="panel"><h2 style="margin-bottom:8px">サンプルデータ</h2><p class="hint" style="margin:0 0 8px">動作を試すための例です。業者名・台数・階はすべて架空の値で、実際のデータとは別に消せます。</p>'
@@ -2107,7 +2131,8 @@ function onClick(ev){
     if(!sd2||!se2||!st2){ui.msg="回収日・集積するエレベーター・階を入力してください。";ui.msgKind="bad"}
     else if(!nrStops(st2,se2,nrCfg(D.config))){ui.msg="EV"+se2+"は"+st2+"階に停まりません。停まる階を指定してください。";ui.msgKind="bad"}
     else if(!D.days[sd2]||D.confirmed[sd2]||sd2<nrDs(new Date())){ui.msg=(/^\d{4}-\d{2}-\d{2}$/.test(sd2)?fmtD(sd2):"その日")+"は、まだ確定していない回収日ではありません。カレンダーで回収日を選び直してください。";ui.msgKind="bad"}
-    else{var su2=nrNum(sb2.getAttribute("data-u"));mutDay(sd2,function(d){d.moves=d.moves||{};d.moves[sv2+"|"+sf2]={ev:se2,to:st2,u:su2,at:nowIso()}});ui.msg=fmtD(sd2)+"の回収に向けて、"+vname(sv2)+"の"+sf2+"階を、前日までにEV"+se2+"前の"+st2+"階へ盛替えるよう指示しました。盛替え業者の画面に表示されます。";ui.msgKind="ok"}
+    else{var su2=nrNum(sb2.getAttribute("data-u"));mutDay(sd2,function(d){d.moves=d.moves||{};d.moves[sv2+"|"+sf2]={ev:se2,to:st2,u:su2,at:nowIso()}});
+      mailOut("m-"+sd2+"-"+sv2+"-"+sf2,{to:"crew",d:sd2,msg:"盛替えの指示: "+fmtD(sd2)+"の回収に向けて "+vname(sv2)+" "+sf2+"階"+(su2?" "+su2+"台":"")+" → 前日までにEV"+se2+"前の"+st2+"階へ盛替えてください。"});ui.msg=fmtD(sd2)+"の回収に向けて、"+vname(sv2)+"の"+sf2+"階を、前日までにEV"+se2+"前の"+st2+"階へ盛替えるよう指示しました。盛替え業者の画面に表示されます。";ui.msgKind="ok"}
   }
   else if(act==="unstage2"){var ud=b.getAttribute("data-d"),uk2=b.getAttribute("data-key");mutDay(ud,function(d){if(d.moves){delete d.moves[uk2];if(!Object.keys(d.moves).length)delete d.moves}})}
   else if(act==="unstage"){var uk=b.getAttribute("data-key");mutDay(ui.sel,function(d){if(d.moves){delete d.moves[uk];if(!Object.keys(d.moves).length)delete d.moves}})}
@@ -2160,6 +2185,7 @@ function onClick(ev){
     var ov=ENV.admin?ui.vsel:ENV.vid,of=Math.min(LIM.fmax,nrNum(document.getElementById("od-f").value)),ou=nrNum(document.getElementById("od-u").value),ow=document.getElementById("od-w").value,om=document.getElementById("od-m").value.trim().slice(0,100);
     if(!ov||!of||!ou){ui.msg="追加したい階と台数を入れてください。";ui.msgKind="bad"}
     else{mutOrder(ov,function(o){o.items["o"+Date.now().toString(36)+Math.floor(Math.random()*1e3).toString(36)]={f:of,u:ou,want:/^\d{4}-\d{2}-\d{2}$/.test(ow)?ow:"",memo:om,n:vname(ov),at:nowIso(),st:"new"}});
+      if(!ENV.admin)mailOut("o-"+ov+"-"+of,{to:"admin",vid:ov,msg:"追加注文: "+vname(ov)+" "+of+"階に"+ou+"台"+(/^\d{4}-\d{2}-\d{2}$/.test(ow)?"("+fmtD(ow)+"までに)":"")+(om?" "+om:"")});
       document.getElementById("od-f").value="";document.getElementById("od-u").value="1";document.getElementById("od-w").value="";document.getElementById("od-m").value="";
       ui.msg=of+"階に"+ou+"台の追加を注文しました。手配されるとお知らせが出ます。";ui.msgKind="ok"}
   }
@@ -2188,7 +2214,7 @@ function onClick(ev){
   else if(act==="cregsubmit"){
     var cco=document.getElementById("reg-company").value.trim(),cem=document.getElementById("reg-email").value.trim(),cct=document.getElementById("reg-contact").value.trim();
     if(!cco||!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(cem)){ui.msg="会社名と正しいメールアドレスを入力してください。";ui.msgKind="bad"}
-    else{put("crewreq",ENV.uid,{company:cco,contact:cct,email:cem,at:nowIso()});
+    else{put("crewreq",ENV.uid,{company:cco,contact:cct,email:cem,at:nowIso()});mailOut("r-"+ENV.uid,{to:"admin",msg:"盛替え業者の利用申請: "+cco+(cct?" "+cct:"")+"(アプリの「登録」タブで許可してください)"});
       if(!D.crews[ENV.uid])put("crews",ENV.uid,{company:cco,email:cem,at:nowIso(),name:cct});
       ui.msg="登録しました。すぐに使えます。";ui.msgKind="ok"}
   }
@@ -2197,7 +2223,9 @@ function onClick(ev){
     var kr=((D.confirmed[kd]||{}).rows||[])[ki];
     if(kk==="short"&&kr&&!(kin&&kin.value!==""&&kg<nrNum(kr.units))){ui.msg="不足のときは、実際にあった台数(回収台数より少ない数)を入れてから「不足」を押してください。";ui.msgKind="bad"}
     else if(kr){var cv={k:kk,at:nowIso(),by:who()};if(kk==="short")cv.got=kg;
-      setRowSt(kd,kr,{chk:kk?cv:null},(kr.n||vname(kr.vid))+" "+kr.floor+"階 搬出確認: "+(kk==="ok"?"揃っている":kk==="none"?"無い":kk==="short"?"不足("+kg+"/"+nrNum(kr.units)+"台)":"取り消し"))}
+      setRowSt(kd,kr,{chk:kk?cv:null},(kr.n||vname(kr.vid))+" "+kr.floor+"階 搬出確認: "+(kk==="ok"?"揃っている":kk==="none"?"無い":kk==="short"?"不足("+kg+"/"+nrNum(kr.units)+"台)":"取り消し"));
+      if(kk==="none"||kk==="short"){var km=fmtD(kd)+" "+kr.floor+"階の搬出確認: "+(kk==="none"?nrNum(kr.units)+"台が見当たりません":nrNum(kr.units)+"台のうち"+kg+"台しかありません")+"。至急、"+evLabel(kr.ev,kr.to)+"へ運んでください。";
+        mailOut("k-"+kd+"-"+kr.vid+"-"+kr.floor,{to:"vendor",vid:kr.vid,d:kd,msg:km});mailOut("ka-"+kd+"-"+kr.vid+"-"+kr.floor,{to:"admin",d:kd,msg:(kr.n||vname(kr.vid))+" "+km})}}
   }
   else if(act==="crewok"){var q=D.crewreq[id];if(q){if(D.crewblocked[id])remove("crewblocked",id);put("crews",id,{company:q.company,email:q.email,at:nowIso()})}}
   else if(act==="crewno"){remove("crewreq",id)}
@@ -2212,7 +2240,7 @@ function onClick(ev){
       else{ui.msg="参加コードを確かめています…";ui.msgKind="";
         getDoc("codes",cd).then(function(c){
           if(!c||!c.vid){ui.msg="参加コード「"+cd+"」が見つかりません。同じ会社の人のアプリに出ているコードを確かめてください。";ui.msgKind="bad";render();return}
-          put("members",ENV.uid,{company:c.company,contact:ct,email:em,at:nowIso()});
+          put("members",ENV.uid,{company:c.company,contact:ct,email:em,at:nowIso()});mailOut("r-"+ENV.uid,{to:"admin",msg:"業者の登録(参加コードで参加): "+c.company+(ct?" "+ct:"")});
           put("approved",ENV.uid,{company:c.company,email:em,at:nowIso(),vid:c.vid,code:cd,name:ct});
           ui.msg=c.company+"に参加しました。同じ会社の人と同じ画面で使えます。";ui.msgKind="ok";render();
         },function(){ui.msg="参加コードを確かめられませんでした。通信を確かめてもう一度押してください。";ui.msgKind="bad";render()});
@@ -2222,7 +2250,7 @@ function onClick(ev){
       if(!co||!okm){ui.msg="会社名と正しいメールアドレスを入力してください。";ui.msgKind="bad"}
       else{
         /* 承認なしで使えるように、登録と同時に自分の利用許可も作る(停止された人はルールで拒否される)。会社IDは本人のID */
-        put("members",ENV.uid,{company:co,contact:ct,email:em,at:nowIso()});
+        put("members",ENV.uid,{company:co,contact:ct,email:em,at:nowIso()});mailOut("r-"+ENV.uid,{to:"admin",msg:"業者の新規登録: "+co+(ct?" "+ct:"")});
         if(!D.approved[ENV.uid]){put("approved",ENV.uid,{company:co,email:em,at:nowIso(),vid:ENV.uid,name:ct});makeCode(ENV.uid,co)}
         ui.msg="登録しました。すぐに使えます。同じ会社の人には「業者入力」に出る参加コードを伝えてください。";ui.msgKind="ok";
       }
@@ -2329,6 +2357,7 @@ function onChange(ev){
       open.slice(1).forEach(function(k){o.items[k].st="cancel"});
       if(open.length){var x0=o.items[open[0]];if(an>0)x0.u=an;else x0.st="cancel"}
       else if(an>0)o.items["o"+Date.now().toString(36)+Math.floor(Math.random()*1e3).toString(36)]={f:af,u:an,want:"",memo:"",n:vname(vid),at:nowIso(),st:"new"}});
+    if(an>0&&!ENV.admin)mailOut("o-"+vid+"-"+af,{to:"admin",vid:vid,msg:"追加注文: "+vname(vid)+" "+af+"階に"+an+"台"});
     if(an>0){ui.msg=af+"階に"+an+"台の追加を希望しました。手配されると備考欄とカレンダーに日付が出ます。";ui.msgKind="ok"}
   }
   else if(f==="prio"){var pf=el.getAttribute("data-fl");mutVendor(vid,function(v){var e=v.floors[pf];if(!e)return;
@@ -2382,6 +2411,7 @@ function onChange(ev){
     var wa=(c.wd[wv]||[]).filter(function(x){return x!==ww});if(el.checked)wa.push(ww);wa.sort();if(wa.length)c.wd[wv]=wa;else delete c.wd[wv];putCfg(c)}
   else if(f==="auto"){c.auto=Math.min(14,nrNum(el.value));putCfg(c)}
   else if(f==="wdfrom"){c.wdFrom=/^\d{4}-\d{2}-\d{2}$/.test(el.value)?el.value:"";putCfg(c)}
+  else if(f==="mailadm"){var me2=el.getAttribute("data-e");c.mailAdmins=(c.mailAdmins||[]).filter(function(x){return x!==me2});if(el.checked)c.mailAdmins.push(me2);putCfg(c)}
   else if(f==="eq"){c.eq=el.checked;putCfg(c)}
   else if(f==="holon"){var hd=el.getAttribute("data-d"),nat=!!nrJpHol(Number(hd.slice(0,4)))[hd];c.holx=c.holx||{};
     if(el.checked){if(nat)delete c.holx[hd];else c.holx[hd]=c.holx[hd]||"休日"}else{if(nat)c.holx[hd]=0;else delete c.holx[hd]}
