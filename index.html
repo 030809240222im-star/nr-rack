@@ -547,7 +547,7 @@ function nrSimulate(vendors,days,cfg,startStr,confirmed){
       if(ass.length){
         var by2={},vs2=[],du={};
         nrPrio(ass.slice().sort(nrCmp)).forEach(function(c){if(!by2[c.vid]){by2[c.vid]=[];vs2.push(c.vid)}by2[c.vid].push(c)});
-        var share=Math.floor(left/vs2.length);/* 担当業者1社あたりの均等な台数 */
+        var nAss=Object.keys(vendors).filter(function(v){var a=cfg.wd[v];return a&&a.indexOf(wdw)>=0}).length||vs2.length,share=Math.floor(left/nAss);/* 担当業者1社あたりの均等な台数。この日に搬出予定がない担当業者も数える */
         while(left>0){
           var pv=null;
           vs2.forEach(function(v){var l=by2[v];while(l.length&&(l[0].q<=0||l[0].it.rem<=0))l.shift();if(!l.length||(du[v]||0)>=share)return;
@@ -1530,7 +1530,7 @@ function wdBoard(C){
 function renderWd(C){
   var ids=Object.keys(C.am).sort(function(a,b){return vname(a)<vname(b)?-1:1}),h='<section class="panel"><h2 style="margin-bottom:8px">業者ごとの回収曜日</h2>'
    +'<div class="field"><label>曜日の振り分けを始める日 <input type="date" data-f="wdfrom" value="'+esc(C.cfg.wdFrom||'')+'" aria-label="曜日の振り分けを始める日"></label><span class="hint" style="margin:0">この日より前の回収日は、曜日に関係なく、これまでどおり全業者を逼迫度の順に割り当てます。空にすると、すべての日で曜日を使います。</span></div>'
-   +'<p class="hint" style="margin:0 0 8px">曜日の振り分けを始める日以降は、その曜日に割り当てた業者どうしで、積載を均等に割ります(積載÷担当業者数の台数ずつ)。希望が少なくて余った分や、割り切れなかった分は、逼迫している業者(担当の業者もほかの業者も)から順(余力なし → 逼迫度が高い順)に入れます。担当の業者が1社もいない曜日は、全業者を逼迫している順に入れます。曜日を何も選ばない業者は、担当の業者ではなく、余った積載に逼迫している順で入ります。</p>';
+   +'<p class="hint" style="margin:0 0 8px">曜日の振り分けを始める日以降は、その曜日に割り当てた業者どうしで、積載を均等に割ります(積載÷担当業者数の台数ずつ。その日に搬出予定がない担当業者も数えます)。希望が少なくて余った分や、割り切れなかった分は、逼迫している業者(担当の業者もほかの業者も)から順(余力なし → 逼迫度が高い順)に入れます。担当の業者が1社もいない曜日は、全業者を逼迫している順に入れます。曜日を何も選ばない業者は、担当の業者ではなく、余った積載に逼迫している順で入ります。</p>';
   if(!ids.length)return h+'<p class="empty">利用中の業者がまだありません。</p></section>';
   h+='<div class="tablewrap"><table><thead><tr><th class="l">業者</th>'+WD.map(function(w){return '<th>'+w+'</th>'}).join("")+'</tr></thead><tbody>';
   ids.forEach(function(v){var a=C.cfg.wd[v]||[];
