@@ -732,6 +732,20 @@ function mergeCompany2(x,t,tn,noFloors){
   if(vx.code)remove("codes",vx.code);
   var wd=(D.config.wd||{})[x];if(wd){var c2=clone(D.config||{});c2.wd=c2.wd||{};if(!c2.wd[t])c2.wd[t]=wd;delete c2.wd[x];putCfg(c2)}
 }
+/* 会社(業者)を丸ごと削除する。データを消し、今日以降の確定済みの予定から外し、この会社の登録者は利用停止にする */
+function vidMembers(vid){return Object.keys(D.approved).filter(function(u){return vidOf(u)===vid})}
+function deleteCompany(x){
+  var vx=D.vendors[x]||{},nm=vname(x),t=today();
+  vidMembers(x).forEach(function(u){var a=D.approved[u]||{};put("blocked",u,{at:nowIso(),vid:x,company:nm,email:a.email||""});remove("approved",u)});
+  Object.keys(D.confirmed).forEach(function(d){if(nrBase(d)<t)return;if(((D.confirmed[d]||{}).rows||[]).some(function(r){return r.vid===x}))
+    mutConfirmed(d,function(cf){cf.rows=cf.rows.filter(function(r){return r.vid!==x})})});
+  Object.keys(D.days).forEach(function(d){var dd=D.days[d]||{};if(nrBase(d)<t)return;
+    var mv=dd.moves||{},ks=Object.keys(mv).filter(function(k){return k.split("|")[0]===x});
+    if(ks.length)mutDay(d,function(doc){ks.forEach(function(k){delete doc.moves[k]});if(!Object.keys(doc.moves).length)delete doc.moves})});
+  if(D.vendors[x])remove("vendors",x);if(D.orders[x])remove("orders",x);if(D.plans[x])remove("plans",x);if(D.notices[x])remove("notices",x);
+  if(vx.code)remove("codes",vx.code);
+  var wd=(D.config.wd||{})[x];if(wd){var c2=clone(D.config||{});if(c2.wd)delete c2.wd[x];putCfg(c2)}
+}
 /* 参加コード: 紛らわしい文字(0,O,1,I)を除いた6文字。codes/{コード} と vendors/{会社}.code に入れる */
 function newCode(){var a="ABCDEFGHJKLMNPQRSTUVWXYZ23456789",c="";for(var i=0;i<6;i++)c+=a.charAt(Math.floor(Math.random()*a.length));return c}
 function makeCode(vid,company){var c=newCode();put("codes",c,{vid:vid,company:company,at:nowIso()});patch("vendors",vid,{code:c});return c}
@@ -1466,7 +1480,8 @@ function vendorPicker(C){
   if(!ui.vsel&&ids.length)ui.vsel=ids[0];
   var h='<div class="vtop"><label>業者<select id="vsel" data-f="vsel">'+(ids.length?vendorOpts(C,ui.vsel):'<option value="">(業者なし)</option>')+'</select></label>'
    +'<div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn" data-act="vadd">業者を追加</button>'
-   +(ui.vsel&&D.vendors[ui.vsel]&&D.vendors[ui.vsel].manual?'<button class="btn danger" data-act="vdel">'+(ui.confirm==="vdel"?'もう一度押すと削除':'削除')+'</button>':'')+'</div></div>';
+   +(ui.vsel&&D.vendors[ui.vsel]?'<button class="btn danger" data-act="vdel">'+(ui.confirm==="vdel"?'もう一度押すと削除':'この業者を削除')+'</button>':'')+'</div></div>'
+   +(ui.confirm==="vdel"&&ui.vsel?'<div class="note bad" style="margin-bottom:10px">「'+esc(vname(ui.vsel))+'」を削除します。保有・搬出希望・追加注文・お知らせ・参加コードが消え、今日以降の確定済みの搬出予定からも外れます。'+(vidMembers(ui.vsel).length?'この会社で登録している'+vidMembers(ui.vsel).length+'人は利用停止になります。':'')+'元に戻せません。よければもう一度「もう一度押すと削除」を押してください。</div>':'');
   return h;
 }
 /* 階の入力から、戻し先の一覧 [{f,u}] を作る(昔の形 r だけのときは、出したい台数の全部をその階へ) */
@@ -2039,7 +2054,7 @@ function onClick(ev){
   }
   else if(act==="vadd"){var nid="m"+Date.now().toString(36)+Math.floor(Math.random()*1e3).toString(36);put("vendors",nid,{name:"新しい業者",floors:{},manual:true,updated:nowIso()});ui.vsel=nid}
   else if(act==="vdel"){
-    if(ui.confirm==="vdel"){var del=ui.vsel;if(D.vendors[del]&&D.vendors[del].manual){remove("vendors",del)}ui.vsel=null;ui.confirm=""}
+    if(ui.confirm==="vdel"){var del=ui.vsel;if(del&&D.vendors[del])deleteCompany(del);ui.vsel=null;ui.confirm="";ui.msg="業者を削除しました。";ui.msgKind="ok"}
     else{ui.confirm="vdel";keepConfirm=true}
   }
   else if(act==="csv"){
