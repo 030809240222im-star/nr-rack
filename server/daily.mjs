@@ -52,7 +52,7 @@ function hydrate(cf) {
 }
 /* 業者は会社(vid)単位。approved/{人}.vid が会社ID(無ければ本人のID) */
 const vidOf = (D, u) => (D.approved[u] && D.approved[u].vid) || u;
-const vname = (D, id) => { const m = D.approved[id] ? id : Object.keys(D.approved).find(u => vidOf(D, u) === id); return (m && D.approved[m].company) || (D.vendors[id] && D.vendors[id].name) || (D.members[id] && D.members[id].company) || "名称未設定"; };
+const vname = (D, id) => { const ms = Object.keys(D.approved).filter(u => vidOf(D, u) === id); const m = ms.indexOf(id) >= 0 ? id : ms[0]; return (m && D.approved[m].company) || (D.vendors[id] && D.vendors[id].name) || (D.members[id] && D.members[id].company) || "名称未設定"; };
 
 for (const app of APPS) {
   const D = await load(app.prefix);

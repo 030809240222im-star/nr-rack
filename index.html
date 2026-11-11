@@ -706,13 +706,13 @@ function subscribe(){
 /* 会社(vid)に属する利用中の人。approved/{人}.vid が会社ID(無ければ本人のIDが会社ID) */
 /* 会社Xを会社Tにまとめる(管理者)。メンバー・台数・置いた記録・注文・追加記録・お知らせ・確定の行をTへ移し、Xの文書を消す */
 var SILENT=false;
-function mergeCompany(x,t){
-  var tn=vname(t);SILENT=true;try{mergeCompany2(x,t,tn)}finally{SILENT=false}
+function mergeCompany(x,t,noFloors){
+  var tn=vname(t);SILENT=true;try{mergeCompany2(x,t,tn,noFloors)}finally{SILENT=false}
 }
-function mergeCompany2(x,t,tn){
+function mergeCompany2(x,t,tn,noFloors){
   companyMembers(x).forEach(function(u){patch("approved",u,{vid:t,company:tn})});
   var vx=D.vendors[x]||{},vt=D.vendors[t]||{},fl={},pl={};
-  Object.keys(vx.floors||{}).forEach(function(f){var a=vx.floors[f],b2=(vt.floors||{})[f];
+  if(!noFloors)Object.keys(vx.floors||{}).forEach(function(f){var a=vx.floors[f],b2=(vt.floors||{})[f];
     fl[f]=b2?{h:{$op:"inc",n:Number(a.h)||0},w:{$op:"inc",n:Number(a.w)||0}}:clone(a)});
   Object.keys(vx.placed||{}).forEach(function(k){pl[k]=vx.placed[k]});
   var pv={updated:nowIso()};if(Object.keys(fl).length)pv.floors=fl;if(Object.keys(pl).length)pv.placed=pl;if(vx.note&&!vt.note)pv.note=vx.note;
@@ -750,7 +750,8 @@ function compute(){
   return {cfg:cfg,t:t,am:am,sim:sim,rank:nrRank(am,sim,cfg,t)};
 }
 function vname(id){
-  var mem=D.approved[id]?id:companyMembers(id)[0];
+  /* 会社名は、いまその会社にいる人の会社名。別の会社に移った人(approvedのidが同じでも会社IDが違う人)の名前は使わない */
+  var ms=companyMembers(id),mem=ms.indexOf(id)>=0?id:ms[0];
   return (mem&&D.approved[mem].company)||(D.vendors[id]&&D.vendors[id].name)||(D.members[id]&&D.members[id].company)||"名称未設定";
 }
 function vcolor(id){var ids=Object.keys(D.vendors).sort(),i=ids.indexOf(id);return COLORS[(i<0?0:i)%COLORS.length]}
@@ -1436,7 +1437,8 @@ function renderVin(C){
   if(!ENV.preview&&!ENV.admin&&ENV.mode!=="local"){var jp=ui.jcPending;
     if(!jp&&!ui.jcOpen)h+='<p style="margin:0 0 10px"><button class="linkbtn" data-act="joinopen">別の会社の参加コードを入れる(同じ会社の人とまとめる)</button></p>';
     else h+='<div class="note pv" style="margin:0 0 10px;display:block"><b>別の会社の参加コードを入れる</b>'
-     +'<p class="hint" style="margin:6px 0">同じ会社の人がすでに使っているときは、その人のアプリに出ている参加コードを入れると、同じ会社として一緒に使えます。いまの会社の入力(保有台数など)は、参加先にまだ入力のない階だけ引き継ぎます。</p>'
+     +'<p class="hint" style="margin:6px 0">同じ会社の人がすでに使っているときは、その人のアプリに出ている参加コードを入れると、同じ会社として一緒に使えます。</p>'
+     +(jp?'<label class="chk" style="margin:0 0 6px"><input type="checkbox" id="jc-carry" checked>いまの会社の入力(台数)を、参加先にまだ入力のない階だけ引き継ぐ</label><p class="hint" style="margin:0 0 6px">いまの会社に、ほかの人もいる場合は、チェックを外してください(その人たちの台数はそのまま残ります)。</p>':'')
      +'<div class="urlrow"><input type="text" id="jc-code" maxlength="8" placeholder="参加コード(6文字)" autocomplete="off" autocapitalize="characters" value="'+esc(jp?jp.code:"")+'" aria-label="参加コード">'
      +'<button class="btn'+(jp?' primary':'')+'" data-act="joinco">'+(jp?'「'+esc(jp.company)+'」に参加する':'コードを確かめる')+'</button>'+(jp?'':'')+'<button class="btn" data-act="joincancel">やめる</button></div></div>';
   }
@@ -1696,6 +1698,18 @@ function renderMem(C){
     var others=gids.filter(function(o){return o!==v});
     if(others.length)h+='<div class="cc-r"><span>まとめる</span><div class="mvbox" style="flex-wrap:wrap"><select id="mg-'+esc(v)+'" data-keep aria-label="まとめ先の会社">'+others.map(function(o){return '<option value="'+esc(o)+'">'+esc(vname(o))+'</option>'}).join("")+'</select><button class="btn sm" data-act="merge" data-vid="'+esc(v)+'">'+(ui.confirm==="mg-"+v?'もう一度押すと'+esc(vname(v))+'を移す':'この会社を左の会社にまとめる')+'</button></div></div>';
     h+='</div>'});
+  /* メンバーのいなくなった会社の記録(会社の全員がほかの会社に移ったあとに残る) */
+  var orph=Object.keys(D.vendors).filter(function(id){return !isActive(id)});
+  if(orph.length){
+    h+='<h3 style="margin-top:16px">メンバーのいない会社の記録('+orph.length+')</h3><p class="hint" style="margin:0 0 8px">会社の全員が、ほかの会社に参加したあとに残った記録です。台数を、参加先にすでに引き継いでいるときは「台数は移さず片付ける」、そうでないときは「台数を足して移す」を選びます。</p>';
+    orph.forEach(function(x){var fl=(D.vendors[x]||{}).floors||{},th=0,tw=0;Object.keys(fl).forEach(function(k){th+=nrNum(fl[k].h);tw+=nrNum(fl[k].w)});
+      var tg=Object.keys(D.vendors).filter(function(o){return o!==x&&isActive(o)}),df=tg.filter(function(o){return vname(o)===vname(x)})[0]||tg[0];
+      h+='<div class="ccard" style="margin-bottom:10px"><div class="cc-h"><b>'+esc(vname(x))+'</b> <span class="hint" style="margin:0">保有'+th+'台・希望'+tw+'台</span></div>'
+       +(tg.length?'<div class="cc-r"><span>移す先</span><div class="mvbox" style="flex-wrap:wrap"><select id="og-'+esc(x)+'" data-keep aria-label="移す先の会社">'+tg.map(function(o){return '<option value="'+esc(o)+'"'+(o===df?' selected':'')+'>'+esc(vname(o))+'</option>'}).join("")+'</select>'
+         +'<button class="btn sm" data-act="orph" data-vid="'+esc(x)+'" data-mode="add">'+(ui.confirm==="oa-"+x?'もう一度押すと足して移す':'台数を足して移す')+'</button>'
+         +'<button class="btn sm danger" data-act="orph" data-vid="'+esc(x)+'" data-mode="skip">'+(ui.confirm==="os-"+x?'もう一度押すと片付ける':'台数は移さず片付ける')+'</button></div></div>':'<p class="hint">移す先の会社がありません。</p>')
+       +'</div>'});
+  }
   var cq=Object.keys(D.crewreq).filter(function(id){return !D.crews[id]}),cw=Object.keys(D.crews);
   h+='<h2 style="margin:22px 0 6px">盛替え業者</h2><p class="hint" style="margin:0 0 10px">盛替え業者は専用のURL('+esc(APP_URL)+'crew/)から会社名を登録すると、すぐに使えるようになります。全業者の搬出予定を見て、搬出の確認と戻しの完了を入力できます。心当たりのない登録は「利用を停止」してください。</p><h3>利用停止中・未完了('+cq.length+')</h3>';
   if(!cq.length)h+='<p class="empty">ありません。</p>';
@@ -1794,9 +1808,9 @@ function render(remote){
   tabs.forEach(function(t){h+='<button role="tab" aria-selected="'+(ui.tab===t[0])+'" data-act="tab" data-tab="'+t[0]+'">'+t[1]+'</button>'});
   h+='</div></div>';
   if(ENV.preview){
-    var pids=Object.keys(D.vendors).sort(function(a,b){return vname(a)<vname(b)?-1:1});
+    var pids=Object.keys(D.vendors).filter(isActive).sort(function(a,b){return vname(a)<vname(b)?-1:1});
     h+='<div class="note pv"><span>業者ページのプレビュー: <select id="pvsel" data-f="pv" aria-label="表示する業者">'+pids.map(function(id){return '<option value="'+esc(id)+'"'+(id===ENV.uid?' selected':'')+'>'+esc(vname(id))+'</option>'}).join("")+'</select> の画面です。チェックや入力は実際に保存されます。</span><button class="btn sm" data-act="pvoff">管理画面に戻る</button></div>';
-  }else if(ENV.admin&&Object.keys(D.vendors).length)h+='<div style="display:flex;justify-content:flex-end;margin-top:-6px"><button class="btn sm" data-act="pvon">業者ページを確認</button></div>';
+  }else if(ENV.admin&&Object.keys(D.vendors).filter(isActive).length)h+='<div style="display:flex;justify-content:flex-end;margin-top:-6px"><button class="btn sm" data-act="pvon">業者ページを確認</button></div>';
   if(ENV.mode==="local")h+='<div class="note"><span>共有保存が使えない表示です。入力はこの端末のブラウザにだけ保存され、業者とは共有されません。</span></div>';
   if(ENV.mode==="noid")h+='<div class="note bad"><span>ログイン情報を取得できません。ログインし直してください。</span></div>';
   if(ui.msg)h+='<div class="note '+ui.msgKind+'"><span>'+esc(ui.msg)+'</span></div>';
@@ -1834,7 +1848,7 @@ function asVendor(fn){
 }
 function onPreview(ev){
   var b=ev.target.closest&&ev.target.closest("[data-act]"),act=b&&b.getAttribute("data-act");
-  if(act==="pvon"){var ids=Object.keys(D.vendors).sort(function(a,c){return vname(a)<vname(c)?-1:1});ui.pv=(ui.vsel&&D.vendors[ui.vsel])?ui.vsel:ids[0]||null;ui.tab="cal";ui.msg="";render();return true}
+  if(act==="pvon"){var ids=Object.keys(D.vendors).filter(isActive).sort(function(a,c){return vname(a)<vname(c)?-1:1});ui.pv=(ui.vsel&&D.vendors[ui.vsel])?ui.vsel:ids[0]||null;ui.tab="cal";ui.msg="";render();return true}
   if(act==="pvoff"){ui.pv=null;ui.tab="cal";ui.msg="";render();return true}
   return false;
 }
@@ -2069,7 +2083,7 @@ function onClick(ev){
       var oldF=clone((D.vendors[ENV.vid]||{}).floors||{});
       patch("approved",ENV.uid,{vid:jp.vid,code:jp.code,company:jp.company});
       if(D.members[ENV.uid])patch("members",ENV.uid,{company:jp.company});
-      ui.carry={to:jp.vid,floors:oldF};ui.jcPending=null;ui.jcOpen=false;
+      var cy=document.getElementById("jc-carry");if(!cy||cy.checked)ui.carry={to:jp.vid,floors:oldF};ui.jcPending=null;ui.jcOpen=false;
       ui.msg="「"+jp.company+"」に参加しました。同じ会社の人と同じ画面で使えます。";ui.msgKind="ok";
     }else if(!jcd){ui.msg="参加コードを入れてください。";ui.msgKind="bad"}
     else{ui.jcPending=null;ui.msg="参加コードを確かめています…";ui.msgKind="";
@@ -2085,6 +2099,8 @@ function onClick(ev){
   else if(act==="approve"){var m=D.members[id];if(m){var bv=(D.blocked[id]||{}).vid||id;if(D.blocked[id])remove("blocked",id);put("approved",id,{company:bv!==id?vname(bv):m.company,email:m.email,at:nowIso(),vid:bv,name:m.contact||""})}}
   else if(act==="merge"){var mx=b.getAttribute("data-vid"),ms=document.getElementById("mg-"+mx),mt=ms&&ms.value;
     if(mt&&mt!==mx){if(ui.confirm==="mg-"+mx){mergeCompany(mx,mt);ui.confirm="";ui.msg=vname(mt)+"にまとめました。";ui.msgKind="ok"}else{ui.confirm="mg-"+mx;keepConfirm=true}}}
+  else if(act==="orph"){var ox=b.getAttribute("data-vid"),om=b.getAttribute("data-mode"),os=document.getElementById("og-"+ox),ot=os&&os.value,ok2=(om==="add"?"oa-":"os-")+ox;
+    if(ot&&ot!==ox){if(ui.confirm===ok2){mergeCompany(ox,ot,om==="skip");ui.confirm="";ui.msg=(om==="skip"?"記録を片付けました。":"台数を足して移しました。")+"("+vname(ot)+")";ui.msgKind="ok"}else{ui.confirm=ok2;keepConfirm=true}}}
   else if(act==="reject"){remove("members",id)}
   else if(act==="unapprove"){
     if(ui.confirm==="un-"+id){put("blocked",id,{at:nowIso(),vid:vidOf(id)});remove("approved",id);ui.confirm=""}else{ui.confirm="un-"+id;keepConfirm=true}
