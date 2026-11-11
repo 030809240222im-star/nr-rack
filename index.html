@@ -602,6 +602,10 @@ var LOADED={};
 /* 全データのリセットで消す入れ物。設定(config)は残す */
 var RESET_COLLS=["days","confirmed","vendors","plans","orders","notices","members","approved","blocked","codes","crews","crewreq","crewblocked","seen"];
 var ui={tab:"cal",month:null,sel:null,vsel:null,only:false,confirm:"",msg:"",msgKind:""};
+/* 表示の好み(チェックや絞り込み)は、この端末に覚えておき、読み込み直しても戻す */
+var UIPREF=["only","mapOnly","mapMode","mapVen"];
+try{var up=JSON.parse(localStorage.getItem("nr-uipref")||"{}");UIPREF.forEach(function(k){if(up[k]!==undefined)ui[k]=up[k]})}catch(e){}
+function saveUiPref(){try{var o={};UIPREF.forEach(function(k){if(ui[k]!==undefined&&ui[k]!==null)o[k]=ui[k]});localStorage.setItem("nr-uipref",JSON.stringify(o))}catch(e){}}
 
 function clone(x){return JSON.parse(JSON.stringify(x))}
 function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
@@ -2282,10 +2286,10 @@ function onChange(ev){
   var c=clone(D.config||{});
   var vid=ENV.admin?ui.vsel:ENV.vid;
   if(f==="vsel"){ui.vsel=el.value||null;ui.confirm=""}
-  else if(f==="only"){ui.only=el.checked}
-  else if(f==="mapOnly"){ui.mapOnly=el.checked}
-  else if(f==="mapMode"){ui.mapMode=el.value}
-  else if(f==="mapVen"){ui.mapVen=el.value}
+  else if(f==="only"){ui.only=el.checked;saveUiPref()}
+  else if(f==="mapOnly"){ui.mapOnly=el.checked;saveUiPref()}
+  else if(f==="mapMode"){ui.mapMode=el.value;saveUiPref()}
+  else if(f==="mapVen"){ui.mapVen=el.value;saveUiPref()}
   else if(f==="dlabel"){patch("days",ui.sel,{lb:el.value.trim().slice(0,10)})}
   else if(f==="cap"){var v=nrNum(el.value);if(v===0){var cok=ui.sel;if(D.confirmed[cok]){notifyChanges(cok,D.confirmed[cok],null);remove("confirmed",cok)}remove("days",cok);afterDayRemoved(cok)}else mutDay(ui.sel,function(d){d.cap=v})}
   else if(f==="tf"||f==="tt"){var tv=nrTime(el.value);if(tv===null){ui.msg="時間は「1030」や「10:30」のように入力してください。";ui.msgKind="bad"}else{el.value=tv;var was=fmtTime(D.days[ui.sel]||{});mutDay(ui.sel,function(d){d[f]=tv});
@@ -2415,12 +2419,15 @@ app.addEventListener("change",function(ev){
   asVendor(function(){onChange(ev)});
 });
 /* 3分ごとの自動リロード: 入力中・未送信・確認の途中・画面が裏のときは行わない(次の3分後に見直す)。見ていたタブと日は、リロード後も保つ */
-var AUTO_MS=3*60*1000;
+var AUTO_MS=3*60*1000,LAST_TOUCH=0;
+["pointerdown","keydown","input","change"].forEach(function(t){document.addEventListener(t,function(){LAST_TOUCH=Date.now()},true)});
 try{var sv=JSON.parse(sessionStorage.getItem("nr-auto")||"null");sessionStorage.removeItem("nr-auto");
   if(sv&&Date.now()-sv.t<60000){window.__AUTO=sv;if(sv.y)window.__AUTO_Y=sv.y}}catch(e){}
 setInterval(function(){
   if(!window.NR_ACCOUNT||ENV.mode!=="db"||document.visibilityState!=="visible"||!navigator.onLine||PEND.n||ui.confirm||spin||spinSave)return;
   var ae=document.activeElement;if(ae&&/^(INPUT|SELECT|TEXTAREA)$/.test(ae.tagName))return;
+  /* 最後に画面をさわってから1分以内や、まだ保存していない選択(空きの振り分けのチェックなど)があるときは待つ */
+  if(Date.now()-LAST_TOUCH<60000||document.querySelector('input[data-fc]:checked'))return;
   try{sessionStorage.setItem("nr-auto",JSON.stringify({t:Date.now(),tab:ui.tab,sel:ui.sel,vsel:ui.vsel,month:ui.month&&ui.month.getTime(),y:window.scrollY}))}catch(e){}
   location.reload();
 },AUTO_MS);
