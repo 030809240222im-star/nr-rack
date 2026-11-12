@@ -91,11 +91,15 @@ service cloud.firestore {
     match /plans/{id} {
       allow read: if isAdmin() || isMember(id);
       allow write: if isAdmin();
+      // 盛替え業者が「入れた」を付けたときの記録(logs)だけ足せる
+      allow create, update: if isCrew() && request.resource.data.keys().hasOnly(['logs', 'at']);
     }
     // 追加注文: 業者が自分の分を出し、管理者が手配と上げた日を書き込む
     match /orders/{id} {
       allow read: if isAdmin() || isMember(id) || isCrew();
       allow write: if isAdmin() || (isMember(id) && isApproved());
+      // 盛替え業者は、手配済みの注文に「入れた」を付けられる
+      allow update: if isCrew() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['items', 'at']);
     }
 
     // 業者へのお知らせ: 管理者が出し、業者本人は「確認した」(ack)だけ書ける
@@ -236,11 +240,15 @@ service cloud.firestore {
     match /scrap_plans/{id} {
       allow read: if isAdmin() || isMemberScrap(id);
       allow write: if isAdmin();
+      // 盛替え業者が「入れた」を付けたときの記録(logs)だけ足せる
+      allow create, update: if isCrewScrap() && request.resource.data.keys().hasOnly(['logs', 'at']);
     }
     // 追加注文: 業者が自分の分を出し、管理者が手配と上げた日を書き込む
     match /scrap_orders/{id} {
       allow read: if isAdmin() || isMemberScrap(id) || isCrewScrap();
       allow write: if isAdmin() || (isMemberScrap(id) && isApprovedScrap());
+      // 盛替え業者は、手配済みの注文に「入れた」を付けられる
+      allow update: if isCrewScrap() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['items', 'at']);
     }
 
     // 業者へのお知らせ: 管理者が出し、業者本人は「確認した」(ack)だけ書ける

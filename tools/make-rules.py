@@ -85,11 +85,15 @@ BLOCK = """
     match /{P}plans/{{id}} {{
       allow read: if isAdmin() || isMember{S}(id);
       allow write: if isAdmin();
+      // 盛替え業者が「入れた」を付けたときの記録(logs)だけ足せる
+      allow create, update: if isCrew{S}() && request.resource.data.keys().hasOnly(['logs', 'at']);
     }}
     // 追加注文: 業者が自分の分を出し、管理者が手配と上げた日を書き込む
     match /{P}orders/{{id}} {{
       allow read: if isAdmin() || isMember{S}(id) || isCrew{S}();
       allow write: if isAdmin() || (isMember{S}(id) && isApproved{S}());
+      // 盛替え業者は、手配済みの注文に「入れた」を付けられる
+      allow update: if isCrew{S}() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['items', 'at']);
     }}
 
     // 業者へのお知らせ: 管理者が出し、業者本人は「確認した」(ack)だけ書ける

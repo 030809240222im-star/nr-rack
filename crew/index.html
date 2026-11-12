@@ -61,6 +61,7 @@ button:disabled{opacity:.45;cursor:default}
 .wdboard{margin:0 0 12px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface2)}.wdboard h3{margin:0 0 6px;font-size:14px}
 .wdgrid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}.wdgrid>div{min-width:0;font-size:12px}.wdgrid b{display:block;margin-bottom:2px}.wdn{display:block;overflow-wrap:anywhere;line-height:1.3;margin-bottom:1px}
 @media (max-width:700px){.wdgrid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.addbox{margin:0 0 12px}.addbox h3{margin:0 0 6px}.ccard.done{opacity:.7}
 .tabs.big{gap:8px;padding:6px;border-radius:12px}
 .tabs.big button{font-size:18px;padding:12px 22px;min-height:48px;min-width:120px;border-radius:9px;background:var(--surface);border:1px solid var(--line);color:var(--fg)}
 .tabs.big button[aria-selected="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-fg);box-shadow:0 1px 3px rgba(0,0,0,.2)}
@@ -1007,8 +1008,14 @@ function placedCell(d,r){
 function backCell(d,r,i){
   var b=r.back,el=((D.days[d]||{}).elev||[]);
   if(!ENV.admin&&!ENV.crew)return b?'<span class="st ok">✅ 戻し済み</span><div class="hint" style="margin:2px 0 0">EV'+b.ev+'で'+nrNum(b.u)+'台</div>':'<span class="st off">未</span>';
-  var h='<label class="chk ck'+(b?' on':'')+'"><input type="checkbox" data-f="back" data-d="'+d+'" data-i="'+i+'"'+(b?' checked':'')+'>'+(b?'戻し済み':'戻した')+'</label>';
-  if(b&&ENV.crew)h+='<div class="hint" style="margin:2px 0 0">EV'+b.ev+'で'+nrNum(b.u)+'台</div>';
+  var h='';
+  /* 盛替え業者: 戻したエレベーターを選んでから✅。階は業者が決めた戻し階 */
+  if(ENV.crew){var e0=b?nrNum(b.ev):(placedEv(d,r)||nrNum(r.ev)||el[0]||1);
+    h+='<div class="mvbox" style="margin:0 0 4px"><span class="hint" style="margin:0">'+esc(retLabel(r))+'の</span><select id="bev-'+d+'-'+i+'" '+(b?'data-f="backev" data-d="'+d+'" data-i="'+i+'"':'data-keep')+' aria-label="戻したエレベーター">';
+    evList().forEach(function(e){h+='<option value="'+e+'"'+(e0===e?' selected':'')+'>EV'+e+'</option>'});
+    h+='</select><span class="hint" style="margin:0">前に</span></div>'}
+  h+='<label class="chk ck'+(b?' on':'')+'"><input type="checkbox" data-f="back" data-d="'+d+'" data-i="'+i+'"'+(b?' checked':'')+'>'+(b?'戻し済み':'戻した')+'</label>';
+  if(b&&ENV.crew)h+='<div class="hint" style="margin:2px 0 0">'+nrNum(b.u)+'台を戻しました</div>';
   if(b&&ENV.admin){
     h+='<div class="mvbox" style="margin-top:4px"><select id="be-'+d+'-'+i+'" data-f="backev" data-d="'+d+'" data-i="'+i+'" aria-label="戻しに使ったエレベーター">';
     evList().forEach(function(e){h+='<option value="'+e+'"'+(nrNum(b.ev)===e?' selected':'')+'>EV'+e+'</option>'});
@@ -1018,8 +1025,22 @@ function backCell(d,r,i){
 }
 /* 日別の回収一覧(確定済み)。管理者と業者の両方で使う */
 /* 盛替え業者用: スマホで操作しやすいよう1行ずつカードで並べる */
+/* 盛替え業者: その日に搬入する新しいBOX(管理者が手配した追加注文)。EVを選んで「入れた」 */
+function crewAdds(d){
+  var list=orderList().filter(function(x){return (x.o.st==="plan"&&x.o.plan&&x.o.plan.d===nrBase(d))||(x.o.st==="done"&&x.o.done&&x.o.done.d===nrBase(d)&&x.o.plan&&x.o.plan.d===nrBase(d))});
+  if(!list.length)return "";
+  var el=((D.days[d]||{}).elev||[]),h='<div class="cday addbox"><h3>📦 新しいBOXの搬入(あと'+list.filter(function(x){return x.o.st==="plan"}).length+'件)</h3><div class="ccards">';
+  list.forEach(function(x){var o=x.o,k=x.vid+"-"+x.id,done=o.st==="done";
+    h+='<div class="ccard'+(done?' done':'')+'"><div class="cc-h"><b>'+esc(o.n||vname(x.vid))+'</b> <b>'+o.f+'階</b>に <b>'+nrNum(o.u)+'台</b></div>';
+    if(done)h+='<div class="cc-r"><span>搬入</span><div><span class="st ok">✅ 入れた</span> EV'+(nrNum(o.done.ev)||"?")+' '+nrNum(o.done.u)+'台</div></div>';
+    else h+='<div class="cc-r"><span>エレベーター</span><div class="mvbox"><select id="ce-'+k+'" data-keep aria-label="搬入に使うエレベーター">'+evList().map(function(e){return '<option value="'+e+'"'+(e===(el[0]||1)?' selected':'')+'>EV'+e+'</option>'}).join("")+'</select>'
+      +'<input type="number" min="1" id="cu-'+k+'" data-keep value="'+nrNum(o.u)+'" aria-label="入れた台数"><span class="hint" style="margin:0">台</span>'
+      +'<button class="btn primary" data-act="crewin" data-vid="'+esc(x.vid)+'" data-id="'+esc(x.id)+'" data-d="'+nrBase(d)+'">入れた</button></div></div>'+(o.memo?'<div class="hint" style="margin:0">'+esc(o.memo)+'</div>':'');
+    h+='</div>'});
+  return h+'</div></div>';
+}
 function crewCards(d){
-  var cf=D.confirmed[d],h='<div class="ccards">';
+  var cf=D.confirmed[d],h=crewAdds(d)+'<div class="ccards">';
   ((cf&&cf.rows)||[]).forEach(function(r,i){
     if(nrNum(r.units)<=0)return;
     h+='<div class="ccard"><div class="cc-h"><b>'+esc(rowName(r))+'</b> '+r.floor+'階 <b>'+nrNum(r.units)+'台</b> → <b>'+evLabel(r.ev,r.to)+'</b></div>'
@@ -2224,6 +2245,15 @@ function onClick(ev){
       mutOrder(dv,function(o){var x=o.items[id];if(x){x.st="done";x.done={d:dd,ev:de,u:du,at:nowIso(),log:lid,by:who()}}});
       ui.msg=fmtDP(dd)+"に"+df+"階へ"+du+"台上げたことを業者に報告し、保有台数を増やしました。";ui.msgKind="ok"}
   }
+  else if(act==="crewin"){
+    var cvv=b.getAttribute("data-vid"),cdd=b.getAttribute("data-d"),ck=cvv+"-"+id,cx=((D.orders[cvv]||{}).items||{})[id],ce=nrNum((document.getElementById("ce-"+ck)||{}).value)||null,cu=nrNum((document.getElementById("cu-"+ck)||{}).value);
+    if(!cx||cx.st!=="plan"||!cu){ui.msg="入れた台数を入れてください。";ui.msgKind="bad"}
+    else{var lid2="l"+Date.now().toString(36)+Math.floor(Math.random()*1e3).toString(36);
+      addLog(cvv,{id:lid2,d:cdd,f:cx.f,u:cu,e:ce,m:"追加注文"+(cx.memo?": "+cx.memo:""),at:nowIso(),by:who()});
+      var ad5={};ad5[cx.f]={h:cu};addFloors(cvv,ad5,1);
+      mutOrder(cvv,function(o){var x=o.items[id];if(x){x.st="done";x.done={d:cdd,ev:ce,u:cu,at:nowIso(),log:lid2,by:who()}}});
+      ui.msg=(cx.n||vname(cvv))+"の"+cx.f+"階に"+cu+"台入れました。業者の台数にも反映しました。";ui.msgKind="ok"}
+  }
   else if(act==="ordundo"){
     if(ui.confirm==="ou-"+id){var rv2=b.getAttribute("data-vid"),rx=((D.orders[rv2]||{}).items||{})[id];
       if(rx&&rx.done){var rd2=rx.done;
@@ -2409,7 +2439,7 @@ function onChange(ev){
     var fx=null,r=((D.confirmed[bd]||{}).rows||[])[bi];
     if(r){var bk=r.back?clone(r.back):null;
       if(f==="back"){
-        if(el.checked&&!bk){bk={ev:placedEv(bd,r)||r.ev||((D.days[bd]||{}).elev||[])[0]||1,u:nrNum(r.units),at:nowIso(),by:who()};bk.adj=backAdj(r,bk.u);fx=[r.vid,bk.adj,1];setRowSt(bd,r,{back:bk},(r.n||vname(r.vid))+" "+r.floor+"階 戻した: "+retLabel(r)+(Array.isArray(r.rets)?"":"へ"+bk.u+"台")+" EV"+bk.ev)}
+        if(el.checked&&!bk){var bsel=document.getElementById("bev-"+bd+"-"+bi);bk={ev:(bsel&&nrNum(bsel.value))||placedEv(bd,r)||r.ev||((D.days[bd]||{}).elev||[])[0]||1,u:nrNum(r.units),at:nowIso(),by:who()};bk.adj=backAdj(r,bk.u);fx=[r.vid,bk.adj,1];setRowSt(bd,r,{back:bk},(r.n||vname(r.vid))+" "+r.floor+"階 戻した: "+retLabel(r)+(Array.isArray(r.rets)?"":"へ"+bk.u+"台")+" EV"+bk.ev)}
         else if(!el.checked&&bk){if(bk.adj)fx=[r.vid,bk.adj,-1];setRowSt(bd,r,{back:null},(r.n||vname(r.vid))+" "+r.floor+"階 戻しを取り消し")}
       }
       else if(bk){
