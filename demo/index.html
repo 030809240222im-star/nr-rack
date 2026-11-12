@@ -1303,7 +1303,7 @@ function noticeList(vid){
     if(hit){hit.dups.push(x.id);if(x.ack&&!hit.ack)hit.ack=x.ack}else keep.push(x)});
   return keep.filter(function(x){return (x.o.d||"")>=from||!x.ack}).sort(function(a,b){return (a.o.at||"")<(b.o.at||"")?1:-1});
 }
-var NK={confirm:["📋","確定"],change:["⚠","変更"],cancel:["✖","取り消し"],trouble:["📣","連絡"],remind:["⏰","入力のお願い"],remind2:["⚠","重要"]};
+var NK={confirm:["📋","確定"],change:["⚠","変更"],cancel:["✖","取り消し"],trouble:["📣","連絡"],remind:["⏰","入力のお願い"],remind2:["⚠","重要"],move:["🔁","盛替え"]};
 /* 業者: まだ「確認した」を押していないお知らせ */
 function noticeBox(){
   if(ENV.admin||ENV.crew)return "";
@@ -2468,6 +2468,8 @@ function onClick(ev){
     else if(md2&&(md2<tdy2||md2>sd2)){ui.msg="盛替え日は、今日("+fmtD(tdy2)+")から回収日("+(/^\d{4}-\d{2}-\d{2}$/.test(sd2)?fmtD(sd2):"")+")までの日を選んでください。";ui.msgKind="bad"}
     else if(!D.days[sd2]||D.confirmed[sd2]||sd2<nrDs(new Date())){ui.msg=(/^\d{4}-\d{2}-\d{2}$/.test(sd2)?fmtD(sd2):"その日")+"は、まだ確定していない回収日ではありません。カレンダーで回収日を選び直してください。";ui.msgKind="bad"}
     else{var su2=nrNum(sb2.getAttribute("data-u"));mutDay(sd2,function(d){d.moves=d.moves||{};d.moves[sv2+"|"+sf2]={ev:se2,to:st2,u:su2,at:nowIso(),md:md2||null}});
+      /* 該当の業者にも知らせる(アプリのお知らせ・プッシュ通知・メール) */
+      notify(sv2,sd2,"move",fmtD(sd2)+"の回収に向けて、御社の"+sf2+"階"+(su2?"の"+su2+"台":"")+"を、"+(md2?fmtD(md2)+"に":"前日までに")+"EV"+se2+"前の"+st2+"階へ盛替えます(盛替え業者が移します)。当日はEV"+se2+"前("+st2+"階)から回収します。");
       mailOut("m-"+sd2+"-"+sv2+"-"+sf2,{to:"crew",d:sd2,msg:"盛替えの指示: "+fmtD(sd2)+"の回収に向けて "+vname(sv2)+" "+sf2+"階"+(su2?" "+su2+"台":"")+" → "+(md2?fmtD(md2)+"に":"前日までに")+"EV"+se2+"前の"+st2+"階へ盛替えてください。"});ui.msg=fmtD(sd2)+"の回収に向けて、"+vname(sv2)+"の"+sf2+"階を、"+(md2?fmtD(md2)+"に":"前日までに")+"EV"+se2+"前の"+st2+"階へ盛替えるよう指示しました。盛替え業者の画面に表示されます。";ui.msgKind="ok"}
   }
   else if(act==="unstage2"){var ud=b.getAttribute("data-d"),uk2=b.getAttribute("data-key");mutDay(ud,function(d){if(d.moves){delete d.moves[uk2];if(!Object.keys(d.moves).length)delete d.moves}})}
