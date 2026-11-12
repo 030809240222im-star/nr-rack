@@ -3,7 +3,7 @@ const REPO=require('path').resolve(__dirname,'..','..')+'/';const WORK=process.c
 const {chromium}=require('playwright');const fs=require('fs');
 let h=fs.readFileSync(REPO+'index.html','utf8').replace('var AUTO_MS=3*60*1000;','var AUTO_MS=3000;');fs.writeFileSync('main-test.html',h);
 const FS={config:{main:{evn:2}},approved:{v1:{company:'A',vid:'v1'}},vendors:{v1:{floors:{10:{h:6,w:3}}}}};
-(async()=>{const b=await chromium.launch();const cx=await b.newContext({viewport:{width:1100,height:800}});
+(async()=>{const b=await chromium.launch();const cx=await b.newContext({viewport:{width:1100,height:800}});await cx.addInitScript(()=>{try{if(!localStorage.getItem('nr-uipref'))localStorage.setItem('nr-uipref','{"simple":false}')}catch(e){}});/*FULLVIEW*/
 await cx.route(/gstatic\.com\/firebasejs/,r=>r.fulfill({contentType:'text/javascript',body:fs.readFileSync('fake-fb.js','utf8')}));
 await cx.route(/jsdelivr/,r=>r.fulfill({contentType:'text/javascript',body:fs.readFileSync('qrcode.min.js','utf8')}));
 await cx.addInitScript(w=>{window.__FAKE_UID='g1';window.__FAKE_EMAIL='kowa0371@gmail.com';if(!sessionStorage.__FS)window.__FS=w;window.__LOADS=(+sessionStorage.__L||0)+1;sessionStorage.__L=window.__LOADS},FS);

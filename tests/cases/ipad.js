@@ -12,7 +12,7 @@ const sizes=[['iPad Mini',false],['iPad Mini',true],['iPad Pro 11',false],['iPad
  for(const [dev,land] of sizes){const d=devices[dev];if(!d){console.log('no',dev);continue}
   const vp=land?{width:d.viewport.height,height:d.viewport.width}:d.viewport;
   for(const who of [{uid:'g1',email:'kowa0371@gmail.com',f:'main-test.html'},{uid:'v1',email:'a@x.jp',f:'main-test.html'},{uid:'c1',email:'c@x.jp',f:'crew-test.html'}]){
-   const ctx=await b.newContext({...d,viewport:vp});
+   const ctx=await b.newContext({...d,viewport:vp});await ctx.addInitScript(()=>{try{if(!localStorage.getItem('nr-uipref'))localStorage.setItem('nr-uipref','{"simple":false}')}catch(e){}});/*FULLVIEW*/
    await ctx.route(/gstatic\.com\/firebasejs/,r=>r.fulfill({contentType:'text/javascript',body:fs.readFileSync('fake-fb.js','utf8')}));
    await ctx.route(/jsdelivr/,r=>r.fulfill({contentType:'text/javascript',body:fs.readFileSync('qrcode.min.js','utf8')}));
    await ctx.addInitScript(w=>{window.__FAKE_UID=w.who.uid;window.__FAKE_EMAIL=w.who.email;window.__FS=w.FS},{who,FS});

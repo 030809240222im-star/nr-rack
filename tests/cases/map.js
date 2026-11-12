@@ -6,7 +6,7 @@ const FS={config:{main:{evn:3,fmax:30,ev:{1:[1,30],2:[1,30],3:[1,12]},ns:{2:'13,
  vendors:{v1:{floors:{10:{h:6,w:3},12:{h:4,w:4},25:{h:2,w:2}}},v2:{floors:{10:{h:3,w:1},14:{h:5,w:5}}},v3:{floors:{25:{h:7,w:2}}}}};
 (async()=>{const b=await chromium.launch();
 for(const [n,o] of [['pc',{viewport:{width:1280,height:900}}],['ph',devices['iPhone 13']]]){
-const cx=await b.newContext(o);
+const cx=await b.newContext(o);await cx.addInitScript(()=>{try{if(!localStorage.getItem('nr-uipref'))localStorage.setItem('nr-uipref','{"simple":false}')}catch(e){}});/*FULLVIEW*/
 await cx.route(/gstatic\.com\/firebasejs/,r=>r.fulfill({contentType:'text/javascript',body:fs.readFileSync('fake-fb.js','utf8')}));
 await cx.route(/jsdelivr/,r=>r.fulfill({contentType:'text/javascript',body:fs.readFileSync('qrcode.min.js','utf8')}));
 await cx.addInitScript(w=>{window.__FAKE_UID='g1';window.__FAKE_EMAIL='kowa0371@gmail.com';window.__FS=w},FS);

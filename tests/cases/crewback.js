@@ -8,7 +8,7 @@ for(let i=1;i<=8;i++){approved['v'+i]={company:'業者'+i,vid:'v'+i};vendors['v'
 const FS={config:{main:{evn:2}},approved,crews:{c1:{company:'盛替A',email:'c@x.jp'}},vendors,days:{[k]:{cap:16,elev:[1]}},confirmed:{[k]:{rows}}};
 (async()=>{const b=await chromium.launch();
 for(const tab of ['cal','ret']){
-const cx=await b.newContext({...devices['iPhone 13']});
+const cx=await b.newContext({...devices['iPhone 13']});await cx.addInitScript(()=>{try{if(!localStorage.getItem('nr-uipref'))localStorage.setItem('nr-uipref','{"simple":false}')}catch(e){}});/*FULLVIEW*/
 await cx.route(/gstatic\.com\/firebasejs/,r=>r.fulfill({contentType:'text/javascript',body:fs.readFileSync('fake-fb.js','utf8')}));
 await cx.route(/jsdelivr/,r=>r.fulfill({contentType:'text/javascript',body:fs.readFileSync('qrcode.min.js','utf8')}));
 await cx.addInitScript(w=>{window.__FAKE_UID='c1';window.__FAKE_EMAIL='c@x.jp';window.__FS=w},FS);

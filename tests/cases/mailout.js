@@ -8,7 +8,7 @@ const k=D(3),t=D(0);
 const FS={config:{main:{evn:2}},approved:{v1:{company:'サンオキ',vid:'v1',email:'a@x.jp'},v2:{company:'日本建工',vid:'v2'}},crews:{c1:{company:'盛替A',email:'c@x.jp'}},
  vendors:{v1:{floors:{10:{h:6,w:4}}},v2:{floors:{12:{h:6,w:4}}}},days:{[k]:{cap:8,elev:[1]},[t]:{cap:8,elev:[1]}},confirmed:{[t]:{rows:[{vid:'v2',floor:12,units:2,ev:1}]}}};
 (async()=>{const b=await chromium.launch();
-const open=async(uid,email,f)=>{const cx=await b.newContext({viewport:{width:1100,height:900}});
+const open=async(uid,email,f)=>{const cx=await b.newContext({viewport:{width:1100,height:900}});await cx.addInitScript(()=>{try{if(!localStorage.getItem('nr-uipref'))localStorage.setItem('nr-uipref','{"simple":false}')}catch(e){}});/*FULLVIEW*/
 await cx.route(/gstatic\.com\/firebasejs/,r=>r.fulfill({contentType:'text/javascript',body:fs.readFileSync('fake-fb.js','utf8')}));
 await cx.route(/jsdelivr/,r=>r.fulfill({contentType:'text/javascript',body:fs.readFileSync('qrcode.min.js','utf8')}));
 await cx.addInitScript(w=>{window.__FAKE_UID=w.uid;window.__FAKE_EMAIL=w.email;if(!sessionStorage.__FS)window.__FS=w.FS},{uid,email,FS});

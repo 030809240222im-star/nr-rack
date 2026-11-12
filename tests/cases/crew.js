@@ -7,7 +7,7 @@ const D=n=>{const d=new Date(Date.now()+n*864e5);return d.getFullYear()+'-'+Stri
 const t=D(0);
 let FS={approved:{v1:{company:'A社'},v2:{company:'B社'}},vendors:{v1:{name:'A社',floors:{5:{h:6,w:4}}},v2:{floors:{8:{h:3,w:3}}}},
  days:{[t]:{cap:8,elev:[1],tf:'08:00'}},confirmed:{[t]:{rows:[{vid:'v1',floor:5,units:4,ev:1,n:'A社'},{vid:'v2',floor:8,units:3,ev:1,ret:10,n:'B社'}]}}};
-async function open(b,who,file){const ctx=await b.newContext({...devices['iPhone 13']});const errs=[];
+async function open(b,who,file){const ctx=await b.newContext({...devices['iPhone 13']});await ctx.addInitScript(()=>{try{if(!localStorage.getItem('nr-uipref'))localStorage.setItem('nr-uipref','{"simple":false}')}catch(e){}});/*FULLVIEW*/const errs=[];
   await ctx.route(/gstatic\.com\/firebasejs/,r=>r.fulfill({contentType:'text/javascript',body:fs.readFileSync('fake-fb.js','utf8')}));
   await ctx.route(/jsdelivr/,r=>r.fulfill({contentType:'text/javascript',body:fs.readFileSync('qrcode.min.js','utf8')}));
   await ctx.addInitScript(w=>{window.__FAKE_UID=w.who.uid;window.__FAKE_EMAIL=w.who.email;window.__FS=w.FS},{who,FS});

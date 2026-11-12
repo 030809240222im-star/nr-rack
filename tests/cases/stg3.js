@@ -8,7 +8,7 @@ const FS={config:{main:{evn:2,ev:{1:[1,30],2:[31,60]},ns:{2:'44-46'}}},approved:
  vendors:{v1:{floors:{45:{h:4,w:4,s:'2026-11-01'},10:{h:2,w:2,s:'2026-11-01'},62:{h:3,w:3,s:'2026-11-05'}}},v2:{floors:{44:{h:5,w:2,s:'2026-11-08'}}}},days:{[k1]:{cap:8,elev:[1,2]},[k2]:{cap:8,elev:[1]}}};
 (async()=>{const b=await chromium.launch();
 for(const [n,dev] of [['pc',{viewport:{width:1280,height:1000}}],['ph',devices['iPhone 13']]]){
-const cx=await b.newContext(dev);
+const cx=await b.newContext(dev);await cx.addInitScript(()=>{try{if(!localStorage.getItem('nr-uipref'))localStorage.setItem('nr-uipref','{"simple":false}')}catch(e){}});/*FULLVIEW*/
 await cx.route(/gstatic\.com\/firebasejs/,r=>r.fulfill({contentType:'text/javascript',body:fs.readFileSync('fake-fb.js','utf8')}));
 await cx.route(/jsdelivr/,r=>r.fulfill({contentType:'text/javascript',body:fs.readFileSync('qrcode.min.js','utf8')}));
 await cx.addInitScript(w=>{window.__FAKE_UID='g1';window.__FAKE_EMAIL='kowa0371@gmail.com';window.__FS=w},FS);

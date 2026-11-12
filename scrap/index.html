@@ -11,7 +11,7 @@
   --ok:#1f8a54; --warn:#9a6410; --bad:#c03636;
   --okbg:#e2f3ea; --warnbg:#f9eed6; --badbg:#f8e0e0; --offbg:#e3e7ea;
   --now:#d9661a; --now-fg:#ffffff; --nowbg:#fdebdc;
-  --c0:#2f6fd6; --c1:#e07b2a; --c2:#2a9d8f; --c3:#a64fc4; --c4:#c9a227; --c5:#d1495b; --c6:#5c7a3a; --c7:#6b7a8f;
+  --c0:#2f6fd6; --c1:#e07b2a; --c2:#2a9d8f; --c3:#a64fc4; --c4:#c9a227; --c5:#d1495b; --c6:#5c7a3a; --c7:#6b7a8f; --c8:#8a5a2b; --c9:#e58ab0; --c10:#3d4fa8; --c11:#5fb7d4;
   --f-head:"Zen Kaku Gothic New","Hiragino Sans","Yu Gothic",sans-serif;
   --f-body:"BIZ UDPGothic","Hiragino Sans","Yu Gothic",sans-serif;
 }
@@ -62,6 +62,62 @@ button:disabled{opacity:.45;cursor:default}
 .wdgrid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}.wdgrid>div{min-width:0;font-size:12px}.wdgrid b{display:block;margin-bottom:2px}.wdn{display:block;overflow-wrap:anywhere;line-height:1.3;margin-bottom:1px}
 @media (max-width:700px){.wdgrid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .addbox{margin:0 0 12px}.addbox h3{margin:0 0 6px}.ccard.done{opacity:.7}
+
+/* かんたん表示 */
+.tabs:empty{display:none}
+.modebtn{border-color:var(--accent);color:var(--accent)}
+.simple{display:flex;flex-direction:column;gap:12px;font-size:16px}
+.simple .k{font-size:13px;font-weight:700;color:var(--muted)}
+.todo{background:var(--nowbg);border:2px solid var(--now);border-radius:16px;padding:14px;display:flex;flex-direction:column;gap:8px}
+.todo.done{background:var(--okbg);border-color:var(--ok)}
+.when{font-family:var(--f-head);font-weight:700;font-size:22px;line-height:1.25}.when small{font-size:14px}
+.what{font-size:18px;line-height:1.5;margin:0}.what b{font-size:22px;font-family:var(--f-head)}
+.place{display:inline-block;background:var(--fg);color:var(--bg);font-weight:700;border-radius:8px;padding:0 10px}
+.srow{display:flex;flex-direction:column;gap:6px}
+.big{border:2px solid var(--line);border-radius:12px;min-height:52px;font-size:17px;font-weight:700;font-family:var(--f-head);background:var(--surface2);width:100%;padding:0 10px;color:var(--fg)}
+.big.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.big.okb{background:var(--ok);border-color:var(--ok);color:#fff}
+.big.badb{color:var(--bad);border-color:var(--bad);background:var(--surface)}
+.scard{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:8px}
+.scard.read{opacity:.7}
+.fl-h{font-family:var(--f-head);font-weight:700;font-size:22px}
+.q{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}.q>span:first-child{font-weight:700}
+.simple .stepper input[type=number]{font-size:20px;min-height:46px}
+.simple .stp{min-width:48px;font-size:22px}
+.sprog{display:flex;flex-direction:column;gap:2px;padding:8px 12px;background:var(--surface2);border-radius:12px}
+.sprog span{font-weight:700}
+.sect{font-family:var(--f-head);font-weight:700;font-size:15px}
+.dchips{display:flex;gap:6px;flex-wrap:wrap}.dchips button{border:2px solid var(--line);background:var(--surface);border-radius:10px;min-height:42px;padding:0 12px;font-weight:700}
+.dchips button.on{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
+.job{background:var(--surface);border:2px solid var(--line);border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:8px}
+.job.ok{border-color:var(--ok)}.job.bad{border-color:var(--bad)}.job.back{background:var(--okbg);border-color:var(--ok)}
+.job-h,.nb-h{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.job-h b,.nb-h b{font-family:var(--f-head);font-size:20px}
+.job-s{display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:14px}
+.pill{border-radius:999px;padding:1px 10px;font-size:12.5px;font-weight:700;background:var(--surface2);color:var(--muted);border:1px solid var(--line)}.pill.ok{background:var(--okbg);color:var(--ok);border-color:transparent}
+.tri{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:6px}.tri .big{font-size:15px;padding:0 4px}
+.tri2{display:grid;grid-template-columns:2fr 1fr;gap:6px}
+.res-l{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.job.bad .res-l b{color:var(--bad)}.job.ok .res-l b{color:var(--ok)}
+.link{border:0;background:none;color:var(--accent);font-weight:700;text-decoration:underline;padding:4px}
+.evrow{display:flex;flex-direction:column;gap:4px;font-size:14px;font-weight:700}
+.evp{display:inline-flex;flex-wrap:wrap;gap:4px}
+.evp button{border:2px solid var(--line);background:var(--surface);border-radius:10px;min-height:42px;min-width:48px;font-weight:700;font-size:14px;padding:0 6px}
+.evp button[aria-pressed="true"]{background:var(--fg);border-color:var(--fg);color:var(--bg)}
+.newbox{background:var(--surface2);border:2px solid var(--accent);border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:8px}
+.newbox.ok{background:var(--okbg);border-color:var(--ok)}
+.nt{display:inline-flex;align-items:center;gap:4px;font-weight:700;border-radius:6px;padding:1px 8px;font-size:13px;line-height:1.5;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+.job-h .nt,.nb-h .nt{font-size:15px;padding:2px 10px}
+.tasks{display:flex;flex-direction:column;gap:8px}
+.task{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--surface2)}
+.task.warn{border-color:var(--bad)}
+.task b{display:block;font-family:var(--f-head)}.task small{color:var(--muted)}
+.pane-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.bands{display:flex;gap:4px;min-width:0}
+.band{min-height:30px;border-radius:6px;display:flex;align-items:center;justify-content:center;gap:4px;font-style:normal;font-weight:700;font-size:12.5px;min-width:0;padding:0 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.band small{font-weight:400}
+.band.free{background:var(--surface2);color:var(--muted);border:1px dashed var(--line)}
+.band.off{background:var(--line);opacity:.35}
+.wdn .nt{font-size:11.5px;padding:0 5px}
 .tabs.big{gap:8px;padding:6px;border-radius:12px}
 .tabs.big button{font-size:18px;padding:12px 22px;min-height:48px;min-width:120px;border-radius:9px;background:var(--surface);border:1px solid var(--line);color:var(--fg)}
 .tabs.big button[aria-selected="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-fg);box-shadow:0 1px 3px rgba(0,0,0,.2)}
@@ -608,7 +664,9 @@ function qrSvg(){
   catch(e){return '<p class="hint" style="padding:8px">QRコードを作れませんでした</p>'}
 }
 var WD=["日","月","火","水","木","金","土"];
-var COLORS=["var(--c0)","var(--c1)","var(--c2)","var(--c3)","var(--c4)","var(--c5)","var(--c6)","var(--c7)"];
+var COLORS=["var(--c0)","var(--c1)","var(--c2)","var(--c3)","var(--c4)","var(--c5)","var(--c6)","var(--c7)","var(--c8)","var(--c9)","var(--c10)","var(--c11)"];
+/* 色の上に会社名を書くときの文字の色(明るい色には黒、暗い色には白) */
+var VTEXT=["#fff","#13222b","#13222b","#fff","#13222b","#fff","#fff","#fff","#fff","#13222b","#fff","#13222b"];
 var ENV={vid:"local",crew:false,mode:"local",uid:"local",realUid:"local",admin:true,preview:false,db:null,email:"",name:""};
 var D={config:{},days:{},vendors:{},plans:{},members:{},approved:{},blocked:{},confirmed:{},crews:{},crewreq:{},crewblocked:{},orders:{},notices:{},codes:{},seen:{}};
 var LOADED={};
@@ -616,8 +674,9 @@ var LOADED={};
 var RESET_COLLS=["days","confirmed","vendors","plans","orders","notices","members","approved","blocked","codes","crews","crewreq","crewblocked","seen"];
 var ui={tab:"cal",month:null,sel:null,vsel:null,only:false,confirm:"",msg:"",msgKind:""};
 /* 表示の好み(チェックや絞り込み)は、この端末に覚えておき、読み込み直しても戻す */
-var UIPREF=["only","mapOnly","mapMode","mapVen"];
+var UIPREF=["only","mapOnly","mapMode","mapVen","simple"];
 try{var up=JSON.parse(localStorage.getItem("nr-uipref")||"{}");UIPREF.forEach(function(k){if(up[k]!==undefined)ui[k]=up[k]})}catch(e){}
+if(ui.simple===undefined)ui.simple=true;
 function saveUiPref(){try{var o={};UIPREF.forEach(function(k){if(ui[k]!==undefined&&ui[k]!==null)o[k]=ui[k]});localStorage.setItem("nr-uipref",JSON.stringify(o))}catch(e){}}
 
 function clone(x){return JSON.parse(JSON.stringify(x))}
@@ -721,7 +780,7 @@ async function boot(){
     /* お試し版は、はじめて開いたときにサンプルを入れておく */
     if(window.NR_DEMO&&!raw){var sm=sample();Object.keys(sm.vendors).forEach(function(k){put("vendors",k,sm.vendors[k])});var sd=Object.keys(sm.days).sort();sd.forEach(function(k){put("days",k,sm.days[k])});if(sd.length){var f0=nrPd(sd[0]);ui.month=new Date(f0.getFullYear(),f0.getMonth(),1,12);ui.sel=sd[0]}}
   }
-  ui.tab="cal";
+  ui.tab=ui.simple&&ENV.admin?"home":"cal";
   var AV=window.__AUTO;if(AV){if(AV.tab)ui.tab=AV.tab;if(AV.sel)ui.sel=AV.sel;if(AV.vsel)ui.vsel=AV.vsel;if(AV.month)ui.month=new Date(AV.month);window.__AUTO=null}
   render();
 }
@@ -1038,6 +1097,23 @@ function crewAdds(d){
       +'<button class="btn primary" data-act="crewin" data-vid="'+esc(x.vid)+'" data-id="'+esc(x.id)+'" data-d="'+nrBase(d)+'">入れた</button></div></div>'+(o.memo?'<div class="hint" style="margin:0">'+esc(o.memo)+'</div>':'');
     h+='</div>'});
   return h+'</div></div>';
+}
+/* 盛替え業者が新しいBOXを入れた: 注文を上げ済みにし、業者の台数を増やし、記録を残す */
+function crewIn(vid,id,d,ev,u){
+  var cx=((D.orders[vid]||{}).items||{})[id];
+  if(!cx||cx.st!=="plan"||!u){ui.msg="入れた台数を入れてください。";ui.msgKind="bad";return}
+  var lid2="l"+Date.now().toString(36)+Math.floor(Math.random()*1e3).toString(36);
+  addLog(vid,{id:lid2,d:d,f:cx.f,u:u,e:ev||null,m:"追加注文"+(cx.memo?": "+cx.memo:""),at:nowIso(),by:who()});
+  var ad5={};ad5[cx.f]={h:u};addFloors(vid,ad5,1);
+  mutOrder(vid,function(o){var x=o.items[id];if(x){x.st="done";x.done={d:d,ev:ev||null,u:u,at:nowIso(),log:lid2,by:who()}}});
+  ui.msg=(cx.n||vname(vid))+"の"+cx.f+"階に"+u+"台入れました。業者の台数にも反映しました。";ui.msgKind="ok";
+}
+/* 戻した(on)・取り消し。EV は選んだもの(なければ業者が置いたEV) */
+function backSet(bd,bi,on,ev){
+  var r=((D.confirmed[bd]||{}).rows||[])[bi];if(!r)return;var bk=r.back?clone(r.back):null,fx=null;
+  if(on&&!bk){bk={ev:ev||placedEv(bd,r)||r.ev||((D.days[bd]||{}).elev||[])[0]||1,u:nrNum(r.units),at:nowIso(),by:who()};bk.adj=backAdj(r,bk.u);fx=[r.vid,bk.adj,1];setRowSt(bd,r,{back:bk},(r.n||vname(r.vid))+" "+r.floor+"階 戻した: "+retLabel(r)+(Array.isArray(r.rets)?"":"へ"+bk.u+"台")+" EV"+bk.ev)}
+  else if(!on&&bk){if(bk.adj)fx=[r.vid,bk.adj,-1];setRowSt(bd,r,{back:null},(r.n||vname(r.vid))+" "+r.floor+"階 戻しを取り消し")}
+  if(fx){applyAdj(fx[0],fx[1],fx[2]);ui.msg=(ENV.admin?vname(fx[0]):"業者")+"の保有台数と回収希望を"+(fx[2]>0?"更新":"元に戻")+"しました。";ui.msgKind="ok"}
 }
 function crewCards(d){
   var cf=D.confirmed[d],h=crewAdds(d)+'<div class="ccards">';
@@ -1361,9 +1437,11 @@ function renderDay(C){
   var seq=[];asg.forEach(function(a){for(var i=0;i<a.units;i++)seq.push(a.vid)});
   h+='<div class="trucks">';
   for(var t=0;t<trucks;t++){
-    h+='<div class="truck"><span>'+(t+1)+'号車</span><div class="slots" style="grid-template-columns:repeat('+pt+',minmax(0,1fr))">';
-    for(var j=0;j<pt;j++){var idx=t*pt+j,v=seq[idx];
-      h+=idx>=cap?'<i class="slot" style="opacity:.25"></i>':(v?'<i class="slot f" style="background:'+vcolor(v)+'" title="'+esc(vname(v))+'"></i>':'<i class="slot"></i>')}
+    /* 同じ会社の台をつなげて帯にし、色の中に会社名と台数を書く */
+    h+='<div class="truck"><span>'+(t+1)+'号車</span><div class="bands">';
+    var grp=[];for(var j=0;j<pt;j++){var idx=t*pt+j,v=idx>=cap?"#off":(seq[idx]||"#free"),lg=grp[grp.length-1];if(lg&&lg.v===v)lg.n++;else grp.push({v:v,n:1})}
+    grp.forEach(function(g){h+=g.v==="#off"?'<i class="band off" style="flex:'+g.n+'"></i>':g.v==="#free"?'<i class="band free" style="flex:'+g.n+'">空き'+(g.n>1?' '+g.n:'')+'</i>'
+      :'<i class="band" style="flex:'+g.n+';background:'+vcolor(g.v)+';color:'+vtext(g.v)+'" title="'+esc(vname(g.v))+' '+g.n+'台">'+esc(g.n>=2||pt<=4?vname(g.v):shortName(vname(g.v)))+(g.n>=2?' <small>'+g.n+'台</small>':'')+'</i>'});
     h+='</div></div>';
   }
   h+='</div>';
@@ -1453,13 +1531,119 @@ function renderMap(C){
   h+='<div class="fmap"><div class="fm-h"><span>階</span><span>EV</span><span>'+(mode==="h"?'保有台数':'搬出希望')+'</span><span>合計</span></div>';
   var evs=evList();
   for(var f=cfg.fmax;f>=cfg.fmin;f--){var o=floors[f];if(ui.mapOnly&&!o)continue;
-    var segs=o?o.list.filter(function(x){return x[mode]>0}).sort(function(a,b){return b[mode]-a[mode]}).map(function(x){return '<i class="fm-s" style="width:'+(x[mode]/max*100).toFixed(2)+'%;background:'+vcolor(x.vid)+'" title="'+esc(vname(x.vid))+' '+x[mode]+'台" tabindex="0"><b>'+x[mode]+'</b></i>'}).join(""):"";
+    var segs=o?o.list.filter(function(x){return x[mode]>0}).sort(function(a,b){return b[mode]-a[mode]}).map(function(x){return '<i class="fm-s" style="width:'+(x[mode]/max*100).toFixed(2)+'%;background:'+vcolor(x.vid)+';color:'+vtext(x.vid)+'" title="'+esc(vname(x.vid))+' '+x[mode]+'台" tabindex="0"><b>'+(x[mode]/max>=.28?esc(vname(x.vid))+' ':x[mode]/max>=.16?esc(shortName(vname(x.vid)))+' ':'')+x[mode]+'</b></i>'}).join(""):"";
     var ev=evs.map(function(e){var st=nrStops(f,e,cfg);return '<u class="'+(st?'on':'off')+'" title="EV'+e+(st?'が停まる':'は停まらない')+'">'+(st?'○':'×')+'</u>'}).join("");
     var ns=!nrAnyElev(f,cfg);
     h+='<div class="fm-r'+(o?'':' empty')+'"><span class="fm-f">'+f+'階</span><span class="fm-e">'+ev+'</span><span class="fm-b">'+segs+'</span><span class="fm-t">'+(o?o[mode]:'')+(ns&&o?' <em class="st bad">どのEVも停まらない</em>':'')+'</span></div>';
   }
   return h+'</div><p class="hint" style="margin:8px 0 0">棒の長さは、いちばん多い階を100%にした割合です。EVの○×は、設定タブのEVごとの停止階にもとづきます。</p></section>';
 }
+/* ==== かんたん表示 ====
+   ui.simple が true のとき(最初はかんたん)。今までの画面は「くわしく」で開ける。
+   業者: よてい・台数・お知らせ / 盛替え業者: その日の作業を1件ずつ大きなカードで / 管理者: きょうやること + 4つの入口 */
+function vtext(id){var ids=Object.keys(D.vendors).sort(),i=ids.indexOf(id);return VTEXT[(i<0?0:i)%VTEXT.length]}
+/* 色の中に会社名を入れた名札 */
+function vchip(vid,label,cls){return '<span class="nt'+(cls?' '+cls:'')+'" style="background:'+vcolor(vid)+';color:'+vtext(vid)+'">'+esc(label==null?vname(vid):label)+'</span>'}
+function shortName(s){s=String(s||"");return s.length>4?s.slice(0,3):s}
+function evButtons(key,cur){return '<span class="evp" role="group" aria-label="エレベーター">'+evList().map(function(e){return '<button type="button" data-act="sev" data-key="'+esc(key)+'" data-ev="'+e+'" aria-pressed="'+(e===cur)+'">EV'+e+'</button>'}).join("")+'</span>'}
+function simpleToggle(){return ' <button class="btn sm modebtn" data-act="simple">'+(ui.simple?'くわしく表示へ':'かんたん表示へ')+'</button>'}
+
+/* ---- 業者 ---- */
+function sVendorTabs(){var n=noticeList(ENV.vid).filter(function(x){return !x.ack}).length;
+  return [["s-home","よてい"],["s-count","台数"],["s-news","お知らせ"+(n?'<span class="cnt">'+n+'</span>':'')]]}
+function sVendor(C){var t=ui.stab||"s-home";return t==="s-count"?sVendorCount(C):t==="s-news"?sVendorNews():sVendorHome(C)}
+function sVendorHome(C){
+  var mr=myRows().filter(function(x){return nrBase(x.d)>=C.t}),h='<section class="panel simple">';
+  h+=problemBox();
+  if(!mr.length)h+='<div class="todo"><div class="k">つぎに出す日</div><p class="what">まだ決まっていません。</p><p class="hint" style="margin:0">「台数」で、いまある台数と出したい台数を入れておくと、管理者が出す日を決めます。決まったら、ここに大きく出ます。</p></div>';
+  else{var d0=mr[0].d,first=mr.filter(function(x){return x.d===d0}),day=D.days[d0]||{},allp=first.every(function(x){return isPlaced(x.d,x.r)});
+    h+='<div class="todo'+(allp?' done':'')+'"><div class="k">'+(nrBase(d0)===C.t?'きょう出す':'つぎに出す日')+'</div><div class="when">'+esc(fmtLong(d0))+' <small>'+esc(fmtTime(day))+'</small></div>';
+    first.forEach(function(x){var r=x.r,on=isPlaced(x.d,r);
+      h+='<div class="srow"><p class="what"><b>'+r.floor+'階</b> の <b>'+nrNum(r.units)+'台</b> を <span class="place">'+esc(evLabel(r.ev,r.to))+'</span> に置く</p>'
+        +(r.to?'<p class="hint" style="margin:0">前の日までに'+r.to+'階へうつしてから置いてください。</p>':'')
+        +'<button class="big '+(on?'okb':'primary')+'" data-act="splace" data-d="'+x.d+'" data-i="'+x.i+'">'+(on?'✓ 置きました(取り消す)':'置きました')+'</button></div>'});
+    h+='<p class="hint" style="margin:0">'+(allp?'置いたことが管理者に伝わりました。':'前の日までに置いて、「置きました」を押してください。')+'</p></div>';
+    var rest=mr.filter(function(x){return x.d!==d0});
+    if(rest.length)h+='<div class="scard"><div class="k">そのあとの予定</div>'+rest.map(function(x){return '<div>'+esc(fmtD(x.d))+' '+x.r.floor+'階 '+nrNum(x.r.units)+'台 → '+esc(evLabel(x.r.ev,x.r.to))+'</div>'}).join("")+'</div>';
+  }
+  var fl=(D.vendors[ENV.vid]||{}).floors||{},ks=Object.keys(fl).map(Number).sort(function(a,b){return b-a});
+  h+='<div class="scard"><div class="k">いま入れてある台数</div>'+(ks.length?ks.map(function(f){return '<div>'+f+'階 いまある <b>'+nrNum(fl[f].h)+'</b>台 / 出したい <b>'+nrNum(fl[f].w)+'</b>台</div>'}).join(""):'<div>まだ入れていません。</div>')
+    +'<button class="big" data-act="stab" data-tab="s-count">台数を入れる・なおす</button></div>';
+  return h+'</section>';
+}
+function sVendorCount(C){
+  var fl=(D.vendors[ENV.vid]||{}).floors||{},ks=Object.keys(fl).map(Number);if(ui.sadd&&ks.indexOf(ui.sadd)<0)ks.push(ui.sadd);ks.sort(function(a,b){return b-a});
+  var h='<section class="panel simple"><p class="hint" style="margin:0">階ごとに、<b>いまある台数</b>と、そのうち<b>出したい台数</b>を入れます。入れた数字は自動で保存されます。</p>';
+  ks.forEach(function(f){var e=fl[f]||{},hh=nrNum(e.h),ww=nrNum(e.w);
+    h+='<div class="scard"><div class="fl-h">'+f+'階</div>'
+     +'<div class="q"><span>いまある</span><input type="number" min="0" id="sh-'+f+'" data-f="floor" data-fl="'+f+'" data-k="h" value="'+hh+'" aria-label="'+f+'階のいまある台数"></div>'
+     +'<div class="q"><span>出したい</span><input type="number" min="0" max="'+hh+'" id="sw-'+f+'" data-f="floor" data-fl="'+f+'" data-k="w" value="'+ww+'" aria-label="'+f+'階の出したい台数"></div>'
+     +(ww>hh?'<p class="hint bad" style="margin:0">出したい台数が、いまある台数より多くなっています。</p>':'')+'</div>'});
+  h+='<div class="scard"><div class="q"><span>ほかの階を足す</span><span class="mvbox"><input type="number" min="'+LIM.fmin+'" max="'+LIM.fmax+'" id="s-addf" data-keep placeholder="階" aria-label="足す階"><button class="btn" data-act="saddf">足す</button></span></div></div>'
+   +'<div class="scard"><div class="k">くわしい設定</div><p class="hint" style="margin:0">もどしてほしい階を変える、先に出したい階を決める、スクラップ台車を追加で注文する、は「くわしく表示」の「業者入力」で行います。</p><button class="big" data-act="sfull" data-tab="vin">くわしい設定を開く</button></div>';
+  return h+'</section>';
+}
+function sVendorNews(){
+  var all=noticeList(ENV.vid),h='<section class="panel simple">';
+  if(!all.length)return h+'<p class="empty">お知らせはありません。</p></section>';
+  all.forEach(function(x){var k=NK[x.o.kind]||NK.trouble;
+    h+='<div class="scard'+(x.ack?' read':'')+'"><div class="k">'+esc(fmtAt(x.o.at))+' '+k[1]+'</div><div>'+esc(x.o.msg)+'</div>'+(x.ack?'<div class="hint" style="margin:0">見ました</div>':'<button class="big primary" data-act="ack" data-id="'+esc(x.id)+'">見ました</button>')+'</div>'});
+  return h+'<p class="hint">「見ました」を押すと、管理者に伝わります。</p></section>';
+}
+
+/* ---- 盛替え業者 ---- */
+function sCrewDays(C){var out=[];Object.keys(D.confirmed).forEach(function(d){if(nrBase(d)>=C.t&&((D.confirmed[d].rows||[]).some(function(r){return nrNum(r.units)>0})))out.push(d)});
+  orderList().forEach(function(x){var p=x.o.plan&&x.o.plan.d;if(x.o.st==="plan"&&p&&p>=C.t&&out.indexOf(p)<0)out.push(p)});
+  return out.sort().slice(0,8)}
+function sCrew(C){
+  var ds=sCrewDays(C),d=ui.sday&&ds.indexOf(ui.sday)>=0?ui.sday:ds[0],h='<section class="panel simple">'+moveBox(C);
+  if(!d)return h+'<p class="empty">いま決まっている搬出の予定はありません。</p></section>';
+  if(ds.length>1)h+='<div class="dchips">'+ds.map(function(x){return '<button class="'+(x===d?'on':'')+'" data-act="sday" data-d="'+x+'">'+esc(fmtD(x))+(sesLabel(x)?' '+esc(sesLabel(x)):'')+'</button>'}).join("")+'</div>';
+  var cf=D.confirmed[d],rows=((cf&&cf.rows)||[]).map(function(r,i){return {r:r,i:i}}).filter(function(x){return nrNum(x.r.units)>0}),day=D.days[d]||{};
+  var adds=orderList().filter(function(x){return x.o.plan&&x.o.plan.d===nrBase(d)&&(x.o.st==="plan"||x.o.st==="done")});
+  var nc=rows.filter(function(x){return x.r.chk}).length,nb=rows.filter(function(x){return x.r.back}).length,ni=adds.filter(function(x){return x.o.st==="done"}).length;
+  h+='<div class="sprog"><b>'+esc(fmtLong(d))+' '+esc(fmtTime(day))+'</b><span>確かめた '+nc+'/'+rows.length+'・もどした '+nb+'/'+rows.length+(adds.length?'・入れた '+ni+'/'+adds.length:'')+'</span></div>';
+  if(adds.length){h+='<div class="sect">📦 新しいBOXの搬入</div>';
+    adds.forEach(function(x){var o=x.o,done=o.st==="done",key="in:"+x.vid+":"+x.id,ev=(ui.sev&&ui.sev[key])||((day.elev||[])[0])||1;
+      h+='<div class="newbox'+(done?' ok':'')+'"><div class="k">'+(done?'入れました(業者の台数にも反映)':'入れる')+'</div><div class="nb-h">'+vchip(x.vid,o.n||vname(x.vid))+'<b>'+o.f+'階 '+nrNum(o.u)+'台</b></div>'
+        +(done?'<div class="hint" style="margin:0">EV'+(nrNum(o.done.ev)||"?")+'で '+nrNum(o.done.u)+'台</div>':'<div class="evrow">どのエレベーターで入れますか?'+evButtons(key,ev)+'</div><button class="big okb" data-act="sin" data-vid="'+esc(x.vid)+'" data-id="'+esc(x.id)+'" data-d="'+nrBase(d)+'">EV'+ev+'で 入れました</button>')+'</div>'})}
+  if(rows.length)h+='<div class="sect">⬆ 出すBOXの確かめと、もどし</div>';
+  rows.forEach(function(x){var r=x.r,i=x.i,c=r.chk,b=r.back,on=isPlaced(d,r),pe=placedEv(d,r),key="b:"+d+":"+i,bev=b?nrNum(b.ev):((ui.sev&&ui.sev[key])||pe||nrNum(r.ev)||1),sk=d+"|"+i;
+    h+='<div class="job'+(c?(c.k==="ok"?' ok':' bad'):'')+(b?' back':'')+'"><div class="job-h">'+vchip(r.vid,rowName(r))+'<b>'+r.floor+'階 '+nrNum(r.units)+'台</b></div>'
+      +'<div class="job-s"><span class="place">'+esc(evLabel(r.ev,r.to))+'</span><span class="pill'+(on?' ok':'')+'">'+(on?'置いてあります'+(pe?'(EV'+pe+')':''):'まだ置いていません')+'</span></div>';
+    if(!c){
+      if(ui.sshort===sk)h+='<div class="k">あった台数を入れて送ります</div><div class="mvbox"><input type="number" min="0" max="'+nrNum(r.units)+'" id="ck-'+d+'-'+i+'" data-keep value="'+Math.max(nrNum(r.units)-1,0)+'" aria-label="あった台数"><span class="hint" style="margin:0">台</span></div><div class="tri2"><button class="big primary" data-act="chk" data-k="short" data-d="'+d+'" data-i="'+i+'">これで送る</button><button class="big" data-act="sshort" data-k="">もどる</button></div>';
+      else h+='<div class="k">'+nrNum(r.units)+'台そろっていますか?</div><div class="tri"><button class="big okb" data-act="chk" data-k="ok" data-d="'+d+'" data-i="'+i+'">そろっている</button><button class="big" data-act="sshort" data-k="'+sk+'">足りない</button><button class="big badb" data-act="chk" data-k="none" data-d="'+d+'" data-i="'+i+'">ない</button></div>';
+    }else{
+      h+='<div class="res-l"><b>'+(c.k==="ok"?'そろっている':c.k==="none"?'ない(業者と管理者に伝えました)':'足りない: '+nrNum(c.got)+'台だけ(業者と管理者に伝えました)')+'</b>'+(b?'':'<button class="link" data-act="chk" data-k="" data-d="'+d+'" data-i="'+i+'">なおす</button>')+'</div>';
+      if(c.k!=="none"){
+        if(!b)h+='<div class="evrow">'+esc(retLabel(r))+'の どのエレベーターの前に もどしましたか?'+evButtons(key,bev)+'</div>';
+        h+='<button class="big '+(b?'okb':'primary')+'" data-act="sback" data-d="'+d+'" data-i="'+i+'" data-ev="'+bev+'">'+(b?'✓ '+esc(retLabel(r))+'の EV'+bev+'前へ もどしました(取り消す)':esc(retLabel(r))+'の EV'+bev+'前へ もどしました')+'</button>';
+      }
+    }
+    h+='</div>'});
+  return h+'<p class="hint">「戻し一覧」と「追加注文」の状況は、くわしく表示で見られます。</p></section>';
+}
+
+/* ---- 管理者: きょうやること ---- */
+function sAdminTasks(C){
+  var t=[],now=C.t,lim=nrDs(new Date(nrPd(now).getTime()+7*864e5));
+  Object.keys(D.days).sort().forEach(function(d){var s=C.sim.byDate[d];if(nrBase(d)<now||nrBase(d)>lim||D.confirmed[d]||!nrNum(D.days[d].cap))return;
+    t.push({t:fmtLong(d)+"の回収を決める",s:s&&s.asg.length?(nrNum(D.days[d].cap)-s.left)+'台ぶんの割り振りができています':'まだ割り振れる台数がありません',tab:"cal",d:d})});
+  Object.keys(D.confirmed).sort().forEach(function(d){if(nrBase(d)!==now)return;var rs=(D.confirmed[d].rows||[]).filter(function(r){return nrNum(r.units)>0}),np=rs.filter(function(r){return isPlaced(d,r)}).length,nb=rs.filter(function(r){return r.back}).length,bad=rs.filter(function(r){return r.chk&&r.chk.k!=="ok"&&!r.back}).length;
+    t.unshift({t:'本日の回収'+(sesLabel(d)?' '+sesLabel(d):''),s:'置いた '+np+'/'+rs.length+'・もどした '+nb+'/'+rs.length+(bad?'・足りない/ない '+bad+'件':''),tab:"cal",d:d,warn:!!bad})});
+  var no=newOrders();if(no)t.push({t:'追加の注文が'+no+'件あります',s:orderList().filter(function(x){return x.o.st==="new"}).slice(0,2).map(function(x){return (x.o.n||vname(x.vid))+' '+x.o.f+'階に'+nrNum(x.o.u)+'台'}).join('・'),tab:"ord"});
+  var st=stageTodo(C);if(st)t.push({t:'EVが停まらない階の指示が'+st+'件',s:'前の日までに、どのEV前へ盛替えるかを決めます',tab:"stg"});
+  var pc=Object.keys(D.members).filter(function(id){return !D.approved[id]}).length;if(pc)t.push({t:'業者の登録が'+pc+'件あります',s:'登録した業者を確かめます',tab:"mem"});
+  return t;
+}
+function sAdminHome(C){
+  var t=sAdminTasks(C),h='<section class="panel simple"><div class="pane-h"><h2>きょうやること</h2><span class="hint" style="margin:0">'+t.length+'件</span></div>';
+  if(!t.length)h+='<p class="empty">いまやることはありません。</p>';
+  else h+='<div class="tasks">'+t.map(function(x){return '<div class="task'+(x.warn?' warn':'')+'"><div><b>'+esc(x.t)+'</b><small>'+esc(x.s)+'</small></div><button class="btn primary" data-act="sgo" data-tab="'+x.tab+'"'+(x.d?' data-d="'+x.d+'"':'')+'>開く</button></div>'}).join("")+'</div>';
+  return h+'<p class="hint">やることが終わると、この一覧から消えます。ほかの機能は上のボタンから開きます。全部のタブを使うときは「くわしく表示へ」を押します。</p></section>';
+}
+
 function renderPriority(C){
   var R=C.rank,h='<section class="panel"><div class="mhead"><h2>優先順位</h2></div>';
   if(!R.list.length)return h+'<p class="empty">業者の搬出希望がまだ入力されていません。</p></section>';
@@ -1564,7 +1748,7 @@ function wdByDay(C){var out=[[],[],[],[],[],[],[]],anyD=[];
 function wdBoard(C){
   var b=wdByDay(C),any=b.any,has=b.days.some(function(l){return l.length});if(!has)return "";
   var order=[1,2,3,4,5,6,0],h='<div class="wdboard"><h3>曜日ごとの担当業者'+(C.cfg.wdFrom?'<span class="hint" style="margin:0 0 0 8px">'+esc(fmtD(C.cfg.wdFrom))+'の回収日から</span>':'')+'</h3><div class="wdgrid">';
-  order.forEach(function(w){h+='<div><b>'+WD[w]+'</b>'+(b.days[w].length?b.days[w].map(function(v){return '<span class="wdn"><i class="chip" style="background:'+vcolor(v)+'"></i>'+esc(vname(v))+'</span>'}).join(""):'<span class="hint" style="margin:0">なし</span>')+'</div>'});
+  order.forEach(function(w){h+='<div><b>'+WD[w]+'</b>'+(b.days[w].length?b.days[w].map(function(v){return '<span class="wdn">'+vchip(v)+'</span>'}).join(""):'<span class="hint" style="margin:0">なし</span>')+'</div>'});
   h+='</div>'+(any.length?'<p class="hint" style="margin:6px 0 0">曜日を決めていない業者(どの曜日でも回収): '+esc(any.map(vname).join("・"))+'</p>':'')+'</div>';
   return h;
 }
@@ -2009,15 +2193,18 @@ function render(remote){
   if(ENV.admin){
     var pc=Object.keys(D.members).filter(function(id){return !D.approved[id]}).length;
     tabs=[["cal","カレンダー"],["pri","優先順位"],["map","階マップ"],["stg","不停止階"+(stageTodo(C)?'<span class="cnt">'+stageTodo(C)+'</span>':"")],["cnf","確定と再振り分け"],["vin","業者入力"],["ord","追加注文"+(newOrders()?'<span class="cnt">'+newOrders()+'</span>':"")],["rec","追加と戻し"],["rep","集計・棚卸し"],["mem","登録"+(pc?'<span class="cnt">'+pc+'</span>':"")],["set","設定"]];
+    if(ui.simple){var tk=sAdminTasks(C).length;tabs=[["home","きょうやること"+(tk?'<span class="cnt">'+tk+'</span>':"")],["cal","カレンダー"],["vin","業者の台数"],["ord","注文と記録"+(newOrders()?'<span class="cnt">'+newOrders()+'</span>':"")],["set","設定"]];}
   }else if(ENV.crew){var crewOk=!!D.crews[ENV.uid];/* 揚重(盛替え)業者は、搬出予定を見て、搬出の確認と戻しの✅を付けるだけ */
     tabs=crewOk?[["cal","搬出予定"],["ret","戻し一覧"],["ord","追加注文"]]:[["creg","登録"]];
     if(!crewOk)ui.tab="creg";else if(ui.tab!=="cal"&&ui.tab!=="ret"&&ui.tab!=="ord")ui.tab="cal";
-  }else tabs=vendorOk?[["cal","カレンダー"],["vin","業者入力"]]:[["reg","登録"]];
+    if(crewOk&&ui.simple)tabs=[];
+  }else tabs=vendorOk?(ui.simple&&!ENV.admin?sVendorTabs():[["cal","カレンダー"],["vin","業者入力"]]):[["reg","登録"]];
   if(!ENV.crew){if(!ENV.admin&&!vendorOk)ui.tab="reg";else if(!ENV.admin&&ui.tab!=="cal"&&ui.tab!=="vin")ui.tab="cal";}
-  h='<div class="top"><div><h1>スクラップ搬出 調整<span class="role">'+(ENV.admin?'管理者':ENV.crew?(D.crews[ENV.uid]?'盛替え業者':'未登録'):ENV.preview?'業者(プレビュー)':(vendorOk?'業者':'未登録'))+'</span></h1><p>業者が入力した階別の保有・搬出希望を、回収日ごとの台数・時間・エレベーター集積に合わせて自動で配分します</p>'+(window.NR_ACCOUNT?'<p class="acct">'+esc(window.NR_ACCOUNT.email||"")+' <button class="btn sm" data-act="logout">ログアウト</button> <button class="btn sm" data-act="reload">↻ 最新にする</button>'+(ui.synced?' <span class="muted" style="font-size:12px">'+p2(ui.synced.getHours())+':'+p2(ui.synced.getMinutes())+' 更新</span>':'')+'</p>':'')
+  h='<div class="top"><div><h1>スクラップ搬出 調整<span class="role">'+(ENV.admin?'管理者':ENV.crew?(D.crews[ENV.uid]?'盛替え業者':'未登録'):ENV.preview?'業者(プレビュー)':(vendorOk?'業者':'未登録'))+'</span></h1><p>業者が入力した階別の保有・搬出希望を、回収日ごとの台数・時間・エレベーター集積に合わせて自動で配分します</p>'+(window.NR_ACCOUNT?'<p class="acct">'+esc(window.NR_ACCOUNT.email||"")+' <button class="btn sm" data-act="logout">ログアウト</button> <button class="btn sm" data-act="reload">↻ 最新にする</button>'+(ENV.mode==="noid"?'':simpleToggle())+(ui.synced?' <span class="muted" style="font-size:12px">'+p2(ui.synced.getHours())+':'+p2(ui.synced.getMinutes())+' 更新</span>':'')+'</p>':'')
    +(PEND.n&&(!navigator.onLine||Date.now()-PEND.since>3500)?'<div class="note warn" style="margin:8px 0 0"><span><b>未送信 '+PEND.n+'件</b> '+(navigator.onLine?'送信を待っています。':'電波がありません。')+'入力は端末に残っていて、つながると自動で送ります。画面は閉じても大丈夫です。</span></div>':'')
    +(window.NR_DEMO?'<div class="note warn" style="margin:8px 0 0"><span><b>お試し版です。</b>データはこの端末のブラウザだけに保存され、本番のアプリとは関係ありません。業者・台数はすべて架空です。 <button class="btn sm" data-act="demoreset">最初からやり直す</button></span></div>':'')+'</div><div class="tabs'+(ENV.admin?'':' big')+'" role="tablist">';
-  tabs.forEach(function(t){h+='<button role="tab" aria-selected="'+(ui.tab===t[0])+'" data-act="tab" data-tab="'+t[0]+'">'+t[1]+'</button>'});
+  var simpleV=ui.simple&&!ENV.admin&&!ENV.crew&&vendorOk;
+  tabs.forEach(function(t){var cur=simpleV?(ui.stab||"s-home")===t[0]:ui.tab===t[0];h+='<button role="tab" aria-selected="'+cur+'" data-act="'+(simpleV?'stab':'tab')+'" data-tab="'+t[0]+'">'+t[1]+'</button>'});
   h+='</div></div>';
   if(ENV.preview){
     var pids=Object.keys(D.vendors).filter(isActive).sort(function(a,b){return vname(a)<vname(b)?-1:1});
@@ -2029,9 +2216,9 @@ function render(remote){
   if(ENV.admin&&!Object.keys(D.vendors).length&&!Object.keys(D.days).length&&!Object.keys(D.members).length)h+='<div class="note"><span>まだデータがありません。サンプルを入れて動きを確認できます。</span><button class="btn sm" data-act="sampleon">サンプルを入れる</button></div>';
   if(ENV.mode==="noid")h+='';
   else if(ENV.admin){
-    h+=ui.tab==="cal"?renderCal(C):ui.tab==="pri"?renderPriority(C):ui.tab==="map"?renderMap(C):ui.tab==="stg"?renderStageTab(C):ui.tab==="cnf"?renderConfirmed(C):ui.tab==="rec"?renderRec(C):ui.tab==="ord"?renderOrders(C):ui.tab==="rep"?renderReport(C):ui.tab==="mem"?renderMem(C):ui.tab==="set"?renderSet(C):renderVin(C);
-  }else if(ENV.crew)h+=ui.tab==="creg"?renderCrewReg():ui.tab==="ret"?renderRet(C):ui.tab==="ord"?renderOrders(C):renderCal(C);
-  else h+=!vendorOk?renderReg():(ui.tab==="cal"?renderCal(C):renderVin(C));
+    h+=ui.simple&&ui.tab==="home"?sAdminHome(C):ui.tab==="home"?renderCal(C):ui.tab==="cal"?renderCal(C):ui.tab==="pri"?renderPriority(C):ui.tab==="map"?renderMap(C):ui.tab==="stg"?renderStageTab(C):ui.tab==="cnf"?renderConfirmed(C):ui.tab==="rec"?renderRec(C):ui.tab==="ord"?renderOrders(C):ui.tab==="rep"?renderReport(C):ui.tab==="mem"?renderMem(C):ui.tab==="set"?renderSet(C):renderVin(C);
+  }else if(ENV.crew)h+=ui.tab==="creg"?renderCrewReg():ui.simple?sCrew(C):ui.tab==="ret"?renderRet(C):ui.tab==="ord"?renderOrders(C):renderCal(C);
+  else h+=!vendorOk?renderReg():ui.simple?sVendor(C):(ui.tab==="cal"?renderCal(C):renderVin(C));
   var box=document.createElement("div");box.innerHTML=h;
   /* 数字の欄の左に −、右に ＋ を付ける。押すと1ずつ、押し続けると続けて増減し、離したときに保存する */
   Array.prototype.forEach.call(box.querySelectorAll('input[type="number"],input.tinput'),function(inp){
@@ -2105,6 +2292,18 @@ function onClick(ev){
   if(act==="logout"){if(window.NR_ACCOUNT)window.NR_ACCOUNT.logout();return}
   if(act==="reload"){location.reload();return}
   if(act==="tab"){ui.tab=b.getAttribute("data-tab")}
+  else if(act==="simple"){ui.simple=!ui.simple;saveUiPref();if(ENV.admin)ui.tab=ui.simple?"home":"cal";else if(!ENV.crew)ui.tab="cal";else ui.tab="cal";window.scrollTo(0,0)}
+  else if(act==="stab"){ui.stab=b.getAttribute("data-tab");window.scrollTo(0,0)}
+  else if(act==="sfull"){ui.simple=false;saveUiPref();ui.tab=b.getAttribute("data-tab")||"cal";window.scrollTo(0,0)}
+  else if(act==="sgo"){ui.tab=b.getAttribute("data-tab");var gd=b.getAttribute("data-d");if(gd){ui.sel=gd;ui.month=new Date(nrPd(nrBase(gd)).getFullYear(),nrPd(nrBase(gd)).getMonth(),1,12)}window.scrollTo(0,0)}
+  else if(act==="sday"){ui.sday=b.getAttribute("data-d")}
+  else if(act==="sev"){ui.sev=ui.sev||{};ui.sev[b.getAttribute("data-key")]=Number(b.getAttribute("data-ev"))}
+  else if(act==="sshort"){ui.sshort=b.getAttribute("data-k")||null}
+  else if(act==="saddf"){var af0=Math.min(LIM.fmax,nrNum((document.getElementById("s-addf")||{}).value));if(af0>=LIM.fmin){ui.sadd=af0;document.getElementById("s-addf").value=""}else{ui.msg="足す階を入れてください。";ui.msgKind="bad"}}
+  else if(act==="splace"){var spd=b.getAttribute("data-d"),spr=((D.confirmed[spd]||{}).rows||[])[Number(b.getAttribute("data-i"))];
+    if(spr&&(ENV.admin||spr.vid===ENV.vid)){var spon=!isPlaced(spd,spr);mutVendor(spr.vid,function(v){v.placed=v.placed||{};if(spon)v.placed[spd+"|"+spr.floor]={at:nowIso(),ev:nrNum(spr.ev)||null};else delete v.placed[spd+"|"+spr.floor]})}}
+  else if(act==="sback"){var sbd=b.getAttribute("data-d"),sbi=Number(b.getAttribute("data-i")),sbr=((D.confirmed[sbd]||{}).rows||[])[sbi];if(sbr)backSet(sbd,sbi,!sbr.back,Number(b.getAttribute("data-ev")))}
+  else if(act==="sin"){var siv=b.getAttribute("data-vid"),six=((D.orders[siv]||{}).items||{})[id];if(six)crewIn(siv,id,b.getAttribute("data-d"),(ui.sev&&ui.sev["in:"+siv+":"+id])||((D.days[b.getAttribute("data-d")]||{}).elev||[])[0]||1,nrNum(six.u))}
   else if(act==="prev"){ui.month=new Date(ui.month.getFullYear(),ui.month.getMonth()-1,1,12)}
   else if(act==="next"){ui.month=new Date(ui.month.getFullYear(),ui.month.getMonth()+1,1,12)}
   else if(act==="today"){var t=new Date();ui.month=new Date(t.getFullYear(),t.getMonth(),1,12);ui.sel=today()}
@@ -2246,13 +2445,8 @@ function onClick(ev){
       ui.msg=fmtDP(dd)+"に"+df+"階へ"+du+"台上げたことを業者に報告し、保有台数を増やしました。";ui.msgKind="ok"}
   }
   else if(act==="crewin"){
-    var cvv=b.getAttribute("data-vid"),cdd=b.getAttribute("data-d"),ck=cvv+"-"+id,cx=((D.orders[cvv]||{}).items||{})[id],ce=nrNum((document.getElementById("ce-"+ck)||{}).value)||null,cu=nrNum((document.getElementById("cu-"+ck)||{}).value);
-    if(!cx||cx.st!=="plan"||!cu){ui.msg="入れた台数を入れてください。";ui.msgKind="bad"}
-    else{var lid2="l"+Date.now().toString(36)+Math.floor(Math.random()*1e3).toString(36);
-      addLog(cvv,{id:lid2,d:cdd,f:cx.f,u:cu,e:ce,m:"追加注文"+(cx.memo?": "+cx.memo:""),at:nowIso(),by:who()});
-      var ad5={};ad5[cx.f]={h:cu};addFloors(cvv,ad5,1);
-      mutOrder(cvv,function(o){var x=o.items[id];if(x){x.st="done";x.done={d:cdd,ev:ce,u:cu,at:nowIso(),log:lid2,by:who()}}});
-      ui.msg=(cx.n||vname(cvv))+"の"+cx.f+"階に"+cu+"台入れました。業者の台数にも反映しました。";ui.msgKind="ok"}
+    var cvv=b.getAttribute("data-vid"),ck=cvv+"-"+id;
+    crewIn(cvv,id,b.getAttribute("data-d"),nrNum((document.getElementById("ce-"+ck)||{}).value)||null,nrNum((document.getElementById("cu-"+ck)||{}).value));
   }
   else if(act==="ordundo"){
     if(ui.confirm==="ou-"+id){var rv2=b.getAttribute("data-vid"),rx=((D.orders[rv2]||{}).items||{})[id];
@@ -2438,10 +2632,7 @@ function onChange(ev){
     var bd=el.getAttribute("data-d"),bi=Number(el.getAttribute("data-i"));
     var fx=null,r=((D.confirmed[bd]||{}).rows||[])[bi];
     if(r){var bk=r.back?clone(r.back):null;
-      if(f==="back"){
-        if(el.checked&&!bk){var bsel=document.getElementById("bev-"+bd+"-"+bi);bk={ev:(bsel&&nrNum(bsel.value))||placedEv(bd,r)||r.ev||((D.days[bd]||{}).elev||[])[0]||1,u:nrNum(r.units),at:nowIso(),by:who()};bk.adj=backAdj(r,bk.u);fx=[r.vid,bk.adj,1];setRowSt(bd,r,{back:bk},(r.n||vname(r.vid))+" "+r.floor+"階 戻した: "+retLabel(r)+(Array.isArray(r.rets)?"":"へ"+bk.u+"台")+" EV"+bk.ev)}
-        else if(!el.checked&&bk){if(bk.adj)fx=[r.vid,bk.adj,-1];setRowSt(bd,r,{back:null},(r.n||vname(r.vid))+" "+r.floor+"階 戻しを取り消し")}
-      }
+      if(f==="back"){var bsel=document.getElementById("bev-"+bd+"-"+bi);backSet(bd,bi,el.checked,bsel&&nrNum(bsel.value))}
       else if(bk){
         if(f==="backev")bk.ev=nrNum(el.value)||1;
         else{var nu=nrNum(el.value),s0=retSplit(r,bk.u),s1=retSplit(r,nu),one={},chg=false;bk.u=nu;
@@ -2504,7 +2695,10 @@ function spinStep(inp,n){
 }
 /* 続けて何回か押せるよう、保存(change)は最後に押してから0.6秒たってから1回だけ行う。その間は画面の描き直しで数字が戻らないようにする */
 var spinSave=null;
-function spinFlush(){if(!spinSave)return;clearTimeout(spinSave.t);var inp=spinSave.inp;spinSave=null;if(inp.isConnected)inp.dispatchEvent(new Event("change",{bubbles:true}))}
+function spinFlush(){if(!spinSave)return;clearTimeout(spinSave.t);var inp=spinSave.inp;spinSave=null;
+  /* 描き直しで欄が入れ替わっていたら、同じ欄を探して値を移してから保存する */
+  if(!inp.isConnected&&inp.id){var rp=document.getElementById(inp.id);if(rp){rp.value=inp.value;inp=rp}}
+  if(inp.isConnected)inp.dispatchEvent(new Event("change",{bubbles:true}))}
 function spinEnd(){if(!spin)return;clearTimeout(spin.t);clearInterval(spin.iv);var inp=spin.inp;spin=null;inp.__stp=Date.now();
   if(spinSave&&spinSave.inp!==inp)spinFlush();if(spinSave)clearTimeout(spinSave.t);spinSave={inp:inp,t:setTimeout(spinFlush,600)}}
 window.addEventListener("pagehide",spinFlush);

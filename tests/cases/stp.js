@@ -3,7 +3,7 @@ const REPO=require('path').resolve(__dirname,'..','..')+'/';const WORK=process.c
 const {chromium,devices}=require('playwright');const fs=require('fs');
 fs.writeFileSync('main-test.html',fs.readFileSync(REPO+'index.html','utf8'));
 const FS={config:{main:{evn:2}},approved:{v1:{company:'A',vid:'v1'}},vendors:{v1:{floors:{10:{h:6,w:3}}}},days:{'2026-11-19':{cap:12,elev:[1]}}};
-(async()=>{const b=await chromium.launch();const cx=await b.newContext({...devices['iPad (gen 7) landscape'],hasTouch:true});
+(async()=>{const b=await chromium.launch();const cx=await b.newContext({...devices['iPad (gen 7) landscape'],hasTouch:true});await cx.addInitScript(()=>{try{if(!localStorage.getItem('nr-uipref'))localStorage.setItem('nr-uipref','{"simple":false}')}catch(e){}});/*FULLVIEW*/
 await cx.route(/gstatic\.com\/firebasejs/,r=>r.fulfill({contentType:'text/javascript',body:fs.readFileSync('fake-fb.js','utf8')}));
 await cx.route(/jsdelivr/,r=>r.fulfill({contentType:'text/javascript',body:fs.readFileSync('qrcode.min.js','utf8')}));
 await cx.addInitScript(w=>{window.__FAKE_UID='g1';window.__FAKE_EMAIL='kowa0371@gmail.com';window.__FS=w},FS);

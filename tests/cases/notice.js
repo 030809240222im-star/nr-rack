@@ -9,7 +9,7 @@ const FS={config:{main:{evn:2}},approved:{v1:{company:'A',vid:'v1'}},vendors:{v1
  confirmed:{[k]:{rows:[{vid:'v1',floor:10,units:2,ev:1},{vid:'v1',floor:11,units:2,ev:1}]}},
  notices:{v1:{items:{a1:{d:k,kind:'confirm',msg,at:t0},a2:{d:k,kind:'confirm',msg,at:t1}}}}};
 (async()=>{const b=await chromium.launch();
-const open=async(uid,email)=>{const cx=await b.newContext({viewport:{width:1100,height:900}});
+const open=async(uid,email)=>{const cx=await b.newContext({viewport:{width:1100,height:900}});await cx.addInitScript(()=>{try{if(!localStorage.getItem('nr-uipref'))localStorage.setItem('nr-uipref','{"simple":false}')}catch(e){}});/*FULLVIEW*/
 await cx.route(/gstatic\.com\/firebasejs/,r=>r.fulfill({contentType:'text/javascript',body:fs.readFileSync('fake-fb.js','utf8')}));
 await cx.route(/jsdelivr/,r=>r.fulfill({contentType:'text/javascript',body:fs.readFileSync('qrcode.min.js','utf8')}));
 await cx.addInitScript(w=>{window.__FAKE_UID=w.uid;window.__FAKE_EMAIL=w.email;if(!sessionStorage.__FS)window.__FS=w.FS},{uid,email,FS});

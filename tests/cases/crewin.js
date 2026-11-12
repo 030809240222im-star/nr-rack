@@ -8,7 +8,7 @@ const FS={config:{main:{evn:3}},approved:{v1:{company:'サンユー',vid:'v1'},v
  vendors:{v1:{floors:{17:{h:14,w:10}}},v2:{floors:{25:{h:2,w:0}}}},days:{[k]:{cap:8,elev:[1]}},
  confirmed:{[k]:{rows:[{vid:'v1',floor:17,units:4,ev:1,n:'サンユー',ret:20}]}},
  orders:{v2:{items:{o1:{f:25,u:4,st:'plan',plan:{d:k},n:'日本建工',at:new Date().toISOString()}}}}};
-(async()=>{const b=await chromium.launch();const cx=await b.newContext({...devices['iPhone 13']});
+(async()=>{const b=await chromium.launch();const cx=await b.newContext({...devices['iPhone 13']});await cx.addInitScript(()=>{try{if(!localStorage.getItem('nr-uipref'))localStorage.setItem('nr-uipref','{"simple":false}')}catch(e){}});/*FULLVIEW*/
 await cx.route(/gstatic\.com\/firebasejs/,r=>r.fulfill({contentType:'text/javascript',body:fs.readFileSync('fake-fb.js','utf8')}));
 await cx.route(/jsdelivr/,r=>r.fulfill({contentType:'text/javascript',body:fs.readFileSync('qrcode.min.js','utf8')}));
 await cx.addInitScript(w=>{window.__FAKE_UID='c1';window.__FAKE_EMAIL='c@x.jp';window.__FS=w},FS);

@@ -8,7 +8,7 @@ const FS={approved:{v1:{company:'搬出業者A'}},vendors:{v1:{floors:{38:{h:8,w
  days:{[D(0)]:{cap:8,elev:[1,2]}},confirmed:{[D(0)]:{rows:[{vid:'v1',floor:5,units:4,ev:1,n:'搬出業者A'},{vid:'v1',floor:12,units:4,ev:2,to:10,ret:20,n:'搬出業者A'}]}}};
 (async()=>{const b=await chromium.launch();
  for(const who of [{uid:'v1',email:'a@x.jp'},{uid:'g1',email:'kowa0371@gmail.com'}]){
-  const ctx=await b.newContext({...devices['iPhone 13']});const errs=[];
+  const ctx=await b.newContext({...devices['iPhone 13']});await ctx.addInitScript(()=>{try{if(!localStorage.getItem('nr-uipref'))localStorage.setItem('nr-uipref','{"simple":false}')}catch(e){}});/*FULLVIEW*/const errs=[];
   await ctx.route(/gstatic\.com\/firebasejs/,r=>r.fulfill({contentType:'text/javascript',body:fs.readFileSync('fake-fb.js','utf8')}));
   await ctx.route(/jsdelivr/,r=>r.fulfill({contentType:'text/javascript',body:fs.readFileSync('qrcode.min.js','utf8')}));
   await ctx.addInitScript(w=>{window.__FAKE_UID=w.who.uid;window.__FAKE_EMAIL=w.who.email;window.__FS=w.FS},{who,FS});

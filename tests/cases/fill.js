@@ -9,7 +9,7 @@ const S0={config:{},approved:{v1:{company:'サンオキ',vid:'v1'},v2:{company:'
  days:{[k]:{cap:8,elev:[1]},[D(8)]:{cap:8,elev:[1]}},
  confirmed:{[k]:{rows:[{vid:'v1',floor:16,units:6,ev:1,n:'サンオキ'},{vid:'v2',floor:19,units:2,ev:1,n:'日本建工'}]}}};
 (async()=>{const b=await chromium.launch();
-async function mk(S,dev){const cx=await b.newContext(dev||{viewport:{width:1280,height:1100}});
+async function mk(S,dev){const cx=await b.newContext(dev||{viewport:{width:1280,height:1100}});await cx.addInitScript(()=>{try{if(!localStorage.getItem('nr-uipref'))localStorage.setItem('nr-uipref','{"simple":false}')}catch(e){}});/*FULLVIEW*/
  await cx.route(/gstatic\.com\/firebasejs/,r=>r.fulfill({contentType:'text/javascript',body:fs.readFileSync('fake-fb.js','utf8')}));
  await cx.route(/jsdelivr/,r=>r.fulfill({contentType:'text/javascript',body:fs.readFileSync('qrcode.min.js','utf8')}));
  await cx.addInitScript(w=>{window.__FAKE_UID='g1';window.__FAKE_EMAIL='kowa0371@gmail.com';window.__FS=w},S);
