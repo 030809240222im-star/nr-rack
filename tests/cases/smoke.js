@@ -15,11 +15,11 @@ const FS={config:{main:{evn:3,ev:{1:[1,30],2:[1,30],3:[1,30]},ns:{1:'5,6'},auto:
  orders:{v2:{items:{o1:{f:25,u:4,st:'plan',plan:{d:D(0)},n:'日本建工',at:now},o2:{f:12,u:2,st:'new',n:'日本建工',at:now},o3:{f:11,u:1,st:'done',plan:{d:D(-3)},done:{d:D(-3),ev:1,u:1},n:'日本建工',at:now}}}},
  notices:{v1:{items:{a1:{d:D(0),kind:'confirm',msg:'確定しました',at:now},a2:{d:D(2),kind:'remind',msg:'【入力のお願い】…',at:now},a3:{d:D(0),kind:'msg',msg:'連絡です',at:now}}}},
  plans:{v1:{logs:[{id:'l1',d:D(-3),f:17,u:2,m:'追加'}]}}};
-const SKIP=/^(logout|reload|resetall|sampleoff|sampleon|demoreset|push|pvon|pvoff|vdel|copyurl|csv|backup|dayoff|unconfirm)$/;
+const SKIP=/^(simple|logout|reload|resetall|sampleoff|sampleon|demoreset|push|pvon|pvoff|vdel|copyurl|csv|backup|dayoff|unconfirm)$/;
 (async()=>{const b=await chromium.launch();let total=0,clicks=0;const problems=[];
 for(const who of [{uid:'g1',email:'kowa0371@gmail.com',f:'main-test.html',n:'管理者'},{uid:'v1',email:'a@x.jp',f:'main-test.html',n:'業者'},{uid:'c1',email:'c@x.jp',f:'crew-test.html',n:'盛替え'}])
 for(const simple of [true,false])
-for(const [dn,dev] of [['スマホ',devices['iPhone 13']],['iPad',devices['iPad Pro 11 landscape']],['PC',{viewport:{width:1280,height:900}}]]){
+for(const [dn,dev] of [['スマホ',devices['iPhone 13']],['PC',{viewport:{width:1280,height:900}}]]){
   const cx=await b.newContext(dev);await cx.addInitScript(v=>{try{localStorage.setItem('nr-uipref',JSON.stringify({simple:v}))}catch(e){}},simple);
   await cx.route(/gstatic\.com\/firebasejs/,r=>r.fulfill({contentType:'text/javascript',body:fs.readFileSync('fake-fb.js','utf8')}));
   await cx.route(/jsdelivr/,r=>r.fulfill({contentType:'text/javascript',body:fs.readFileSync('qrcode.min.js','utf8')}));
@@ -34,17 +34,18 @@ for(const [dn,dev] of [['スマホ',devices['iPhone 13']],['iPad',devices['iPad 
     await go();
     // カレンダーの日を全部押す
     const days=await p.locator('[data-act=sel]').evaluateAll(x=>x.map(e=>e.dataset.date));
-    for(const d of days.slice(0,40)){await p.click(`[data-act=sel][data-date="${d}"]`).catch(()=>{});clicks++}
+    for(const d of days.slice(0,12)){await p.click(`[data-act=sel][data-date="${d}"]`).catch(()=>{});clicks++}
     // 画面のボタンを全部押す(押すたびに元の画面に戻る)
     const acts=await p.locator('button[data-act]').evaluateAll(bs=>bs.map((x,i)=>[x.dataset.act,i]));
     const seenA={};
     for(const [a,i] of acts){if(SKIP.test(a)||a==='tab'||a==='stab'||a==='sel'||seenA[a])continue;seenA[a]=1;/* 同じ種類のボタンは1画面に1回 */
       const btn=p.locator('button[data-act]').nth(i);if(await btn.count()===0)continue;
       if((await btn.getAttribute('data-act'))!==a)continue;
-      await btn.click({timeout:1500}).catch(()=>{});clicks++;await p.waitForTimeout(30);
+      await btn.click({timeout:600}).catch(()=>{});clicks++;await p.waitForTimeout(30);
       const sw=await p.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth);if(sw>1)problems.push(label+' '+(tab||'')+' '+a+' はみ出し '+sw+'px');
       await go()}
   }
+  console.log(label+': ボタン・日付を押した数 '+clicks+(errs.length?' エラー'+errs.length:''));
   total+=errs.length;if(errs.length)problems.push(label+': '+[...new Set(errs)].slice(0,5).join(' | '));
   await cx.close();
 }

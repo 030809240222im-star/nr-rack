@@ -1876,7 +1876,7 @@ function renderHol(C){
   Object.keys(c.holx).forEach(function(d){if(c.holx[d])list[d]=typeof c.holx[d]==="string"?c.holx[d]:"休日"});
   var ds=Object.keys(list).filter(function(d){return d>=t&&d<=end}).sort();
   var h='<section class="panel"><h2 style="margin-bottom:8px">祝日の扱い</h2>'
-   +'<label class="chk" style="margin-bottom:6px"><input type="checkbox" id="s-eq" data-f="eq"'+(c.eq?' checked':'')+'>祝日がある週は、業者の曜日を1日ずつずらす(その週に収まらないときは全業者に等分する)</label>'
+   +'<label class="chk" style="margin-bottom:6px;white-space:normal"><input type="checkbox" id="s-eq" data-f="eq"'+(c.eq?' checked':'')+'>祝日がある週は、業者の曜日を1日ずつずらす(その週に収まらないときは全業者に等分する)</label>'
    +'<p class="hint" style="margin:0 0 10px">業者ごとの回収曜日に使っている曜日に祝日(休日)が当たる週は、その週の業者の曜日を1日ずつ後ろへずらします(例: 月曜が祝日なら、月曜の業者は火曜、火曜の業者は水曜…)。休日が2日あれば2日ずらします。ずらした先が土曜より後になる業者がいて、その週に収まらないときは、その週だけ曜日の指定をやめて、全業者に等分します(その週にこれまで回収した台数が少ない業者から1台ずつ)。祝日でない週は、これまでどおり曜日の指定で回収します。</p>'
    +'<h3 style="margin:10px 0 4px">これから1年ほどの休日</h3>';
   if(!ds.length)h+='<p class="empty">ありません。</p>';

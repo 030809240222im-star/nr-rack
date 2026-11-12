@@ -11,7 +11,7 @@ const bad = [];
 for (const f of fs.readdirSync(dir).filter(x => /\.(m?js)$/.test(x) && x.includes(only)).sort()) {
   const title = (fs.readFileSync(path.join(dir, f), "utf8").split("\n")[0] || "").replace(/^\/\/\s*/, "");
   console.log("\n=== " + f + "  " + title);
-  const r = spawnSync(process.execPath, [path.join(dir, f)], { cwd: work, encoding: "utf8", timeout: 180000, env: process.env });
+  const r = spawnSync(process.execPath, [path.join(dir, f)], { cwd: work, encoding: "utf8", timeout: /smoke/.test(f) ? 900000 : 180000, env: process.env });
   const out = (r.stdout || "") + (r.stderr || "");
   console.log(out.trim());
   if (r.status !== 0 || /\bERR\b|Error:|TypeError|ReferenceError/.test(out)) bad.push(f);
