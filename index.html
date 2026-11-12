@@ -616,7 +616,7 @@ function nrSimulate(vendors,days,cfg,startStr,confirmed){
     }else if(Object.keys(cfg.wd).length&&!(cfg.wdFrom&&nrBase(d)<cfg.wdFrom)){
       /* 曜日の指定を使う日: その曜日の担当業者がいれば、担当業者どうしで均等に割る(1台ずつ、その日に回収した台数が少ない業者から)。
          残りの積載は、ほかの業者を逼迫している順に入れる。担当業者がいない曜日は、全業者を逼迫している順に入れる */
-      var wdw=nrPd(d).getDay(),ass=cand.filter(function(c){return cfg.wd[c.vid]&&nrOnDay(c.vid,d,cfg)}),rest=cand.filter(function(c){return !(cfg.wd[c.vid]&&nrOnDay(c.vid,d,cfg))});
+      var ass=cand.filter(function(c){return cfg.wd[c.vid]&&nrOnDay(c.vid,d,cfg)}),rest=cand.filter(function(c){return !(cfg.wd[c.vid]&&nrOnDay(c.vid,d,cfg))});
       if(ass.length){
         var by2={},vs2=[],du={};
         nrPrio(ass.slice().sort(nrCmp)).forEach(function(c){if(!by2[c.vid]){by2[c.vid]=[];vs2.push(c.vid)}by2[c.vid].push(c)});
@@ -1717,7 +1717,7 @@ function sCrew(C){
 function cfSeen(){try{return JSON.parse(localStorage.getItem("nr-cfseen")||"{}")||{}}catch(e){return {}}}
 function cfSeenMark(d,at){try{var o=cfSeen(),lim=nrDs(new Date(Date.now()-30*864e5));Object.keys(o).forEach(function(k){if(nrBase(k)<lim)delete o[k]});o[d]=at;localStorage.setItem("nr-cfseen",JSON.stringify(o))}catch(e){}}
 function sAdminTasks(C){
-  var t=[],now=C.t,lim=nrDs(new Date(nrPd(now).getTime()+7*864e5));
+  var t=[],now=C.t;
   /* 新たに確定した回収(自動確定を含む)で、この端末でまだ開いていないもの。「開く」を押すと消える */
   var cs=cfSeen();
   Object.keys(D.confirmed).sort().forEach(function(d){if(nrBase(d)<=now)return;var cf=D.confirmed[d],h0=(cf.hist||[])[0],at=(h0&&h0.at)||cf.at||"";if(!at||cs[d]===at)return;/* 確定した時刻(盛替え業者の入力では変わらない) */
@@ -2899,7 +2899,7 @@ window.NR_CONFIG={
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
 import {initializeApp} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import {getAuth,onAuthStateChanged,GoogleAuthProvider,signInWithPopup,signInWithRedirect,getRedirectResult,signInWithEmailAndPassword,createUserWithEmailAndPassword,sendPasswordResetEmail,sendEmailVerification,signOut} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import {getAuth,onAuthStateChanged,GoogleAuthProvider,signInWithPopup,getRedirectResult,signInWithEmailAndPassword,createUserWithEmailAndPassword,sendPasswordResetEmail,sendEmailVerification,signOut} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {initializeFirestore,collection,doc,onSnapshot,setDoc,deleteDoc,getDoc as getDocFs,increment,deleteField,arrayUnion,arrayRemove,persistentLocalCache,persistentMultipleTabManager} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 var CFG=window.NR_CONFIG,app=document.getElementById("app");

@@ -1,0 +1,1 @@
+{"name":"firebase-admin","type":"module","exports":{".":"./index.js","./firestore":"./firestore.js"}}

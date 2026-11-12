@@ -1,0 +1,1 @@
+export default {generateVAPIDKeys:()=>({publicKey:"PUB",privateKey:"PRIV"}),setVapidDetails(){},async sendNotification(sub,payload){console.log("  [push] "+sub.endpoint+" "+JSON.parse(payload).title+" / "+JSON.parse(payload).body.split("\n")[0].slice(0,50));if(sub.endpoint.includes("gone")){const e=new Error("gone");e.statusCode=410;throw e}return {statusCode:201}}};

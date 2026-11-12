@@ -12,7 +12,7 @@ const root = new URL("..", import.meta.url).pathname;
 const html = fs.readFileSync(root + "index.html", "utf8");
 const core = html.match(/<script>\s*([\s\S]*?function nrRank[\s\S]*?)<\/script>/)[1];
 const ctx = {}; vm.createContext(ctx); vm.runInContext(core, ctx);
-const { nrCfg, nrSimulate, nrDs, nrPd, nrNum, nrRemind } = ctx;
+const { nrCfg, nrSimulate, nrDs, nrPd, nrNum, nrRemind, nrBase } = ctx;
 
 const sa = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT || "null");
 if (!sa) { console.log("FIREBASE_SERVICE_ACCOUNT がないので終了します"); process.exit(0); }
