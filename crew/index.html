@@ -65,6 +65,7 @@ button:disabled{opacity:.45;cursor:default}
 
 /* かんたん表示 */
 .tabs:empty{display:none}
+.sprio{font-weight:700}.prio-sum b{font-family:var(--f-head)}
 .modebtn{border-color:var(--accent);color:var(--accent)}
 .simple{display:flex;flex-direction:column;gap:12px;font-size:16px}
 .simple .k{font-size:13px;font-weight:700;color:var(--muted)}
@@ -676,7 +677,8 @@ var ui={tab:"cal",month:null,sel:null,vsel:null,only:false,confirm:"",msg:"",msg
 /* 表示の好み(チェックや絞り込み)は、この端末に覚えておき、読み込み直しても戻す */
 var UIPREF=["only","mapOnly","mapMode","mapVen","simple"];
 try{var up=JSON.parse(localStorage.getItem("nr-uipref")||"{}");UIPREF.forEach(function(k){if(up[k]!==undefined)ui[k]=up[k]})}catch(e){}
-if(ui.simple===undefined)ui.simple=true;
+/* 最初の表示: パソコン(マウスで操作する広い画面)は詳しい表示、スマホ・タブレットは簡単な表示 */
+if(ui.simple===undefined){try{ui.simple=!(window.matchMedia&&matchMedia("(pointer:fine) and (min-width:900px)").matches)}catch(e){ui.simple=true}}
 function saveUiPref(){try{var o={};UIPREF.forEach(function(k){if(ui[k]!==undefined&&ui[k]!==null)o[k]=ui[k]});localStorage.setItem("nr-uipref",JSON.stringify(o))}catch(e){}}
 
 function clone(x){return JSON.parse(JSON.stringify(x))}
@@ -1538,49 +1540,54 @@ function renderMap(C){
   }
   return h+'</div><p class="hint" style="margin:8px 0 0">棒の長さは、いちばん多い階を100%にした割合です。EVの○×は、設定タブのEVごとの停止階にもとづきます。</p></section>';
 }
-/* ==== かんたん表示 ====
-   ui.simple が true のとき(最初はかんたん)。今までの画面は「くわしく」で開ける。
-   業者: よてい・台数・お知らせ / 盛替え業者: その日の作業を1件ずつ大きなカードで / 管理者: きょうやること + 4つの入口 */
+/* ==== 簡単表示 ====
+   ui.simple が true のとき(最初は簡単)。今までの画面は「詳しく」で開ける。
+   業者: 予定・台数・お知らせ / 盛替え業者: その日の作業を1件ずつ大きなカードで / 管理者: 今日やること + 4つの入口 */
 function vtext(id){var ids=Object.keys(D.vendors).sort(),i=ids.indexOf(id);return VTEXT[(i<0?0:i)%VTEXT.length]}
 /* 色の中に会社名を入れた名札 */
 function vchip(vid,label,cls){return '<span class="nt'+(cls?' '+cls:'')+'" style="background:'+vcolor(vid)+';color:'+vtext(vid)+'">'+esc(label==null?vname(vid):label)+'</span>'}
 function shortName(s){s=String(s||"");return s.length>4?s.slice(0,3):s}
 function evButtons(key,cur){return '<span class="evp" role="group" aria-label="エレベーター">'+evList().map(function(e){return '<button type="button" data-act="sev" data-key="'+esc(key)+'" data-ev="'+e+'" aria-pressed="'+(e===cur)+'">EV'+e+'</button>'}).join("")+'</span>'}
-function simpleToggle(){return ' <button class="btn sm modebtn" data-act="simple">'+(ui.simple?'くわしく表示へ':'かんたん表示へ')+'</button>'}
+function simpleToggle(){return ' <button class="btn sm modebtn" data-act="simple">'+(ui.simple?'詳しく表示へ':'簡単表示へ')+'</button>'}
 
 /* ---- 業者 ---- */
 function sVendorTabs(){var n=noticeList(ENV.vid).filter(function(x){return !x.ack}).length;
-  return [["s-home","よてい"],["s-count","台数"],["s-news","お知らせ"+(n?'<span class="cnt">'+n+'</span>':'')]]}
+  return [["s-home","予定"],["s-count","台数"],["s-news","お知らせ"+(n?'<span class="cnt">'+n+'</span>':'')]]}
 function sVendor(C){var t=ui.stab||"s-home";return t==="s-count"?sVendorCount(C):t==="s-news"?sVendorNews():sVendorHome(C)}
 function sVendorHome(C){
   var mr=myRows().filter(function(x){return nrBase(x.d)>=C.t}),h='<section class="panel simple">';
   h+=problemBox();
-  if(!mr.length)h+='<div class="todo"><div class="k">つぎに出す日</div><p class="what">まだ決まっていません。</p><p class="hint" style="margin:0">「台数」で、いまある台数と出したい台数を入れておくと、管理者が出す日を決めます。決まったら、ここに大きく出ます。</p></div>';
+  if(!mr.length)h+='<div class="todo"><div class="k">次に出す日</div><p class="what">まだ決まっていません。</p><p class="hint" style="margin:0">「台数」で、今ある台数と出したい台数を入れておくと、管理者が出す日を決めます。決まったら、ここに大きく出ます。</p></div>';
   else{var d0=mr[0].d,first=mr.filter(function(x){return x.d===d0}),day=D.days[d0]||{},allp=first.every(function(x){return isPlaced(x.d,x.r)});
-    h+='<div class="todo'+(allp?' done':'')+'"><div class="k">'+(nrBase(d0)===C.t?'きょう出す':'つぎに出す日')+'</div><div class="when">'+esc(fmtLong(d0))+' <small>'+esc(fmtTime(day))+'</small></div>';
+    h+='<div class="todo'+(allp?' done':'')+'"><div class="k">'+(nrBase(d0)===C.t?'今日出す':'次に出す日')+'</div><div class="when">'+esc(fmtLong(d0))+' <small>'+esc(fmtTime(day))+'</small></div>';
     first.forEach(function(x){var r=x.r,on=isPlaced(x.d,r);
       h+='<div class="srow"><p class="what"><b>'+r.floor+'階</b> の <b>'+nrNum(r.units)+'台</b> を <span class="place">'+esc(evLabel(r.ev,r.to))+'</span> に置く</p>'
-        +(r.to?'<p class="hint" style="margin:0">前の日までに'+r.to+'階へうつしてから置いてください。</p>':'')
+        +(r.to?'<p class="hint" style="margin:0">前の日までに'+r.to+'階へ移してから置いてください。</p>':'')
         +'<button class="big '+(on?'okb':'primary')+'" data-act="splace" data-d="'+x.d+'" data-i="'+x.i+'">'+(on?'✓ 置きました(取り消す)':'置きました')+'</button></div>'});
     h+='<p class="hint" style="margin:0">'+(allp?'置いたことが管理者に伝わりました。':'前の日までに置いて、「置きました」を押してください。')+'</p></div>';
     var rest=mr.filter(function(x){return x.d!==d0});
-    if(rest.length)h+='<div class="scard"><div class="k">そのあとの予定</div>'+rest.map(function(x){return '<div>'+esc(fmtD(x.d))+' '+x.r.floor+'階 '+nrNum(x.r.units)+'台 → '+esc(evLabel(x.r.ev,x.r.to))+'</div>'}).join("")+'</div>';
+    if(rest.length)h+='<div class="scard"><div class="k">その後の予定</div>'+rest.map(function(x){return '<div>'+esc(fmtD(x.d))+' '+x.r.floor+'階 '+nrNum(x.r.units)+'台 → '+esc(evLabel(x.r.ev,x.r.to))+'</div>'}).join("")+'</div>';
   }
   var fl=(D.vendors[ENV.vid]||{}).floors||{},ks=Object.keys(fl).map(Number).sort(function(a,b){return b-a});
-  h+='<div class="scard"><div class="k">いま入れてある台数</div>'+(ks.length?ks.map(function(f){return '<div>'+f+'階 いまある <b>'+nrNum(fl[f].h)+'</b>台 / 出したい <b>'+nrNum(fl[f].w)+'</b>台</div>'}).join(""):'<div>まだ入れていません。</div>')
+  h+='<div class="scard"><div class="k">今入れてある台数</div>'+(ks.length?ks.map(function(f){return '<div>'+f+'階 今ある <b>'+nrNum(fl[f].h)+'</b>台 / 出したい <b>'+nrNum(fl[f].w)+'</b>台</div>'}).join(""):'<div>まだ入れていません。</div>')
     +'<button class="big" data-act="stab" data-tab="s-count">台数を入れる・なおす</button></div>';
   return h+'</section>';
 }
 function sVendorCount(C){
   var fl=(D.vendors[ENV.vid]||{}).floors||{},ks=Object.keys(fl).map(Number);if(ui.sadd&&ks.indexOf(ui.sadd)<0)ks.push(ui.sadd);ks.sort(function(a,b){return b-a});
-  var h='<section class="panel simple"><p class="hint" style="margin:0">階ごとに、<b>いまある台数</b>と、そのうち<b>出したい台数</b>を入れます。入れた数字は自動で保存されます。</p>';
+  var h='<section class="panel simple"><p class="hint" style="margin:0">階ごとに、<b>今ある台数</b>と、そのうち<b>出したい台数</b>を入れます。入れた数字は自動で保存されます。</p>';
+  /* 先に出す順番と、順番ごとの台数(次の搬出では、この順に先に回収する) */
+  var pr=ks.filter(function(f){var e=fl[f]||{};return nrNum(e.p)&&nrNum(e.w)}).sort(function(a,b){return nrNum(fl[a].p)-nrNum(fl[b].p)});
+  if(pr.length){var tot=0;h+='<div class="scard prio-sum"><div class="k">次の搬出で先に出す順番</div>'+pr.map(function(f){var e=fl[f],q=nrNum(e.pq)?Math.min(nrNum(e.pq),nrNum(e.w)):nrNum(e.w);tot+=q;return '<div><b>'+nrNum(e.p)+'番</b> '+f+'階 '+q+'台</div>'}).join("")+'<div>先に出す合計 <b>'+tot+'台</b></div></div>'}
   ks.forEach(function(f){var e=fl[f]||{},hh=nrNum(e.h),ww=nrNum(e.w);
     h+='<div class="scard"><div class="fl-h">'+f+'階</div>'
-     +'<div class="q"><span>いまある</span><input type="number" min="0" id="sh-'+f+'" data-f="floor" data-fl="'+f+'" data-k="h" value="'+hh+'" aria-label="'+f+'階のいまある台数"></div>'
+     +'<div class="q"><span>今ある</span><input type="number" min="0" id="sh-'+f+'" data-f="floor" data-fl="'+f+'" data-k="h" value="'+hh+'" aria-label="'+f+'階の今ある台数"></div>'
      +'<div class="q"><span>出したい</span><input type="number" min="0" max="'+hh+'" id="sw-'+f+'" data-f="floor" data-fl="'+f+'" data-k="w" value="'+ww+'" aria-label="'+f+'階の出したい台数"></div>'
-     +(ww>hh?'<p class="hint bad" style="margin:0">出したい台数が、いまある台数より多くなっています。</p>':'')+'</div>'});
-  h+='<div class="scard"><div class="q"><span>ほかの階を足す</span><span class="mvbox"><input type="number" min="'+LIM.fmin+'" max="'+LIM.fmax+'" id="s-addf" data-keep placeholder="階" aria-label="足す階"><button class="btn" data-act="saddf">足す</button></span></div></div>'
-   +'<div class="scard"><div class="k">くわしい設定</div><p class="hint" style="margin:0">もどしてほしい階を変える、先に出したい階を決める、NRボックスを追加で注文する、は「くわしく表示」の「業者入力」で行います。</p><button class="big" data-act="sfull" data-tab="vin">くわしい設定を開く</button></div>';
+     +(ww>hh?'<p class="hint bad" style="margin:0">出したい台数が、今ある台数より多くなっています。</p>':'')
+     +(ww?'<label class="chk sprio"><input type="checkbox" id="sp-'+f+'" data-f="prio" data-fl="'+f+'"'+(nrNum(e.p)?' checked':'')+'>先に出す</label>'
+       +(nrNum(e.p)?'<div class="q"><span>順番</span><input type="number" min="1" id="spn-'+f+'" data-f="prank" data-fl="'+f+'" value="'+nrNum(e.p)+'" aria-label="'+f+'階の先に出す順番"></div><div class="q"><span>先に出す台数</span><input type="number" min="1" max="'+ww+'" id="spq-'+f+'" data-f="pqty" data-fl="'+f+'" value="'+(nrNum(e.pq)?Math.min(nrNum(e.pq),ww):ww)+'" aria-label="'+f+'階から先に出す台数"></div>':''):'')+'</div>'});
+  h+='<div class="scard"><div class="q"><span>他の階を足す</span><span class="mvbox"><input type="number" min="'+LIM.fmin+'" max="'+LIM.fmax+'" id="s-addf" data-keep placeholder="階" aria-label="足す階"><button class="btn" data-act="saddf">足す</button></span></div></div>'
+   +'<div class="scard"><div class="k">詳しい設定</div><p class="hint" style="margin:0">戻してほしい階を変える、先に出したい階を決める、NRボックスを追加で注文する、は「詳しく表示」の「業者入力」で行います。</p><button class="big" data-act="sfull" data-tab="vin">詳しい設定を開く</button></div>';
   return h+'</section>';
 }
 function sVendorNews(){
@@ -1602,46 +1609,46 @@ function sCrew(C){
   var cf=D.confirmed[d],rows=((cf&&cf.rows)||[]).map(function(r,i){return {r:r,i:i}}).filter(function(x){return nrNum(x.r.units)>0}),day=D.days[d]||{};
   var adds=orderList().filter(function(x){return x.o.plan&&x.o.plan.d===nrBase(d)&&(x.o.st==="plan"||x.o.st==="done")});
   var nc=rows.filter(function(x){return x.r.chk}).length,nb=rows.filter(function(x){return x.r.back}).length,ni=adds.filter(function(x){return x.o.st==="done"}).length;
-  h+='<div class="sprog"><b>'+esc(fmtLong(d))+' '+esc(fmtTime(day))+'</b><span>確かめた '+nc+'/'+rows.length+'・もどした '+nb+'/'+rows.length+(adds.length?'・入れた '+ni+'/'+adds.length:'')+'</span></div>';
+  h+='<div class="sprog"><b>'+esc(fmtLong(d))+' '+esc(fmtTime(day))+'</b><span>確かめた '+nc+'/'+rows.length+'・戻した '+nb+'/'+rows.length+(adds.length?'・入れた '+ni+'/'+adds.length:'')+'</span></div>';
   if(adds.length){h+='<div class="sect">📦 新しいBOXの搬入</div>';
     adds.forEach(function(x){var o=x.o,done=o.st==="done",key="in:"+x.vid+":"+x.id,ev=(ui.sev&&ui.sev[key])||((day.elev||[])[0])||1;
       h+='<div class="newbox'+(done?' ok':'')+'"><div class="k">'+(done?'入れました(業者の台数にも反映)':'入れる')+'</div><div class="nb-h">'+vchip(x.vid,o.n||vname(x.vid))+'<b>'+o.f+'階 '+nrNum(o.u)+'台</b></div>'
-        +(done?'<div class="hint" style="margin:0">EV'+(nrNum(o.done.ev)||"?")+'で '+nrNum(o.done.u)+'台</div>':'<div class="evrow">どのエレベーターで入れますか?'+evButtons(key,ev)+'</div><button class="big okb" data-act="sin" data-vid="'+esc(x.vid)+'" data-id="'+esc(x.id)+'" data-d="'+nrBase(d)+'">EV'+ev+'で 入れました</button>')+'</div>'})}
-  if(rows.length)h+='<div class="sect">⬆ 出すBOXの確かめと、もどし</div>';
+        +(done?'<div class="hint" style="margin:0">EV'+(nrNum(o.done.ev)||"?")+'で '+nrNum(o.done.u)+'台</div>':'<div class="evrow">'+evButtons(key,ev)+'</div><button class="big okb" data-act="sin" data-vid="'+esc(x.vid)+'" data-id="'+esc(x.id)+'" data-d="'+nrBase(d)+'">EV'+ev+'で 入れました</button>')+'</div>'})}
+  if(rows.length)h+='<div class="sect">⬆ 出すBOXの確かめと、戻し</div>';
   rows.forEach(function(x){var r=x.r,i=x.i,c=r.chk,b=r.back,on=isPlaced(d,r),pe=placedEv(d,r),key="b:"+d+":"+i,bev=b?nrNum(b.ev):((ui.sev&&ui.sev[key])||pe||nrNum(r.ev)||1),sk=d+"|"+i;
     h+='<div class="job'+(c?(c.k==="ok"?' ok':' bad'):'')+(b?' back':'')+'"><div class="job-h">'+vchip(r.vid,rowName(r))+'<b>'+r.floor+'階 '+nrNum(r.units)+'台</b></div>'
       +'<div class="job-s"><span class="place">'+esc(evLabel(r.ev,r.to))+'</span><span class="pill'+(on?' ok':'')+'">'+(on?'置いてあります'+(pe?'(EV'+pe+')':''):'まだ置いていません')+'</span></div>';
     if(!c){
       if(ui.sshort===sk)h+='<div class="k">あった台数を入れて送ります</div><div class="mvbox"><input type="number" min="0" max="'+nrNum(r.units)+'" id="ck-'+d+'-'+i+'" data-keep value="'+Math.max(nrNum(r.units)-1,0)+'" aria-label="あった台数"><span class="hint" style="margin:0">台</span></div><div class="tri2"><button class="big primary" data-act="chk" data-k="short" data-d="'+d+'" data-i="'+i+'">これで送る</button><button class="big" data-act="sshort" data-k="">もどる</button></div>';
-      else h+='<div class="k">'+nrNum(r.units)+'台そろっていますか?</div><div class="tri"><button class="big okb" data-act="chk" data-k="ok" data-d="'+d+'" data-i="'+i+'">そろっている</button><button class="big" data-act="sshort" data-k="'+sk+'">足りない</button><button class="big badb" data-act="chk" data-k="none" data-d="'+d+'" data-i="'+i+'">ない</button></div>';
+      else h+='<div class="tri"><button class="big okb" data-act="chk" data-k="ok" data-d="'+d+'" data-i="'+i+'">揃っている</button><button class="big" data-act="sshort" data-k="'+sk+'">足りない</button><button class="big badb" data-act="chk" data-k="none" data-d="'+d+'" data-i="'+i+'">ない</button></div>';
     }else{
-      h+='<div class="res-l"><b>'+(c.k==="ok"?'そろっている':c.k==="none"?'ない(業者と管理者に伝えました)':'足りない: '+nrNum(c.got)+'台だけ(業者と管理者に伝えました)')+'</b>'+(b?'':'<button class="link" data-act="chk" data-k="" data-d="'+d+'" data-i="'+i+'">なおす</button>')+'</div>';
+      h+='<div class="res-l"><b>'+(c.k==="ok"?'揃っている':c.k==="none"?'ない(業者と管理者に伝えました)':'足りない: '+nrNum(c.got)+'台だけ(業者と管理者に伝えました)')+'</b>'+(b?'':'<button class="link" data-act="chk" data-k="" data-d="'+d+'" data-i="'+i+'">なおす</button>')+'</div>';
       if(c.k!=="none"){
-        if(!b)h+='<div class="evrow">'+esc(retLabel(r))+'の どのエレベーターの前に もどしましたか?'+evButtons(key,bev)+'</div>';
-        h+='<button class="big '+(b?'okb':'primary')+'" data-act="sback" data-d="'+d+'" data-i="'+i+'" data-ev="'+bev+'">'+(b?'✓ '+esc(retLabel(r))+'の EV'+bev+'前へ もどしました(取り消す)':esc(retLabel(r))+'の EV'+bev+'前へ もどしました')+'</button>';
+        if(!b)h+='<div class="evrow">'+evButtons(key,bev)+'</div>';
+        h+='<button class="big '+(b?'okb':'primary')+'" data-act="sback" data-d="'+d+'" data-i="'+i+'" data-ev="'+bev+'">'+(b?'✓ '+esc(retLabel(r))+'の EV'+bev+'前へ 戻しました(取り消す)':esc(retLabel(r))+'の EV'+bev+'前へ 戻しました')+'</button>';
       }
     }
     h+='</div>'});
-  return h+'<p class="hint">「戻し一覧」と「追加注文」の状況は、くわしく表示で見られます。</p></section>';
+  return h+'</section>';
 }
 
-/* ---- 管理者: きょうやること ---- */
+/* ---- 管理者: 今日やること ---- */
 function sAdminTasks(C){
   var t=[],now=C.t,lim=nrDs(new Date(nrPd(now).getTime()+7*864e5));
   Object.keys(D.days).sort().forEach(function(d){var s=C.sim.byDate[d];if(nrBase(d)<now||nrBase(d)>lim||D.confirmed[d]||!nrNum(D.days[d].cap))return;
     t.push({t:fmtLong(d)+"の回収を決める",s:s&&s.asg.length?(nrNum(D.days[d].cap)-s.left)+'台ぶんの割り振りができています':'まだ割り振れる台数がありません',tab:"cal",d:d})});
   Object.keys(D.confirmed).sort().forEach(function(d){if(nrBase(d)!==now)return;var rs=(D.confirmed[d].rows||[]).filter(function(r){return nrNum(r.units)>0}),np=rs.filter(function(r){return isPlaced(d,r)}).length,nb=rs.filter(function(r){return r.back}).length,bad=rs.filter(function(r){return r.chk&&r.chk.k!=="ok"&&!r.back}).length;
-    t.unshift({t:'本日の回収'+(sesLabel(d)?' '+sesLabel(d):''),s:'置いた '+np+'/'+rs.length+'・もどした '+nb+'/'+rs.length+(bad?'・足りない/ない '+bad+'件':''),tab:"cal",d:d,warn:!!bad})});
+    t.unshift({t:'本日の回収'+(sesLabel(d)?' '+sesLabel(d):''),s:'置いた '+np+'/'+rs.length+'・戻した '+nb+'/'+rs.length+(bad?'・足りない/ない '+bad+'件':''),tab:"cal",d:d,warn:!!bad})});
   var no=newOrders();if(no)t.push({t:'追加の注文が'+no+'件あります',s:orderList().filter(function(x){return x.o.st==="new"}).slice(0,2).map(function(x){return (x.o.n||vname(x.vid))+' '+x.o.f+'階に'+nrNum(x.o.u)+'台'}).join('・'),tab:"ord"});
   var st=stageTodo(C);if(st)t.push({t:'EVが停まらない階の指示が'+st+'件',s:'前の日までに、どのEV前へ盛替えるかを決めます',tab:"stg"});
   var pc=Object.keys(D.members).filter(function(id){return !D.approved[id]}).length;if(pc)t.push({t:'業者の登録が'+pc+'件あります',s:'登録した業者を確かめます',tab:"mem"});
   return t;
 }
 function sAdminHome(C){
-  var t=sAdminTasks(C),h='<section class="panel simple"><div class="pane-h"><h2>きょうやること</h2><span class="hint" style="margin:0">'+t.length+'件</span></div>';
+  var t=sAdminTasks(C),h='<section class="panel simple"><div class="pane-h"><h2>今日やること</h2><span class="hint" style="margin:0">'+t.length+'件</span></div>';
   if(!t.length)h+='<p class="empty">いまやることはありません。</p>';
   else h+='<div class="tasks">'+t.map(function(x){return '<div class="task'+(x.warn?' warn':'')+'"><div><b>'+esc(x.t)+'</b><small>'+esc(x.s)+'</small></div><button class="btn primary" data-act="sgo" data-tab="'+x.tab+'"'+(x.d?' data-d="'+x.d+'"':'')+'>開く</button></div>'}).join("")+'</div>';
-  return h+'<p class="hint">やることが終わると、この一覧から消えます。ほかの機能は上のボタンから開きます。全部のタブを使うときは「くわしく表示へ」を押します。</p></section>';
+  return h+'<p class="hint">やることが終わると、この一覧から消えます。他の機能は上のボタンから開きます。全部のタブを使うときは「詳しく表示へ」を押します。</p></section>';
 }
 
 function renderPriority(C){
@@ -2193,7 +2200,7 @@ function render(remote){
   if(ENV.admin){
     var pc=Object.keys(D.members).filter(function(id){return !D.approved[id]}).length;
     tabs=[["cal","カレンダー"],["pri","優先順位"],["map","階マップ"],["stg","不停止階"+(stageTodo(C)?'<span class="cnt">'+stageTodo(C)+'</span>':"")],["cnf","確定と再振り分け"],["vin","業者入力"],["ord","追加注文"+(newOrders()?'<span class="cnt">'+newOrders()+'</span>':"")],["rec","追加と戻し"],["rep","集計・棚卸し"],["mem","登録"+(pc?'<span class="cnt">'+pc+'</span>':"")],["set","設定"]];
-    if(ui.simple){var tk=sAdminTasks(C).length;tabs=[["home","きょうやること"+(tk?'<span class="cnt">'+tk+'</span>':"")],["cal","カレンダー"],["vin","業者の台数"],["ord","注文と記録"+(newOrders()?'<span class="cnt">'+newOrders()+'</span>':"")],["set","設定"]];}
+    if(ui.simple){var tk=sAdminTasks(C).length;tabs=[["home","今日やること"+(tk?'<span class="cnt">'+tk+'</span>':"")],["cal","カレンダー"],["vin","業者の台数"],["ord","注文と記録"+(newOrders()?'<span class="cnt">'+newOrders()+'</span>':"")],["set","設定"]];}
   }else if(ENV.crew){var crewOk=!!D.crews[ENV.uid];/* 揚重(盛替え)業者は、搬出予定を見て、搬出の確認と戻しの✅を付けるだけ */
     tabs=crewOk?[["cal","搬出予定"],["ret","戻し一覧"],["ord","追加注文"]]:[["creg","登録"]];
     if(!crewOk)ui.tab="creg";else if(ui.tab!=="cal"&&ui.tab!=="ret"&&ui.tab!=="ord")ui.tab="cal";

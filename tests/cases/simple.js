@@ -11,7 +11,7 @@ const FS={config:{main:{evn:3}},approved:{v1:{company:'サンユー',vid:'v1'},v
  notices:{v1:{items:{a1:{d:k,kind:'confirm',msg:'確定しました: 17階 4台(EV1前)',at:new Date().toISOString()}}}},
  orders:{v2:{items:{o1:{f:25,u:4,st:'plan',plan:{d:k},n:'日本建工',at:new Date().toISOString()},o2:{f:12,u:2,st:'new',n:'日本建工',at:new Date().toISOString()}}}}};
 (async()=>{const b=await chromium.launch();
-const open=async(uid,email,f,dev)=>{const cx=await b.newContext(dev||{...devices['iPhone 13']});
+const open=async(uid,email,f,dev)=>{const cx=await b.newContext(dev||{...devices['iPhone 13']});await cx.addInitScript(()=>{try{if(!localStorage.getItem('nr-uipref'))localStorage.setItem('nr-uipref','{"simple":true}')}catch(e){}});
 await cx.route(/gstatic\.com\/firebasejs/,r=>r.fulfill({contentType:'text/javascript',body:fs.readFileSync('fake-fb.js','utf8')}));
 await cx.route(/jsdelivr/,r=>r.fulfill({contentType:'text/javascript',body:fs.readFileSync('qrcode.min.js','utf8')}));
 await cx.addInitScript(w=>{window.__FAKE_UID=w.uid;window.__FAKE_EMAIL=w.email;if(!sessionStorage.__FS)window.__FS=w.FS},{uid,email,FS});
@@ -25,6 +25,8 @@ console.log(' よてい:',(await p.locator('.todo').innerText()).replace(/\s+/g,
 await p.click('[data-act=splace]');await p.waitForTimeout(300);console.log(' 置きました→',JSON.stringify((await st(p)).vendors.v1.placed));
 await p.click('[data-act=stab][data-tab=s-count]');await p.waitForTimeout(200);
 await p.locator('#sw-17').locator('xpath=preceding-sibling::button[1]').click();await p.waitForTimeout(1600);console.log(' 台数 17階 出したい→',(await st(p)).vendors.v1.floors['17'].w);
+await p.check('#sp-17');await p.waitForTimeout(400);await p.locator('#spq-17').locator('xpath=preceding-sibling::button[1]').click();await p.waitForTimeout(1600);
+console.log(' 先に出す:',JSON.stringify((await st(p)).vendors.v1.floors['17']),'|',(await p.locator('.prio-sum').innerText()).replace(/\s+/g,' '));
 await p.fill('#s-addf','30');await p.click('[data-act=saddf]');await p.waitForTimeout(200);console.log(' 足した階のカード:',await p.locator('#sh-30').count());
 await p.click('[data-act=stab][data-tab=s-news]');await p.waitForTimeout(200);await p.click('[data-act=ack]');await p.waitForTimeout(300);console.log(' 見ました→',Object.keys((await st(p)).notices.v1.ack||{}).length);
 await p.click('[data-act=simple]');await p.waitForTimeout(300);console.log(' くわしく表示:',(await p.locator('.tabs button').allInnerTexts()).join('|'));
@@ -48,3 +50,10 @@ await p.click('.task >> nth=0 >> [data-act=sgo]');await p.waitForTimeout(300);co
 console.log(' 車の帯:',(await p.locator('.bands').first().innerText().catch(()=>'')).replace(/\s+/g,' '));
 await p.click('[data-act=simple]');await p.waitForTimeout(300);console.log(' くわしく:',(await p.locator('.tabs button').count()),'タブ');
 await b.close()})();
+// パソコン(マウス・広い画面)で初めて開くと詳しい表示
+(async()=>{const {chromium}=require('playwright');const b=await chromium.launch();const cx=await b.newContext({viewport:{width:1280,height:900}});
+await cx.route(/gstatic\.com\/firebasejs/,r=>r.fulfill({contentType:'text/javascript',body:fs.readFileSync('fake-fb.js','utf8')}));
+await cx.route(/jsdelivr/,r=>r.fulfill({contentType:'text/javascript',body:fs.readFileSync('qrcode.min.js','utf8')}));
+await cx.addInitScript(w=>{window.__FAKE_UID='v1';window.__FAKE_EMAIL='v@x.jp';window.__FS=w},FS);
+const p=await cx.newPage();await p.goto('file://'+WORK+'/main-test.html');await p.click('#lg-google');await p.waitForTimeout(800);
+console.log('パソコンの最初の表示:',(await p.locator('.tabs button').allInnerTexts()).join('|'),(await p.locator('[data-act=simple]').innerText()));await b.close()})();
