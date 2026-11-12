@@ -2172,8 +2172,11 @@ function renderReg(){
   return h;
 }
 /* 管理者から連絡を送る: 宛先(業者1社・業者全員・盛替え業者)を選び、アプリのお知らせ・プッシュ通知・メールで届ける */
+/* 連絡を送れる会社: アプリに登録している会社すべて(台数をまだ入れていない会社も含む)。管理者が追加した業者(アプリを使わない)は除く */
+function msgVendors(){var m={};Object.keys(D.approved).forEach(function(u){m[vidOf(u)]=1});Object.keys(D.vendors).forEach(function(v){if(isActive(v))m[v]=1});
+  return Object.keys(m).filter(function(v){return !(D.vendors[v]||{}).manual}).sort(function(a,b){return vname(a)<vname(b)?-1:1})}
 function msgForm(){
-  var vs=Object.keys(D.vendors).filter(function(v){return isActive(v)&&!(D.vendors[v]||{}).manual}).sort(function(a,b){return vname(a)<vname(b)?-1:1});
+  var vs=msgVendors();
   return '<section class="panel"><h2 style="margin-bottom:6px">連絡を送る</h2><p class="hint" style="margin:0 0 8px">宛先を選んで送ると、相手のアプリのお知らせと、通知を受け取る設定をした端末に届きます(5〜10分ほどかかります)。業者には「見ました」のボタンが付き、見たかどうかが分かります。</p>'
    +'<div class="mvbox" style="flex-wrap:wrap"><select id="am-to" data-keep aria-label="宛先"><option value="">宛先を選ぶ</option><option value="*v">業者全員</option><option value="*c">盛替え業者全員</option>'
    +vs.map(function(v){return '<option value="'+esc(v)+'">'+esc(vname(v))+'</option>'}).join("")+'</select></div>'
@@ -2584,7 +2587,7 @@ function onClick(ev){
       if(at0==="*c"){mailOut("am-c-"+Date.now().toString(36),{to:"crew",d:td0,msg:"管理者から: "+am});n0=-1;
         /* 盛替え業者のアプリにも出す(設定に、最近14日の分だけ残す) */
         var cc=clone(D.config||{}),lim0=new Date(Date.now()-14*864e5).toISOString();cc.crewMsgs=(cc.crewMsgs||[]).filter(function(x){return x.at>=lim0}).concat([{at:nowIso(),msg:am,by:who()}]).slice(-20);putCfg(cc)}
-      else (at0==="*v"?Object.keys(D.vendors).filter(function(v){return isActive(v)&&!(D.vendors[v]||{}).manual}):[at0]).forEach(function(v){notify(v,td0,"msg",am);n0++});
+      else (at0==="*v"?msgVendors():[at0]).forEach(function(v){notify(v,td0,"msg",am);n0++});
       document.getElementById("am-msg").value="";
       ui.msg=(n0<0?"盛替え業者全員":at0==="*v"?"業者"+n0+"社":vname(at0))+"に連絡を送りました。通知は5〜10分ほどで届きます。";ui.msgKind="ok"}
   }
