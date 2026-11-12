@@ -2175,11 +2175,20 @@ function renderReg(){
 /* 連絡を送れる会社: アプリに登録している会社すべて(台数をまだ入れていない会社も含む)。管理者が追加した業者(アプリを使わない)は除く */
 function msgVendors(){var m={};Object.keys(D.approved).forEach(function(u){m[vidOf(u)]=1});Object.keys(D.vendors).forEach(function(v){if(isActive(v))m[v]=1});
   return Object.keys(m).filter(function(v){return !(D.vendors[v]||{}).manual}).sort(function(a,b){return vname(a)<vname(b)?-1:1})}
+/* 連絡が届かない会社(宛先の一覧に、選べない形で理由と一緒に出す): 管理者が追加した業者・承認待ち・利用者がいなくなった会社 */
+function msgNoReach(){var ok={},out=[],seen={};msgVendors().forEach(function(v){ok[v]=1});
+  var add=function(id,name,why){var k=name+"|"+why;if(ok[id]||seen[k]||!name)return;seen[k]=1;out.push({n:name,why:why})};
+  Object.keys(D.vendors).forEach(function(v){var x=D.vendors[v]||{};if(x.sample)return;add(v,vname(v),x.manual?"管理者が追加・アプリ未使用":"利用者がいません")});
+  Object.keys(D.members||{}).forEach(function(u){if(!D.approved[u]&&!D.blocked[u])add(u,(D.members[u]||{}).company,"承認待ち")});
+  Object.keys(D.orders||{}).forEach(function(v){if(D.vendors[v])return;var it=(D.orders[v]||{}).items||{},n="";Object.keys(it).forEach(function(i){n=n||it[i].n||""});add(v,n,"利用者がいません")});
+  return out.sort(function(a,b){return a.n<b.n?-1:1})}
 function msgForm(){
-  var vs=msgVendors();
+  var vs=msgVendors(),nr=msgNoReach();
   return '<section class="panel"><h2 style="margin-bottom:6px">連絡を送る</h2><p class="hint" style="margin:0 0 8px">宛先を選んで送ると、相手のアプリのお知らせと、通知を受け取る設定をした端末に届きます(5〜10分ほどかかります)。業者には「見ました」のボタンが付き、見たかどうかが分かります。</p>'
    +'<div class="mvbox" style="flex-wrap:wrap"><select id="am-to" data-keep aria-label="宛先"><option value="">宛先を選ぶ</option><option value="*v">業者全員</option><option value="*c">盛替え業者全員</option>'
-   +vs.map(function(v){return '<option value="'+esc(v)+'">'+esc(vname(v))+'</option>'}).join("")+'</select></div>'
+   +vs.map(function(v){return '<option value="'+esc(v)+'">'+esc(vname(v))+'</option>'}).join("")
+   +(nr.length?'<optgroup label="届かない会社(アプリを使っている人がいない)">'+nr.map(function(x){return '<option value="" disabled>'+esc(x.n)+'('+esc(x.why)+')</option>'}).join("")+'</optgroup>':'')+'</select></div>'
+   +(nr.length?'<p class="hint" style="margin:6px 0 0">'+nr.length+'社は、アプリを使っている人がいないので連絡が届きません(一覧の下に、選べない形で理由と一緒に出ています)。届けるには、その会社の人にアプリで登録してもらい、「利用を許可」してください。</p>':'')
    +'<textarea id="am-msg" data-keep maxlength="300" rows="3" style="width:100%;margin-top:8px" placeholder="例: 明日はEV2が点検のため、EV1前に置いてください。" aria-label="連絡の内容"></textarea>'
    +'<div style="margin-top:8px"><button class="btn primary" data-act="amsend">送る</button></div>'+msgSent()+'</section>';
 }

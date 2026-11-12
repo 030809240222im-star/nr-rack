@@ -3,7 +3,7 @@ const REPO=require('path').resolve(__dirname,'..','..')+'/';const WORK=process.c
 const {chromium}=require('playwright');const fs=require('fs');
 fs.writeFileSync('main-test.html',fs.readFileSync(REPO+'index.html','utf8'));
 fs.writeFileSync('crew-test.html',fs.readFileSync(REPO+'crew/index.html','utf8'));
-const FS={config:{main:{evn:2}},approved:{v1:{company:'サンユー',vid:'v1'},v2:{company:'日本建工',vid:'v2'},v3:{company:'オガシワ',vid:'v3'}},crews:{c1:{company:'盛替A',email:'c@x.jp'}},vendors:{v1:{floors:{10:{h:3,w:1}}},v2:{floors:{11:{h:3,w:1}}}}};
+const FS={config:{main:{evn:2}},approved:{v1:{company:'サンユー',vid:'v1'},v2:{company:'日本建工',vid:'v2'},v3:{company:'オガシワ',vid:'v3'}},crews:{c1:{company:'盛替A',email:'c@x.jp'}},vendors:{v1:{floors:{10:{h:3,w:1}}},v2:{floors:{11:{h:3,w:1}}},vm:{name:'手入力業者',manual:true,floors:{}}},members:{u7:{company:'承認待ち建設',email:'u7@x.jp',at:'2026-11-01T00:00:00Z'}},orders:{vx:{items:{o1:{f:27,u:4,n:'トップライズ',st:'new',at:'2026-11-01T00:00:00Z'}}}}};
 (async()=>{const b=await chromium.launch();
 const open=async(uid,email,f,F)=>{const cx=await b.newContext({viewport:{width:1100,height:900}});
 await cx.addInitScript(()=>{try{localStorage.setItem('nr-uipref','{"simple":true}')}catch(e){}});
@@ -12,6 +12,7 @@ await cx.route(/jsdelivr/,r=>r.fulfill({contentType:'text/javascript',body:fs.re
 await cx.addInitScript(w=>{window.__FAKE_UID=w.uid;window.__FAKE_EMAIL=w.email;if(!sessionStorage.__FS)window.__FS=w.F},{uid,email,F:F||FS});
 const p=await cx.newPage();p.on('pageerror',e=>console.log('ERR',e.message));await p.goto('file://'+WORK+'/'+f);await p.click('#lg-google');await p.waitForTimeout(800);return {cx,p}};
 let {cx,p}=await open('g1','kowa0371@gmail.com','main-test.html');console.log('宛先の一覧(台数未入力のオガシワも出る):',(await p.locator('#am-to option').allInnerTexts()).join('|'));
+console.log('選べる宛先:',(await p.locator('#am-to option:not([disabled])').allInnerTexts()).join('|'));console.log('届かない会社の説明:',(await p.locator('#am-to ~ p.hint, .mvbox + p.hint').first().innerText().catch(()=>'(なし)')).slice(0,30));
 await p.selectOption('#am-to','v1');await p.fill('#am-msg','明日はEV2が点検です。');await p.click('[data-act=amsend]');await p.waitForTimeout(300);console.log('1社:',(await p.locator('.note').first().innerText()).slice(0,40));
 await p.selectOption('#am-to','*v');await p.fill('#am-msg','全員へのお知らせです。');await p.click('[data-act=amsend]');await p.waitForTimeout(300);console.log('全員:',(await p.locator('.note').first().innerText()).slice(0,40));
 await p.selectOption('#am-to','*c');await p.fill('#am-msg','盛替えの皆さんへ。');await p.click('[data-act=amsend]');await p.waitForTimeout(300);console.log('盛替え:',(await p.locator('.note').first().innerText()).slice(0,40));
