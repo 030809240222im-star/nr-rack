@@ -1303,7 +1303,7 @@ function noticeList(vid){
     if(hit){hit.dups.push(x.id);if(x.ack&&!hit.ack)hit.ack=x.ack}else keep.push(x)});
   return keep.filter(function(x){return (x.o.d||"")>=from||!x.ack}).sort(function(a,b){return (a.o.at||"")<(b.o.at||"")?1:-1});
 }
-var NK={confirm:["📋","確定"],change:["⚠","変更"],cancel:["✖","取り消し"],trouble:["📣","連絡"],remind:["⏰","入力のお願い"],remind2:["⚠","重要"],move:["🔁","盛替え"]};
+var NK={confirm:["📋","確定"],change:["⚠","変更"],cancel:["✖","取り消し"],trouble:["📣","連絡"],remind:["⏰","入力のお願い"],remind2:["⚠","重要"],move:["🔁","盛替え"],msg:["✉","管理者から"]};
 /* 業者: まだ「確認した」を押していないお知らせ */
 function noticeBox(){
   if(ENV.admin||ENV.crew)return "";
@@ -1375,10 +1375,15 @@ function sesKeysOr(d){var ks=sesKeys(d);return ks.length?ks:[d]}
 /* 盛替え業者への通知: 管理者が出した「前日までに○階へ盛替え」の指示(まだ回収日が来ていないもの) */
 /* 盛替え日の初期値: 回収日の前日。前日が過ぎていれば今日 */
 function mvDefault(d,t){var p=nrDs(new Date(nrPd(nrBase(d)).getTime()-864e5));return p<t?t:p}
+/* 盛替え業者へ: 管理者からの連絡(最近7日) */
+function crewMsgBox(){
+  var lim=new Date(Date.now()-7*864e5).toISOString(),l=((D.config||{}).crewMsgs||[]).filter(function(x){return x.at>=lim}).slice().reverse();
+  return l.length?'<div class="todaybox next" role="status"><h3>✉ 管理者からの連絡</h3><ul>'+l.map(function(x){return '<li>'+esc(x.msg)+' <span class="hint" style="margin:0">'+esc(fmtAt(x.at))+'</span></li>'}).join("")+'</ul></div>':'';
+}
 function moveBox(C){
   var out=[];Object.keys(D.days).sort().forEach(function(d){if(nrBase(d)<C.t)return;var mv=D.days[d].moves||{};
     Object.keys(mv).sort().forEach(function(key){var q=key.split("|"),m=mv[key];out.push('<li><b>'+esc(fmtD(d))+'</b>の回収に向けて '+esc(vname(q[0]))+' '+q[1]+'階'+(nrNum(m.u)?' '+nrNum(m.u)+'台':'')+' → <b>'+(m.md?esc(fmtD(m.md))+'に':'前日までに')+'EV'+nrNum(m.ev)+'前の'+nrNum(m.to)+'階へ盛替え</b></li>')})});
-  return out.length?'<div class="todaybox next" role="status"><h3>🔔 盛替えの指示があります</h3><ul>'+out.join("")+'</ul></div>':'';
+  return crewMsgBox()+(out.length?'<div class="todaybox next" role="status"><h3>🔔 盛替えの指示があります</h3><ul>'+out.join("")+'</ul></div>':'');
 }
 function todayBox(C){
   var t=C.t,tm=nrDs(new Date(nrPd(t).getTime()+864e5));
@@ -1628,9 +1633,9 @@ function sVendorHome(C){
   var mr=myRows().filter(function(x){return nrBase(x.d)>=C.t}),h='<section class="panel simple">';
   h+=problemBox();
   /* 入力のお願い・警告(まだ「見ました」を押していないもの)は、予定の画面の一番上にも出す */
-  noticeList(ENV.vid).filter(function(x){return !x.ack&&(x.o.kind==="remind"||x.o.kind==="remind2")}).forEach(function(x){
-    h+='<div class="todo'+(x.o.kind==="remind2"?' warnb':'')+'"><div class="k">'+(x.o.kind==="remind2"?'⚠ 重要':'⏰ 入力のお願い')+'</div><p style="margin:0">'+esc(x.o.msg.replace(/^【[^】]*】/,''))+'</p>'
-      +'<button class="sbig primary" data-act="stab" data-tab="s-count">台数を入れる</button><button class="sbig" data-act="ack" data-id="'+esc(x.id)+'">見ました</button></div>'});
+  noticeList(ENV.vid).filter(function(x){return !x.ack&&(x.o.kind==="remind"||x.o.kind==="remind2"||x.o.kind==="msg")}).forEach(function(x){var mk=x.o.kind==="msg";
+    h+='<div class="todo'+(x.o.kind==="remind2"?' warnb':'')+'"><div class="k">'+(mk?'✉ 管理者から':x.o.kind==="remind2"?'⚠ 重要':'⏰ 入力のお願い')+'</div><p style="margin:0">'+esc(x.o.msg.replace(/^【[^】]*】/,''))+'</p>'
+      +(mk?'':'<button class="sbig primary" data-act="stab" data-tab="s-count">台数を入れる</button>')+'<button class="sbig" data-act="ack" data-id="'+esc(x.id)+'">見ました</button></div>'});
   if(!mr.length)h+='<div class="todo"><div class="k">次に出す日</div><p class="what">まだ決まっていません。</p><p class="hint" style="margin:0">「台数」で、今ある台数と出したい台数を入れておくと、管理者が出す日を決めます。決まったら、ここに大きく出ます。</p></div>';
   else{var d0=mr[0].d,first=mr.filter(function(x){return x.d===d0}),day=D.days[d0]||{},allp=first.every(function(x){return isPlaced(x.d,x.r)});
     h+='<div class="todo'+(allp?' done':'')+'"><div class="k">'+(nrBase(d0)===C.t?'今日出す':'次に出す日')+'</div><div class="when">'+esc(fmtLong(d0))+' <small>'+esc(fmtTime(day))+'</small></div>';
@@ -1733,7 +1738,7 @@ function sAdminHome(C){
   var t=sAdminTasks(C),h='<section class="panel simple"><div class="pane-h"><h2>今日やること</h2><span class="hint" style="margin:0">'+t.length+'件</span></div>';
   if(!t.length)h+='<p class="empty">いまやることはありません。</p>';
   else h+='<div class="tasks">'+t.map(function(x){return '<div class="task'+(x.warn?' warn':'')+'"><div><b>'+esc(x.t)+'</b><small>'+esc(x.s)+'</small></div><button class="btn primary" data-act="sgo" data-tab="'+x.tab+'"'+(x.d?' data-d="'+x.d+'"':'')+(x.seen?' data-seen="'+esc(x.seen)+'"':'')+'>開く</button></div>'}).join("")+'</div>';
-  return h+'<p class="hint">やることが終わると、この一覧から消えます。他の機能は上のボタンから開きます。全部のタブを使うときは「詳しく表示へ」を押します。</p></section>';
+  return h+'<p class="hint">やることが終わると、この一覧から消えます。他の機能は上のボタンから開きます。全部のタブを使うときは「詳しく表示へ」を押します。</p></section>'+msgForm();
 }
 
 function renderPriority(C){
@@ -2160,9 +2165,27 @@ function renderReg(){
    +'<div><button class="btn primary" data-act="regsubmit">'+(join?'この会社に参加する':m?'登録内容を送り直す':'登録する')+'</button></div></section>';
   return h;
 }
+/* 管理者から連絡を送る: 宛先(業者1社・業者全員・盛替え業者)を選び、アプリのお知らせ・プッシュ通知・メールで届ける */
+function msgForm(){
+  var vs=Object.keys(D.vendors).filter(function(v){return isActive(v)&&!(D.vendors[v]||{}).manual}).sort(function(a,b){return vname(a)<vname(b)?-1:1});
+  return '<section class="panel"><h2 style="margin-bottom:6px">連絡を送る</h2><p class="hint" style="margin:0 0 8px">宛先を選んで送ると、相手のアプリのお知らせと、通知を受け取る設定をした端末に届きます(5〜10分ほどかかります)。業者には「見ました」のボタンが付き、見たかどうかが分かります。</p>'
+   +'<div class="mvbox" style="flex-wrap:wrap"><select id="am-to" data-keep aria-label="宛先"><option value="">宛先を選ぶ</option><option value="*v">業者全員</option><option value="*c">盛替え業者全員</option>'
+   +vs.map(function(v){return '<option value="'+esc(v)+'">'+esc(vname(v))+'</option>'}).join("")+'</select></div>'
+   +'<textarea id="am-msg" data-keep maxlength="300" rows="3" style="width:100%;margin-top:8px" placeholder="例: 明日はEV2が点検のため、EV1前に置いてください。" aria-label="連絡の内容"></textarea>'
+   +'<div style="margin-top:8px"><button class="btn primary" data-act="amsend">送る</button></div>'+msgSent()+'</section>';
+}
+/* 送った連絡と、業者が見たか(最近14日) */
+function msgSent(){
+  var rows=[];Object.keys(D.notices).forEach(function(vid){noticeList(vid).forEach(function(x){if(x.o.kind==="msg")rows.push(x)})});
+  ((D.config||{}).crewMsgs||[]).forEach(function(m){rows.push({crew:true,o:{msg:m.msg,at:m.at},ack:null})});
+  if(!rows.length)return "";
+  rows.sort(function(a,b){return (a.o.at||"")<(b.o.at||"")?1:-1});
+  return '<h3 style="margin:12px 0 4px">送った連絡</h3><div class="tablewrap"><table class="rtable"><thead><tr><th class="l">業者</th><th class="l">内容</th><th class="l">見た</th></tr></thead><tbody>'
+   +rows.slice(0,30).map(function(x){return '<tr><td class="l vn">'+(x.crew?'盛替え業者全員':esc(vname(x.vid)))+'</td><td class="l" style="white-space:normal">'+esc(x.o.msg)+'<div class="hint" style="margin:0">'+esc(fmtAt(x.o.at))+'</div></td><td class="l">'+(x.crew?'<span class="hint" style="margin:0">—</span>':x.ack?'<span class="st ok">見ました</span>':'<span class="st off">まだ</span>')+'</td></tr>'}).join("")+'</tbody></table></div>';
+}
 function renderMem(C){
   var pend=Object.keys(D.members).filter(function(id){return !D.approved[id]}),ap=Object.keys(D.approved);
-  var h='<section class="panel"><h2 style="margin-bottom:6px">業者の登録</h2><p class="hint" style="margin:0 0 10px">業者はURLから会社名とメールアドレスを登録すると、すぐに使えるようになります。心当たりのない登録は「利用を停止」してください。</p><h3>利用停止中・未完了('+pend.length+')</h3>';
+  var h=msgForm()+'<section class="panel"><h2 style="margin-bottom:6px">業者の登録</h2><p class="hint" style="margin:0 0 10px">業者はURLから会社名とメールアドレスを登録すると、すぐに使えるようになります。心当たりのない登録は「利用を停止」してください。</p><h3>利用停止中・未完了('+pend.length+')</h3>';
   if(!pend.length)h+='<p class="empty">ありません。</p>';
   else{h+='<div class="tablewrap"><table><thead><tr><th class="l">会社名</th><th class="l">担当者</th><th class="l">メールアドレス</th><th class="l">申請日時</th><th></th></tr></thead><tbody>';
     pend.forEach(function(id){var m=D.members[id];h+='<tr><td class="l vn">'+esc(m.company)+'</td><td class="l">'+esc(m.contact||"")+'</td><td class="l">'+esc(m.email)+'</td><td class="l">'+esc(fmtAt(m.at))+'</td><td><button class="btn sm primary" data-act="approve" data-id="'+esc(id)+'">'+(D.blocked[id]?'利用を再開':'利用を許可')+'</button> <button class="btn sm danger" data-act="reject" data-id="'+esc(id)+'">却下</button></td></tr>'});
@@ -2539,6 +2562,17 @@ function onClick(ev){
       var ad3={};ad3[df]={h:du};addFloors(dv,ad3,1);
       mutOrder(dv,function(o){var x=o.items[id];if(x){x.st="done";x.done={d:dd,ev:de,u:du,at:nowIso(),log:lid,by:who()}}});
       ui.msg=fmtDP(dd)+"に"+df+"階へ"+du+"台上げたことを業者に報告し、保有台数を増やしました。";ui.msgKind="ok"}
+  }
+  else if(act==="amsend"){
+    var at0=(document.getElementById("am-to")||{}).value||"",am=((document.getElementById("am-msg")||{}).value||"").trim().slice(0,300),td0=nrDs(new Date());
+    if(!at0||!am){ui.msg="宛先と連絡の内容を入れてください。";ui.msgKind="bad"}
+    else{var n0=0;
+      if(at0==="*c"){mailOut("am-c-"+Date.now().toString(36),{to:"crew",d:td0,msg:"管理者から: "+am});n0=-1;
+        /* 盛替え業者のアプリにも出す(設定に、最近14日の分だけ残す) */
+        var cc=clone(D.config||{}),lim0=new Date(Date.now()-14*864e5).toISOString();cc.crewMsgs=(cc.crewMsgs||[]).filter(function(x){return x.at>=lim0}).concat([{at:nowIso(),msg:am,by:who()}]).slice(-20);putCfg(cc)}
+      else (at0==="*v"?Object.keys(D.vendors).filter(function(v){return isActive(v)&&!(D.vendors[v]||{}).manual}):[at0]).forEach(function(v){notify(v,td0,"msg",am);n0++});
+      document.getElementById("am-msg").value="";
+      ui.msg=(n0<0?"盛替え業者全員":at0==="*v"?"業者"+n0+"社":vname(at0))+"に連絡を送りました。通知は5〜10分ほどで届きます。";ui.msgKind="ok"}
   }
   else if(act==="crewin"){
     var cvv=b.getAttribute("data-vid"),ck=cvv+"-"+id;

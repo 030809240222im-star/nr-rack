@@ -1,0 +1,25 @@
+// 管理者から連絡を送る(業者1社・業者全員・盛替え業者)
+const REPO=require('path').resolve(__dirname,'..','..')+'/';const WORK=process.cwd();
+const {chromium}=require('playwright');const fs=require('fs');
+fs.writeFileSync('main-test.html',fs.readFileSync(REPO+'index.html','utf8'));
+fs.writeFileSync('crew-test.html',fs.readFileSync(REPO+'crew/index.html','utf8'));
+const FS={config:{main:{evn:2}},approved:{v1:{company:'サンユー',vid:'v1'},v2:{company:'日本建工',vid:'v2'}},crews:{c1:{company:'盛替A',email:'c@x.jp'}},vendors:{v1:{floors:{10:{h:3,w:1}}},v2:{floors:{11:{h:3,w:1}}}}};
+(async()=>{const b=await chromium.launch();
+const open=async(uid,email,f,F)=>{const cx=await b.newContext({viewport:{width:1100,height:900}});
+await cx.addInitScript(()=>{try{localStorage.setItem('nr-uipref','{"simple":true}')}catch(e){}});
+await cx.route(/gstatic\.com\/firebasejs/,r=>r.fulfill({contentType:'text/javascript',body:fs.readFileSync('fake-fb.js','utf8')}));
+await cx.route(/jsdelivr/,r=>r.fulfill({contentType:'text/javascript',body:fs.readFileSync('qrcode.min.js','utf8')}));
+await cx.addInitScript(w=>{window.__FAKE_UID=w.uid;window.__FAKE_EMAIL=w.email;if(!sessionStorage.__FS)window.__FS=w.F},{uid,email,F:F||FS});
+const p=await cx.newPage();p.on('pageerror',e=>console.log('ERR',e.message));await p.goto('file://'+WORK+'/'+f);await p.click('#lg-google');await p.waitForTimeout(800);return {cx,p}};
+let {cx,p}=await open('g1','kowa0371@gmail.com','main-test.html');
+await p.selectOption('#am-to','v1');await p.fill('#am-msg','明日はEV2が点検です。');await p.click('[data-act=amsend]');await p.waitForTimeout(300);console.log('1社:',(await p.locator('.note').first().innerText()).slice(0,40));
+await p.selectOption('#am-to','*v');await p.fill('#am-msg','全員へのお知らせです。');await p.click('[data-act=amsend]');await p.waitForTimeout(300);console.log('全員:',(await p.locator('.note').first().innerText()).slice(0,40));
+await p.selectOption('#am-to','*c');await p.fill('#am-msg','盛替えの皆さんへ。');await p.click('[data-act=amsend]');await p.waitForTimeout(300);console.log('盛替え:',(await p.locator('.note').first().innerText()).slice(0,40));
+console.log('送った連絡の行数:',await p.locator('h3:has-text("送った連絡") + .tablewrap tbody tr').count());
+const S=await p.evaluate(()=>JSON.parse(sessionStorage.__FS));
+console.log('送信待ち:',JSON.stringify(Object.values(S.outbox||{}).map(x=>x.to+(x.vid?':'+x.vid:''))));
+await cx.close();
+({cx,p}=await open('v1','v@x.jp','main-test.html',S));console.log('サンユーの予定:',(await p.locator('.tabs button').allInnerTexts()).join('|'));
+await p.click('[data-act=stab][data-tab=s-news]');await p.waitForTimeout(200);console.log(' ',(await p.locator('.scard').allInnerTexts()).map(t=>t.replace(/\s+/g,' ').slice(0,40)).join(' / '));await cx.close();
+({cx,p}=await open('c1','c@x.jp','crew-test.html',S));console.log('盛替え業者:',(await p.locator('.todaybox').first().innerText().catch(()=>'(なし)')).replace(/\s+/g,' '));
+await b.close()})();
