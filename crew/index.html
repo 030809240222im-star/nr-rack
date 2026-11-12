@@ -65,6 +65,7 @@ button:disabled{opacity:.45;cursor:default}
 
 /* かんたん表示 */
 .tabs:empty{display:none}
+.btn.pushon{border-color:var(--ok);color:var(--ok)}
 .todo.warnb{background:var(--badbg);border-color:var(--bad)}.todo.warnb .k{color:var(--bad)}
 .sprio{font-weight:700}.prio-sum b{font-family:var(--f-head)}
 .modebtn{border-color:var(--accent);color:var(--accent)}
@@ -782,9 +783,49 @@ function diff(a,b){
 function save(coll,id,obj){var d=diff(D[coll][id],obj);if(d)patch(coll,id,d)}
 function putCfg(o){D.config=o;persist("config","main",o)}
 
+/* ---- プッシュ通知 ----
+   端末を登録すると push/{本人}.subs に保存し、アプリがお知らせを送信待ち(outbox)に入れ、GitHub Actions(server/notify.mjs)が10分ごとにメールと一緒に送る。
+   iPad・iPhone は、Safari の共有ボタン →「ホーム画面に追加」で追加したアイコンから開いたときだけ使える(iPadOS・iOS 16.4以降) */
+var PUSH={st:""};
+function pushBtn(){return ENV.mode==="db"&&!window.NR_DEMO?' <button class="btn sm'+(PUSH.st==="on"?' pushon':'')+'" data-act="push">'+(PUSH.st==="on"?(ui.confirm==="pushoff"?'もう一度押すと通知を止める':'🔔 通知オン'):'🔔 通知を受け取る')+'</button>':''}
+function pushBase(){return location.pathname.replace(/(scrap\/)?(crew\/)?(demo\/)?[^\/]*$/,"")}
+function pushSupported(){return "serviceWorker" in navigator&&"PushManager" in window&&"Notification" in window}
+function isIos(){return /iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1)}
+function isStandalone(){return window.navigator.standalone===true||(window.matchMedia&&matchMedia("(display-mode: standalone)").matches)}
+function b64u(s){var p="=".repeat((4-s.length%4)%4),b=atob((s+p).replace(/-/g,"+").replace(/_/g,"/")),a=new Uint8Array(b.length);for(var i=0;i<b.length;i++)a[i]=b.charCodeAt(i);return a}
+function subHash(ep){var h=0;for(var i=0;i<ep.length;i++)h=(h*31+ep.charCodeAt(i))|0;return "s"+(h>>>0).toString(36)}
+function pushSay(m,k){ui.msg=m;ui.msgKind=k||"ok";render(true)}
+async function pushCheck(){
+  try{if(!pushSupported()||Notification.permission!=="granted")return;var r=await navigator.serviceWorker.getRegistration(pushBase());var sb=r&&await r.pushManager.getSubscription();
+    var on=!!sb;if(on!==(PUSH.st==="on")){PUSH.st=on?"on":"";render(true)}}catch(e){}
+}
+async function pushOn(){
+  if(!pushSupported()){
+    if(isIos()&&!isStandalone())return pushSay("iPad・iPhoneで通知を受け取るには、Safariでこの画面を開き、共有ボタン(□に↑)→「ホーム画面に追加」を押して、ホーム画面に追加したアイコンからアプリを開いてから、もう一度「🔔 通知を受け取る」を押してください(iPadOS・iOS 16.4以降)。","bad");
+    return pushSay("このブラウザでは通知を受け取れません。iPadはSafariで「ホーム画面に追加」したアイコンから、パソコン・AndroidはChromeなどで開いてください。","bad");
+  }
+  var key=(D.config||{}).vapid;
+  if(!key)return pushSay("通知の準備がまだできていません。管理者がGitHubにFirebaseの鍵(FIREBASE_SERVICE_ACCOUNT)を設定すると、10〜20分で使えるようになります。","bad");
+  try{
+    var perm=await Notification.requestPermission();
+    if(perm!=="granted")return pushSay("通知が許可されませんでした。端末の「設定」→「通知」で、このアプリ(またはブラウザ)の通知を許可してから、もう一度押してください。","bad");
+    var base=pushBase(),reg=await navigator.serviceWorker.register(base+"sw.js",{scope:base});await navigator.serviceWorker.ready;
+    var sb=await reg.pushManager.getSubscription();
+    if(sb){var cur=sb.options&&sb.options.applicationServerKey;if(cur){var ca=new Uint8Array(cur),kb=b64u(key),same=ca.length===kb.length&&ca.every(function(x,i){return x===kb[i]});if(!same){await sb.unsubscribe();sb=null}}}
+    if(!sb)sb=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64u(key)});
+    var j=sb.toJSON(),o={};o[subHash(j.endpoint)]={endpoint:j.endpoint,keys:j.keys,at:nowIso(),ua:String(navigator.userAgent||"").slice(0,120)};
+    await ENV.db.doc("push/"+ENV.uid).patch({subs:o,kind:ENV.admin?"admin":ENV.crew?"crew":"vendor",at:nowIso()});
+    mailOut("w-"+ENV.uid,{to:"me",msg:"この端末で、アプリのお知らせを受け取ります。"});PUSH.st="on";pushSay("この端末で通知を受け取ります。10〜20分ほどで「通知の設定ができました」が届きます(届くまでの時間は前後します)。");
+  }catch(e){pushSay("通知の登録ができませんでした("+((e&&e.message)||e)+")。もう一度押すか、画面を読み込み直してから試してください。","bad")}
+}
+async function pushOff(){
+  try{var r=await navigator.serviceWorker.getRegistration(pushBase()),sb=r&&await r.pushManager.getSubscription();
+    if(sb){var o={};o[subHash(sb.endpoint)]={$op:"del"};await ENV.db.doc("push/"+ENV.uid).patch({subs:o,at:nowIso()});await sb.unsubscribe()}
+    PUSH.st="";pushSay("この端末の通知を止めました。")}catch(e){pushSay("通知を止められませんでした("+((e&&e.message)||e)+")","bad")}
+}
 /* ホーム画面に追加したときのアイコン */
 (function(){try{var b=location.pathname.replace(/(scrap\/)?(crew\/)?(demo\/)?[^\/]*$/,""),h=document.head;
-  [["manifest",b+"manifest.webmanifest"],["apple-touch-icon",b+"apple-touch-icon.png"]].forEach(function(x){var l=document.createElement("link");l.rel=x[0];l.href=x[1];h.appendChild(l)})}catch(e){}})();
+  [["manifest",b+"manifest.webmanifest"],["apple-touch-icon",b+"apple-touch-icon.png"]].forEach(function(x){var l=document.createElement("link");l.rel=x[0];l.href=x[1];h.appendChild(l)});setTimeout(pushCheck,1500)}catch(e){}})();
 /* ---- 起動 ---- */
 async function boot(){
   var db=null,user=null;
@@ -2252,7 +2293,7 @@ function render(remote){
     if(crewOk&&ui.simple)tabs=[];
   }else tabs=vendorOk?(ui.simple&&!ENV.admin?sVendorTabs():[["cal","カレンダー"],["vin","業者入力"]]):[["reg","登録"]];
   if(!ENV.crew){if(!ENV.admin&&!vendorOk)ui.tab="reg";else if(!ENV.admin&&ui.tab!=="cal"&&ui.tab!=="vin")ui.tab="cal";}
-  h='<div class="top"><div><h1>NRボックス ラック調整<span class="role">'+(ENV.admin?'管理者':ENV.crew?(D.crews[ENV.uid]?'盛替え業者':'未登録'):ENV.preview?'業者(プレビュー)':(vendorOk?'業者':'未登録'))+'</span></h1><p>業者が入力した階別の保有・搬出希望を、回収日ごとの台数・時間・エレベーター集積に合わせて自動で配分します</p>'+(window.NR_ACCOUNT?'<p class="acct">'+esc(window.NR_ACCOUNT.email||"")+' <button class="btn sm" data-act="logout">ログアウト</button> <button class="btn sm" data-act="reload">↻ 最新にする</button>'+(ENV.mode==="noid"?'':simpleToggle())+(ui.synced?' <span class="muted" style="font-size:12px">'+p2(ui.synced.getHours())+':'+p2(ui.synced.getMinutes())+' 更新</span>':'')+'</p>':'')
+  h='<div class="top"><div><h1>NRボックス ラック調整<span class="role">'+(ENV.admin?'管理者':ENV.crew?(D.crews[ENV.uid]?'盛替え業者':'未登録'):ENV.preview?'業者(プレビュー)':(vendorOk?'業者':'未登録'))+'</span></h1><p>業者が入力した階別の保有・搬出希望を、回収日ごとの台数・時間・エレベーター集積に合わせて自動で配分します</p>'+(window.NR_ACCOUNT?'<p class="acct">'+esc(window.NR_ACCOUNT.email||"")+' <button class="btn sm" data-act="logout">ログアウト</button> <button class="btn sm" data-act="reload">↻ 最新にする</button>'+(ENV.mode==="noid"?'':simpleToggle()+pushBtn())+(ui.synced?' <span class="muted" style="font-size:12px">'+p2(ui.synced.getHours())+':'+p2(ui.synced.getMinutes())+' 更新</span>':'')+'</p>':'')
    +(PEND.n&&(!navigator.onLine||Date.now()-PEND.since>3500)?'<div class="note warn" style="margin:8px 0 0"><span><b>未送信 '+PEND.n+'件</b> '+(navigator.onLine?'送信を待っています。':'電波がありません。')+'入力は端末に残っていて、つながると自動で送ります。画面は閉じても大丈夫です。</span></div>':'')
    +(window.NR_DEMO?'<div class="note warn" style="margin:8px 0 0"><span><b>お試し版です。</b>データはこの端末のブラウザだけに保存され、本番のアプリとは関係ありません。業者・台数はすべて架空です。 <button class="btn sm" data-act="demoreset">最初からやり直す</button></span></div>':'')+'</div><div class="tabs'+(ENV.admin?'':' big')+'" role="tablist">';
   var simpleV=ui.simple&&!ENV.admin&&!ENV.crew&&vendorOk;
@@ -2343,6 +2384,7 @@ function onClick(ev){
   if(act==="demoreset"){try{localStorage.removeItem(KEY)}catch(e){}location.reload();return}
   if(act==="logout"){if(window.NR_ACCOUNT)window.NR_ACCOUNT.logout();return}
   if(act==="reload"){location.reload();return}
+  if(act==="push"){if(PUSH.st==="on"){if(ui.confirm==="pushoff"){ui.confirm="";pushOff()}else{ui.confirm="pushoff";render();return}}else pushOn();return}
   if(act==="tab"){ui.tab=b.getAttribute("data-tab")}
   else if(act==="simple"){ui.simple=!ui.simple;saveUiPref();if(ENV.admin)ui.tab=ui.simple?"home":"cal";else if(!ENV.crew)ui.tab="cal";else ui.tab="cal";window.scrollTo(0,0)}
   else if(act==="stab"){ui.stab=b.getAttribute("data-tab");window.scrollTo(0,0)}
