@@ -81,7 +81,12 @@ for (const app of APPS) {
         const msg = fmtD(d) + sesLab(D, d) + " " + fmtTime(day) + " の予定が確定しました: " + rows.filter(x => x.vid === r.vid).map(x => x.floor + "階 " + x.units + "台(" + evLabel(x.ev, x.to) + ")").join("、");
         const id = "n" + Date.now().toString(36) + Math.floor(Math.random() * 1e4).toString(36);
         await db.collection(app.prefix + "notices").doc(r.vid).set({ items: { [id]: { d, kind: "confirm", msg, at, by: "毎朝の自動処理" } } }, { merge: true });
+        /* プッシュ通知・メールの送信待ち(アプリで確定したときと同じ) */
+        await db.collection(app.prefix + "outbox").doc("n-" + r.vid + "-" + id).set({ to: "vendor", vid: r.vid, d, msg, at, uid: "server" });
       }
+      /* 盛替え業者へ: その日の予定の全部 */
+      const crewMsg = fmtD(d) + sesLab(D, d) + " " + fmtTime(day) + " の搬出予定が確定しました。\n" + rows.filter(x => nrNum(x.units) > 0).map(x => "・" + (x.n || vname(D, x.vid)) + " " + x.floor + "階 " + x.units + "台(" + evLabel(x.ev, x.to) + ")").join("\n");
+      await db.collection(app.prefix + "outbox").doc("c-" + d).set({ to: "crew", d, msg: crewMsg.slice(0, 600), at, uid: "server" });
       done.push(d);
     }
   }
