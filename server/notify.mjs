@@ -58,6 +58,9 @@ const dayAgo = new Date(Date.now() - 864e5).toISOString();
 for (const app of APPS) {
   const P = app.prefix;
   const snap = await db.collection(P + "outbox").get();
+  /* 確認用: 通知を許可した端末の数と、送信待ちの数をログに出す */
+  const pc = await db.collection(P + "push").get(); let devs = 0; pc.forEach(d => { devs += Object.keys((d.data() || {}).subs || {}).length; });
+  console.log(app.name + ": 通知を許可した端末 " + devs + "台(" + pc.size + "人)・送信待ち " + snap.size + "件");
   if (snap.empty) continue;
   const items = []; snap.forEach(d => items.push({ id: d.id, ref: d.ref, ...d.data() }));
   const [approved, crews, vendors, members, push] = await Promise.all(["approved", "crews", "vendors", "members", "push"].map(c => load(P, c)));
