@@ -52,7 +52,7 @@ for (const app of APPS) {
   for (const x of items) {
     done.push(x.ref);
     if (!x.at || x.at < dayAgo || !x.msg) { dropped++; continue; }
-    const who = await userEmail(x.uid), byAdmin = ADMINS.includes(who), byCrew = !!crews[x.uid];
+    const who = x.uid === "server" ? "" : await userEmail(x.uid), byAdmin = x.uid === "server" || ADMINS.includes(who), byCrew = !!crews[x.uid];
     let key = null, to = [], title = "", url = app.url;
     if (x.to === "vendor" && x.vid && (byAdmin || byCrew)) {
       if (vendors[x.vid] && vendors[x.vid].manual) continue;

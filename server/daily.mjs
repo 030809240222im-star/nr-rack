@@ -12,7 +12,7 @@ const root = new URL("..", import.meta.url).pathname;
 const html = fs.readFileSync(root + "index.html", "utf8");
 const core = html.match(/<script>\s*([\s\S]*?function nrRank[\s\S]*?)<\/script>/)[1];
 const ctx = {}; vm.createContext(ctx); vm.runInContext(core, ctx);
-const { nrCfg, nrSimulate, nrDs, nrPd, nrNum } = ctx;
+const { nrCfg, nrSimulate, nrDs, nrPd, nrNum, nrRemind } = ctx;
 
 const sa = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT || "null");
 if (!sa) { console.log("FIREBASE_SERVICE_ACCOUNT がないので終了します"); process.exit(0); }
@@ -86,6 +86,17 @@ for (const app of APPS) {
     }
   }
   if (done.length) console.log(app.name + ": 自動で確定 " + done.join(", "));
+
+  /* 1-2. 搬出予定の入力のお願い(確定の2日前)と警告(確定の前日)。アプリと同じ id で、二重には出さない。メールは送信待ち(outbox)へ */
+  const rem = nrRemind(am, D.days, D.confirmed, cfg, today);
+  for (const x of rem) {
+    const id = "r" + x.lv + "_" + x.d, it = (D.notices[x.vid] || {}).items || {};
+    if (it[id]) continue;
+    const at = new Date().toISOString();
+    await db.collection(app.prefix + "notices").doc(x.vid).set({ items: { [id]: { d: x.d, kind: x.lv === 1 ? "remind" : "remind2", msg: x.msg, at, by: "毎朝の自動処理" } } }, { merge: true });
+    await db.collection(app.prefix + "outbox").doc("rm" + x.lv + "-" + x.vid + "-" + x.d).set({ to: "vendor", vid: x.vid, d: x.d, msg: x.msg, at, uid: "server" });
+  }
+  if (rem.length) console.log(app.name + ": 入力のお願い・警告 " + rem.length + "件");
 
   /* 2. LINE の文面 */
   const tm = nrDs(new Date(nrPd(today).getTime() + 864e5));

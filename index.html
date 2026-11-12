@@ -65,6 +65,7 @@ button:disabled{opacity:.45;cursor:default}
 
 /* かんたん表示 */
 .tabs:empty{display:none}
+.todo.warnb{background:var(--badbg);border-color:var(--bad)}.todo.warnb .k{color:var(--bad)}
 .sprio{font-weight:700}.prio-sum b{font-family:var(--f-head)}
 .modebtn{border-color:var(--accent);color:var(--accent)}
 .simple{display:flex;flex-direction:column;gap:12px;font-size:16px}
@@ -644,6 +645,25 @@ function nrSimulate(vendors,days,cfg,startStr,confirmed){
     res.left=left;byDate[d]=res;
   });
   return {byDate:byDate,dates:dates,first:first,left:items.filter(function(i){return i.rem>0})};
+}
+/* 搬出予定の入力のお願い: 回収日の(自動確定の日数+2)日前に、その曜日の担当なのに出したい台数が0の業者へ「お願い」、
+   (自動確定の日数+1)日前に「予定無しとして他の業者に配置します」の警告。曜日の担当がない業者は対象にしない。
+   返すのは [{d:回収日, vid, lv:1|2, msg}]。アプリ(管理者が開いたとき)と毎朝の自動処理の両方で使う */
+function nrRemind(vendors,days,confirmed,cfg,today){
+  var out=[],seen={},W=["日","月","火","水","木","金","土"];if(!(cfg.auto>0))return out;
+  function f(s){var x=nrPd(s);return (x.getMonth()+1)+"/"+x.getDate()+"("+W[x.getDay()]+")"}
+  Object.keys(days).sort().forEach(function(k){var d=nrBase(k),day=days[k]||{};
+    if(confirmed[k]||!nrNum(day.cap)||seen[d])return;
+    var until=Math.round((nrPd(d)-nrPd(today))/864e5),lv=until===cfg.auto+2?1:until===cfg.auto+1?2:0;if(!lv)return;seen[d]=1;
+    Object.keys(vendors).forEach(function(vid){var v=vendors[vid]||{};if(v.manual||!cfg.wd[vid]||!nrOnDay(vid,d,cfg))return;
+      if(cfg.wdFrom&&d<cfg.wdFrom)return;
+      var w=0;Object.keys(v.floors||{}).forEach(function(fl){w+=nrNum((v.floors[fl]||{}).w)});if(w>0)return;
+      var cd=nrDs(new Date(nrPd(d).getTime()-cfg.auto*864e5));
+      out.push({d:d,vid:vid,lv:lv,msg:lv===1?"【入力のお願い】"+f(d)+"は御社の回収日です。まだ搬出の予定(出したい台数)が入っていません。"+f(cd)+"の確定までに、アプリの「台数」から入力してください。"
+        :"【重要】"+f(d)+"の搬出の予定が入っていないため、予定無しとして、この日の枠は他の業者に配置します。出したい場合は、今日中にアプリの「台数」から入力してください。"});
+    });
+  });
+  return out;
 }
 function nrRank(vendors,sim,cfg,startStr){
   var ref=sim.dates.filter(function(d){return d>=startStr})[0]||startStr;
@@ -1242,7 +1262,7 @@ function noticeList(vid){
     if(hit){hit.dups.push(x.id);if(x.ack&&!hit.ack)hit.ack=x.ack}else keep.push(x)});
   return keep.filter(function(x){return (x.o.d||"")>=from||!x.ack}).sort(function(a,b){return (a.o.at||"")<(b.o.at||"")?1:-1});
 }
-var NK={confirm:["📋","確定"],change:["⚠","変更"],cancel:["✖","取り消し"],trouble:["📣","連絡"]};
+var NK={confirm:["📋","確定"],change:["⚠","変更"],cancel:["✖","取り消し"],trouble:["📣","連絡"],remind:["⏰","入力のお願い"],remind2:["⚠","重要"]};
 /* 業者: まだ「確認した」を押していないお知らせ */
 function noticeBox(){
   if(ENV.admin||ENV.crew)return "";
@@ -1284,6 +1304,14 @@ function confirmDay(d,s,auto){
   var o={rows:rows,at:nowIso(),by:who(),hist:[histEntry(auto?"自動で確定":"確定")]};if(auto)o.auto=true;put("confirmed",d,o);notifyConfirm(d,o);
 }
 /* 搬出日の設定日数前(初期値2日前)になった回収日を、配分どおりに確定する。書き込めるのは管理者だけなので、管理者が開いたときに行う */
+/* 入力のお願い・警告を出す(毎朝の自動処理と同じ id なので、二重には出ない) */
+function remindCheck(C){
+  if(!ENV.admin||ENV.preview||ui.pv)return;
+  if(ENV.mode!=="local"&&!["config","days","vendors","confirmed","notices","approved"].every(function(c){return LOADED[c]}))return;
+  nrRemind(C.am,D.days,D.confirmed,C.cfg,C.t).forEach(function(x){var id="r"+x.lv+"_"+x.d,it=(D.notices[x.vid]||{}).items||{};if(it[id])return;
+    var o={};o[id]={d:x.d,kind:x.lv===1?"remind":"remind2",msg:x.msg,at:nowIso(),by:"自動"};patch("notices",x.vid,{items:o});
+    mailOut("rm"+x.lv+"-"+x.vid+"-"+x.d,{to:"vendor",vid:x.vid,d:x.d,msg:x.msg})});
+}
 function autoConfirm(C){
   if(!ENV.admin||ENV.preview||ui.pv)return false;
   if(ENV.mode!=="local"&&!["config","days","vendors","confirmed","approved","blocked","members"].every(function(c){return LOADED[c]}))return false;
@@ -1558,6 +1586,10 @@ function sVendor(C){var t=ui.stab||"s-home";return t==="s-count"?sVendorCount(C)
 function sVendorHome(C){
   var mr=myRows().filter(function(x){return nrBase(x.d)>=C.t}),h='<section class="panel simple">';
   h+=problemBox();
+  /* 入力のお願い・警告(まだ「見ました」を押していないもの)は、予定の画面の一番上にも出す */
+  noticeList(ENV.vid).filter(function(x){return !x.ack&&(x.o.kind==="remind"||x.o.kind==="remind2")}).forEach(function(x){
+    h+='<div class="todo'+(x.o.kind==="remind2"?' warnb':'')+'"><div class="k">'+(x.o.kind==="remind2"?'⚠ 重要':'⏰ 入力のお願い')+'</div><p style="margin:0">'+esc(x.o.msg.replace(/^【[^】]*】/,''))+'</p>'
+      +'<button class="big primary" data-act="stab" data-tab="s-count">台数を入れる</button><button class="big" data-act="ack" data-id="'+esc(x.id)+'">見ました</button></div>'});
   if(!mr.length)h+='<div class="todo"><div class="k">次に出す日</div><p class="what">まだ決まっていません。</p><p class="hint" style="margin:0">「台数」で、今ある台数と出したい台数を入れておくと、管理者が出す日を決めます。決まったら、ここに大きく出ます。</p></div>';
   else{var d0=mr[0].d,first=mr.filter(function(x){return x.d===d0}),day=D.days[d0]||{},allp=first.every(function(x){return isPlaced(x.d,x.r)});
     h+='<div class="todo'+(allp?' done':'')+'"><div class="k">'+(nrBase(d0)===C.t?'今日出す':'次に出す日')+'</div><div class="when">'+esc(fmtLong(d0))+' <small>'+esc(fmtTime(day))+'</small></div>';
@@ -1640,6 +1672,8 @@ function sAdminTasks(C){
     t.push({t:fmtLong(d)+"の回収を決める",s:s&&s.asg.length?(nrNum(D.days[d].cap)-s.left)+'台ぶんの割り振りができています':'まだ割り振れる台数がありません',tab:"cal",d:d})});
   Object.keys(D.confirmed).sort().forEach(function(d){if(nrBase(d)!==now)return;var rs=(D.confirmed[d].rows||[]).filter(function(r){return nrNum(r.units)>0}),np=rs.filter(function(r){return isPlaced(d,r)}).length,nb=rs.filter(function(r){return r.back}).length,bad=rs.filter(function(r){return r.chk&&r.chk.k!=="ok"&&!r.back}).length;
     t.unshift({t:'本日の回収'+(sesLabel(d)?' '+sesLabel(d):''),s:'置いた '+np+'/'+rs.length+'・戻した '+nb+'/'+rs.length+(bad?'・足りない/ない '+bad+'件':''),tab:"cal",d:d,warn:!!bad})});
+  var rmd={};nrRemind(C.am,D.days,D.confirmed,C.cfg,C.t).forEach(function(x){(rmd[x.d]=rmd[x.d]||[]).push(vname(x.vid))});
+  Object.keys(rmd).forEach(function(d){t.push({t:fmtD(d)+'の搬出予定が未入力の業者 '+rmd[d].length+'社',s:rmd[d].join('・')+'(お願いの通知を送りました)',tab:"cal",d:d,warn:true})});
   var no=newOrders();if(no)t.push({t:'追加の注文が'+no+'件あります',s:orderList().filter(function(x){return x.o.st==="new"}).slice(0,2).map(function(x){return (x.o.n||vname(x.vid))+' '+x.o.f+'階に'+nrNum(x.o.u)+'台'}).join('・'),tab:"ord"});
   var st=stageTodo(C);if(st)t.push({t:'EVが停まらない階の指示が'+st+'件',s:'前の日までに、どのEV前へ盛替えるかを決めます',tab:"stg"});
   var pc=Object.keys(D.members).filter(function(id){return !D.approved[id]}).length;if(pc)t.push({t:'業者の登録が'+pc+'件あります',s:'登録した業者を確かめます',tab:"mem"});
@@ -2198,6 +2232,7 @@ function render(remote){
   if(ENV.mode==="db"&&!ENV.admin&&!ENV.crew)watchVid();
   var C=compute(),vendorOk=ENV.admin||ENV.preview||ENV.mode==="local"||!!D.approved[ENV.uid],h,tabs;
   if(autoConfirm(C))C=compute();
+  remindCheck(C);
   if(ENV.admin){
     var pc=Object.keys(D.members).filter(function(id){return !D.approved[id]}).length;
     tabs=[["cal","カレンダー"],["pri","優先順位"],["map","階マップ"],["stg","不停止階"+(stageTodo(C)?'<span class="cnt">'+stageTodo(C)+'</span>':"")],["cnf","確定と再振り分け"],["vin","業者入力"],["ord","追加注文"+(newOrders()?'<span class="cnt">'+newOrders()+'</span>':"")],["rec","追加と戻し"],["rep","集計・棚卸し"],["mem","登録"+(pc?'<span class="cnt">'+pc+'</span>':"")],["set","設定"]];
