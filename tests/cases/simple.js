@@ -47,7 +47,7 @@ console.log(' 進み具合:',(await p.locator('.sprog span').innerText()));await
 console.log('管理者 タブ:',(await p.locator('.tabs button').allInnerTexts()).join('|').replace(/\n/g,''));
 console.log(' やること:',(await p.locator('.task b').allInnerTexts()).join(' / '));
 await p.click('.task >> nth=0 >> [data-act=sgo]');await p.waitForTimeout(300);await p.click('[data-act=tab][data-tab=home]');await p.waitForTimeout(300);await p.click('.task >> nth=1 >> [data-act=sgo]');await p.waitForTimeout(300);await p.click('[data-act=tab][data-tab=home]');await p.waitForTimeout(300);console.log(' 確定した回収を開いた後のやること:',(await p.locator('.task b').allInnerTexts()).join(' / '));await p.click('.task >> nth=0 >> [data-act=sgo]');await p.waitForTimeout(300);console.log(' 開いた先:',await p.locator('.tabs button[aria-selected=true]').innerText(),'選んだ日',await p.locator('.dhead h2').innerText().catch(()=>'-'));
-console.log(' 車の帯:',(await p.locator('.bands').first().innerText().catch(()=>'')).replace(/\s+/g,' '));
+console.log(' 回収日にするボタン:',await p.locator('[data-act=dayon]').count());await p.click(`[data-act=sel][data-date="${k}"]`);await p.waitForTimeout(300);console.log(' 車の帯:',(await p.locator('.bands').first().innerText().catch(()=>'')).replace(/\s+/g,' '));
 await p.click('[data-act=simple]');await p.waitForTimeout(300);console.log(' くわしく:',(await p.locator('.tabs button').count()),'タブ');
 await b.close()})();
 // パソコン(マウス・広い画面)で初めて開くと詳しい表示
