@@ -1676,10 +1676,10 @@ function sAdminTasks(C){
   Object.keys(D.confirmed).sort().forEach(function(d){if(nrBase(d)<=now)return;var cf=D.confirmed[d],h0=(cf.hist||[])[0],at=(h0&&h0.at)||cf.at||"";if(!at||cs[d]===at)return;/* 確定した時刻(盛替え業者の入力では変わらない) */
     var rs=(cf.rows||[]).filter(function(r){return nrNum(r.units)>0}),u=0,vs={};rs.forEach(function(r){u+=nrNum(r.units);vs[r.vid]=1});
     t.push({t:fmtLong(d)+"の確定した回収を確認する",s:u+'台・'+Object.keys(vs).length+'社'+(cf.auto?'(自動で確定)':''),tab:"cal",d:d,seen:at})});
-  /* 最終回収日の次の日から先の回収日(車輌)がまだ入っていないとき、入力を促す(14日先まで決まっていれば出さない) */
+  /* 最終回収日の1週間前になったら、その次の日から先の回収日(車輌)の入力を促す */
   var last="";Object.keys(D.days).forEach(function(d){if(nrNum(D.days[d].cap)&&nrBase(d)>last)last=nrBase(d)});
-  var lim14=nrDs(new Date(nrPd(now).getTime()+14*864e5));
-  if(!last||last<lim14){var nx=last&&last>=now?nrDs(new Date(nrPd(last).getTime()+864e5)):now;
+  var lim7=nrDs(new Date(nrPd(now).getTime()+7*864e5));
+  if(!last||last<=lim7){var nx=last&&last>=now?nrDs(new Date(nrPd(last).getTime()+864e5)):now;
     t.unshift({t:fmtD(nx)+'以降の回収車輌を入力する',s:last?'最終回収日は '+fmtD(last)+' です。次の回収日と車輌の台数を入れます':'まだ回収日がありません',tab:"cal",d:nx})}
   var rmd={};nrRemind(C.am,D.days,D.confirmed,C.cfg,C.t).forEach(function(x){(rmd[x.d]=rmd[x.d]||[]).push(vname(x.vid))});
   Object.keys(rmd).forEach(function(d){t.push({t:fmtD(d)+'の搬出予定が未入力の業者 '+rmd[d].length+'社',s:rmd[d].join('・')+'(お願いの通知を送りました)',tab:"cal",d:d,warn:true})});
