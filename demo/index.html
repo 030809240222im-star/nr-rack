@@ -67,6 +67,7 @@ button:disabled{opacity:.45;cursor:default}
 .tabs:empty{display:none}
 .btn.pushon{border-color:var(--ok);color:var(--ok)}
 .todo.warnb{background:var(--badbg);border-color:var(--bad)}.todo.warnb .k{color:var(--bad)}
+.odraft{display:flex;flex-direction:column;gap:6px;border:2px solid var(--accent);border-radius:10px;padding:10px;background:var(--surface2)}.odrow{display:flex;justify-content:space-between;align-items:center;gap:8px}
 .sprio{font-weight:700}.prio-sum b{font-family:var(--f-head)}
 .modebtn{border-color:var(--accent);color:var(--accent)}
 .simple{display:flex;flex-direction:column;gap:12px;font-size:16px}
@@ -1932,7 +1933,7 @@ function renderVin(C){
   h+='<div class="sum"><div><small>保有台数(合計)</small><b>'+th+'台</b></div><div><small>搬出希望(合計)</small><b>'+tw+'台</b></div></div>'
    +'<p class="hint" style="margin:0 0 8px">各階のNRボックスの保有台数と、その階から出したい台数を入力します。先に出してほしい階は「先に出す」に☑を付け、順位(1が最初)と先に出す台数を入れます。追加で欲しい階は「追加希望数」に台数を入れると注文になり、追加する日が決まると「備考(追加)」に出ます。戻してほしい階が同じ階でないときは「同じ階」のチェックを外し、戻す階と台数を入れます(「＋戻し先を追加」で複数の階に分けられます。合計は出したい台数まで)。入力は自動で保存されます。</p>'
    +'<label class="chk" style="margin-bottom:8px"><input type="checkbox" id="only" data-f="only"'+(ui.only?' checked':'')+'>入力のある階だけ表示</label>'
-   +'<div class="floors"><table class="rtable"><thead><tr><th class="l">階</th><th>保有台数</th><th>追加希望数</th><th class="l">備考(追加)</th><th>出したい台数</th><th class="l">先に出す(順位・台数)</th><th class="l">戻してほしい階</th><th class="l">状態</th></tr></thead><tbody>';
+   +'<div class="floors"><table class="rtable"><thead><tr><th class="l">階</th><th>保有台数</th><th>追加注文台数</th><th class="l">備考(追加)</th><th>出したい台数</th><th class="l">先に出す(順位・台数)</th><th class="l">戻してほしい階</th><th class="l">状態</th></tr></thead><tbody>';
   var fo=floorOrders(vid);
   for(var f=LIM.fmax;f>=LIM.fmin;f--){
     var e=fl[f],hh=e?nrNum(e.h):0,ww=e?nrNum(e.w):0,fx=fo[f]||{req:0,notes:[]};
@@ -1944,7 +1945,7 @@ function renderVin(C){
     else if(ww)state='<span class="st ok">希望あり</span>';
     if(pp&&ww)state+=' <span class="st ok">先行'+pp+'番</span>';
     h+='<tr><td class="fl">'+f+'階</td><td><input type="number" min="0" id="h-'+f+'" data-f="floor" data-fl="'+f+'" data-k="h" value="'+(hh||"")+'" aria-label="'+f+'階の保有台数"></td>'
-     +'<td><input type="number" min="0" id="a-'+f+'" data-f="addreq" data-fl="'+f+'" value="'+(fx.req||"")+'" aria-label="'+f+'階の追加希望数"></td>'
+     +'<td><input type="number" min="0" id="a-'+f+'" data-f="addreq" data-fl="'+f+'" value="'+(((ui.odraft||{})[vid]||{})[f]||"")+'" aria-label="'+f+'階の追加注文台数"></td>'
      +'<td class="l" style="white-space:normal;min-width:120px;font-size:12px">'+fx.notes.join("<br>")+'</td>'
      +'<td><input type="number" min="0" id="w-'+f+'" data-f="floor" data-fl="'+f+'" data-k="w" value="'+(ww||"")+'"'+(over?' class="bad"':'')+' aria-label="'+f+'階の出したい台数"></td>'
      +'<td class="l prio">'+(hh?'<label class="chk"><input type="checkbox" id="p-'+f+'" data-f="prio" data-fl="'+f+'"'+(pp?' checked':'')+' aria-label="'+f+'階を先に出す">先に出す</label>'
@@ -2039,8 +2040,13 @@ function renderMyOrders(vid){
   if(!vid)return "";
   var mine=orderList().filter(function(x){return x.vid===vid&&x.o.st!=="cancel"}).reverse();
   var h='<section class="panel"><h2 style="margin-bottom:6px">追加注文</h2><p class="hint" style="margin:0 0 8px">NRボックスを追加で欲しい階と台数を入れて「注文する」を押します。管理者・揚重者が、どの日の搬出車で用意するかを決め、上げたら日付が届きます。</p>'
-   +'<div class="set"><label>階<input type="number" min="'+LIM.fmin+'" max="'+LIM.fmax+'" id="od-f" data-keep placeholder="例: 12"></label><label>台数<input type="number" min="1" id="od-u" data-keep value="1"></label><label>希望日(任意)<input type="date" id="od-w" data-keep></label><label>メモ(任意)<input type="text" id="od-m" data-keep maxlength="100"></label></div>'
-   +'<button class="btn primary" data-act="ordadd">注文する</button>';
+   +(function(){var dr=(ui.odraft||{})[vid]||{},ks=Object.keys(dr).map(Number).sort(function(a,b){return b-a});
+     /* 各階で入れた追加注文台数が、ここに自動で入る。確かめてから「注文する」 */
+     if(ks.length)return '<div class="odraft"><div class="k">注文する内容(各階で入れた台数)</div>'+ks.map(function(f){return '<div class="odrow"><b>'+f+'階 '+dr[f]+'台</b><button class="btn sm" data-act="ordundraft" data-fl="'+f+'">外す</button></div>'}).join("")
+       +'<div class="set"><label>希望日(任意)<input type="date" id="od-w" data-keep></label><label>メモ(任意)<input type="text" id="od-m" data-keep maxlength="100"></label></div>'
+       +'<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" data-act="ordadd">この内容で注文する('+ks.length+'件)</button><button class="btn" data-act="ordundraft" data-fl="*">やめる</button></div></div>';
+     return '<div class="set"><label>階<input type="number" min="'+LIM.fmin+'" max="'+LIM.fmax+'" id="od-f" data-keep placeholder="例: 12"></label><label>台数<input type="number" min="1" id="od-u" data-keep value="1"></label><label>希望日(任意)<input type="date" id="od-w" data-keep></label><label>メモ(任意)<input type="text" id="od-m" data-keep maxlength="100"></label></div>'
+       +'<button class="btn primary" data-act="ordadd">注文する</button>'})();
   if(mine.length){h+='<div class="tablewrap" style="margin-top:10px"><table><thead><tr><th class="l">注文</th><th class="l">状況</th><th></th></tr></thead><tbody>';
     mine.forEach(function(x){var o=x.o;h+='<tr><td class="l"><b>'+o.f+'階 '+nrNum(o.u)+'台</b><div class="hint" style="margin:0">'+(o.want?'希望 '+fmtDP(o.want)+' ':'')+esc(o.memo||"")+'</div></td><td class="l" style="white-space:normal">'+ordStatus(o)+'</td><td>'+(o.st==="new"?'<button class="btn sm" data-act="ordcancel" data-vid="'+esc(x.vid)+'" data-id="'+esc(x.id)+'">取り消す</button>':'')+'</td></tr>'});
     h+='</tbody></table></div>'}
@@ -2542,6 +2548,14 @@ function onClick(ev){
     else{((cf6&&cf6.rows)||[]).forEach(function(r){if(!sent[r.vid]){sent[r.vid]=1;notify(r.vid,td,"trouble",fmtD(td)+" 【"+tk+"】"+(tm?" "+tm:""))}});
       addHist(td,"連絡を送信【"+tk+"】"+tm);document.getElementById("tr-msg").value="";ui.msg=Object.keys(sent).length+"社に連絡しました。確認したかは下の一覧で見られます。";ui.msgKind="ok"}
   }
+  else if(act==="ordundraft"){var uf=b.getAttribute("data-fl"),uv0=ENV.admin?ui.vsel:ENV.vid;if(ui.odraft&&ui.odraft[uv0]){if(uf==="*")delete ui.odraft[uv0];else delete ui.odraft[uv0][uf]}}
+  else if(act==="ordadd"&&(((ui.odraft||{})[ENV.admin?ui.vsel:ENV.vid])&&Object.keys(ui.odraft[ENV.admin?ui.vsel:ENV.vid]).length)){
+    /* 各階で入れた台数をまとめて注文する */
+    var dv0=ENV.admin?ui.vsel:ENV.vid,dd0=ui.odraft[dv0],dw=(document.getElementById("od-w")||{}).value||"",dm=((document.getElementById("od-m")||{}).value||"").trim().slice(0,100),dks=Object.keys(dd0);
+    mutOrder(dv0,function(o){dks.forEach(function(f,i){o.items["o"+Date.now().toString(36)+i+Math.floor(Math.random()*1e3).toString(36)]={f:Number(f),u:dd0[f],want:/^\d{4}-\d{2}-\d{2}$/.test(dw)?dw:"",memo:dm,n:vname(dv0),at:nowIso(),st:"new"}})});
+    if(!ENV.admin)dks.forEach(function(f){mailOut("o-"+dv0+"-"+f,{to:"admin",vid:dv0,msg:"追加注文: "+vname(dv0)+" "+f+"階に"+dd0[f]+"台"+(/^\d{4}-\d{2}-\d{2}$/.test(dw)?"("+fmtD(dw)+"までに)":"")+(dm?" "+dm:"")})});
+    ui.msg=dks.map(function(f){return f+"階に"+dd0[f]+"台"}).join("・")+"の追加を注文しました。手配されるとお知らせが出ます。";ui.msgKind="ok";delete ui.odraft[dv0];
+  }
   else if(act==="ordadd"){
     var ov=ENV.admin?ui.vsel:ENV.vid,of=Math.min(LIM.fmax,nrNum(document.getElementById("od-f").value)),ou=nrNum(document.getElementById("od-u").value),ow=document.getElementById("od-w").value,om=document.getElementById("od-m").value.trim().slice(0,100);
     if(!ov||!of||!ou){ui.msg="追加したい階と台数を入れてください。";ui.msgKind="bad"}
@@ -2727,14 +2741,10 @@ function onChange(ev){
   else if(f==="rm"){ui.rm=el.value||null}
   else if(f==="stv"){ui.stv=el.value||null}
   else if(f==="addreq"){
-    /* 追加希望数: その階の受付中の注文を1件にまとめて台数を合わせる。0にすると受付中の注文を取り消す */
-    var af=Number(el.getAttribute("data-fl")),an=nrNum(el.value);
-    if(vid)mutOrder(vid,function(o){var open=Object.keys(o.items).filter(function(k){var x=o.items[k];return x.f===af&&x.st==="new"});
-      open.slice(1).forEach(function(k){o.items[k].st="cancel"});
-      if(open.length){var x0=o.items[open[0]];if(an>0)x0.u=an;else x0.st="cancel"}
-      else if(an>0)o.items["o"+Date.now().toString(36)+Math.floor(Math.random()*1e3).toString(36)]={f:af,u:an,want:"",memo:"",n:vname(vid),at:nowIso(),st:"new"}});
-    if(an>0&&!ENV.admin)mailOut("o-"+vid+"-"+af,{to:"admin",vid:vid,msg:"追加注文: "+vname(vid)+" "+af+"階に"+an+"台"});
-    if(an>0){ui.msg=af+"階に"+an+"台の追加を希望しました。手配されると備考欄とカレンダーに日付が出ます。";ui.msgKind="ok"}
+    /* 各階の追加注文台数: まだ注文しない。下の「追加注文」の欄に入れ、業者が確かめてから「注文する」を押す */
+    var af=Number(el.getAttribute("data-fl")),an=nrNum(el.value);ui.odraft=ui.odraft||{};var dr=ui.odraft[vid]=ui.odraft[vid]||{};
+    if(an>0)dr[af]=an;else delete dr[af];
+    if(an>0){ui.msg=af+"階に"+an+"台を、下の「追加注文」に入れました。内容を確かめて「注文する」を押すと注文になります。";ui.msgKind="ok"}
   }
   else if(f==="prio"){var pf=el.getAttribute("data-fl");mutVendor(vid,function(v){var e=v.floors[pf];if(!e)return;
       if(el.checked){var mx=0;Object.keys(v.floors).forEach(function(k){var x=v.floors[k];if(k!==pf&&nrNum(x.w)&&nrNum(x.p)>mx)mx=nrNum(x.p)});e.p=mx+1;delete e.pq}
@@ -2857,7 +2867,7 @@ setInterval(function(){
   if(!window.NR_ACCOUNT||ENV.mode!=="db"||document.visibilityState!=="visible"||!navigator.onLine||PEND.n||ui.confirm||spin||spinSave)return;
   var ae=document.activeElement;if(ae&&/^(INPUT|SELECT|TEXTAREA)$/.test(ae.tagName))return;
   /* 最後に画面をさわってから1分以内や、まだ保存していない選択(空きの振り分けのチェックなど)があるときは待つ */
-  if(Date.now()-LAST_TOUCH<60000||document.querySelector('input[data-fc]:checked'))return;
+  if(Date.now()-LAST_TOUCH<60000||document.querySelector('input[data-fc]:checked')||Object.keys(ui.odraft||{}).some(function(k){return Object.keys(ui.odraft[k]).length}))return;/* 注文する前の追加注文台数があるときも待つ */
   try{sessionStorage.setItem("nr-auto",JSON.stringify({t:Date.now(),tab:ui.tab,sel:ui.sel,vsel:ui.vsel,month:ui.month&&ui.month.getTime(),y:window.scrollY}))}catch(e){}
   location.reload();
 },AUTO_MS);

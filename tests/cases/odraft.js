@@ -1,0 +1,21 @@
+// 業者入力: 各階の追加注文台数 → 下の追加注文の欄に入る → 確かめて注文する
+const REPO=require('path').resolve(__dirname,'..','..')+'/';const WORK=process.cwd();
+const {chromium,devices}=require('playwright');const fs=require('fs');
+fs.writeFileSync('main-test.html',fs.readFileSync(REPO+'index.html','utf8'));
+const FS={config:{main:{evn:2}},approved:{v1:{company:'サンユー',vid:'v1'}},vendors:{v1:{floors:{6:{h:3,w:1},12:{h:2,w:0}}}}};
+(async()=>{const b=await chromium.launch();const cx=await b.newContext({...devices['iPhone 13']});
+await cx.addInitScript(()=>{try{localStorage.setItem('nr-uipref','{"simple":false}')}catch(e){}});
+await cx.route(/gstatic\.com\/firebasejs/,r=>r.fulfill({contentType:'text/javascript',body:fs.readFileSync('fake-fb.js','utf8')}));
+await cx.route(/jsdelivr/,r=>r.fulfill({contentType:'text/javascript',body:fs.readFileSync('qrcode.min.js','utf8')}));
+await cx.addInitScript(w=>{window.__FAKE_UID='v1';window.__FAKE_EMAIL='v@x.jp';window.__FS=w},FS);
+const p=await cx.newPage();p.on('pageerror',e=>console.log('ERR',e.message));await p.goto('file://'+WORK+'/main-test.html');await p.click('#lg-google');await p.waitForTimeout(800);
+await p.click('button[data-tab=vin]');await p.waitForTimeout(300);
+await p.fill('#a-6','2');await p.locator('#a-6').dispatchEvent('change');await p.waitForTimeout(300);
+await p.fill('#a-12','1');await p.locator('#a-12').dispatchEvent('change');await p.waitForTimeout(300);
+let S=await p.evaluate(()=>JSON.parse(sessionStorage.__FS));console.log('入れただけ(注文はまだ):',Object.keys((S.orders||{}).v1&&S.orders.v1.items||{}).length,'件');
+console.log('追加注文の欄:',(await p.locator('.odraft').innerText()).replace(/\s+/g,' '));
+await p.click('.odraft [data-act=ordundraft][data-fl="12"]');await p.waitForTimeout(200);console.log('12階を外した:',(await p.locator('.odraft').innerText()).replace(/\s+/g,' ').slice(0,40));
+await p.fill('#od-m','急ぎです');await p.click('.odraft [data-act=ordadd]');await p.waitForTimeout(400);
+S=await p.evaluate(()=>JSON.parse(sessionStorage.__FS));console.log('注文した:',JSON.stringify(Object.values(S.orders.v1.items).map(x=>[x.f,x.u,x.st,x.memo])),'| 欄:',await p.locator('.odraft').count(),'| 送信待ち',JSON.stringify(Object.keys(S.outbox||{})));
+console.log('メッセージ:',(await p.locator('.note').first().innerText()).slice(0,40),'| 幅',await p.evaluate(()=>document.documentElement.scrollWidth));
+await b.close()})();
