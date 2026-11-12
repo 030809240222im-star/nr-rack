@@ -1666,10 +1666,16 @@ function sCrew(C){
 }
 
 /* ---- 管理者: 今日やること ---- */
+/* 確定した回収を「確認した」記録(この端末だけ)。{回収日: 確定した時刻} */
+function cfSeen(){try{return JSON.parse(localStorage.getItem("nr-cfseen")||"{}")||{}}catch(e){return {}}}
+function cfSeenMark(d,at){try{var o=cfSeen(),lim=nrDs(new Date(Date.now()-30*864e5));Object.keys(o).forEach(function(k){if(nrBase(k)<lim)delete o[k]});o[d]=at;localStorage.setItem("nr-cfseen",JSON.stringify(o))}catch(e){}}
 function sAdminTasks(C){
   var t=[],now=C.t,lim=nrDs(new Date(nrPd(now).getTime()+7*864e5));
-  Object.keys(D.days).sort().forEach(function(d){var s=C.sim.byDate[d];if(nrBase(d)<now||nrBase(d)>lim||D.confirmed[d]||!nrNum(D.days[d].cap))return;
-    t.push({t:fmtLong(d)+"の回収を決める",s:s&&s.asg.length?(nrNum(D.days[d].cap)-s.left)+'台ぶんの割り振りができています':'まだ割り振れる台数がありません',tab:"cal",d:d})});
+  /* 新たに確定した回収(自動確定を含む)で、この端末でまだ開いていないもの。「開く」を押すと消える */
+  var cs=cfSeen();
+  Object.keys(D.confirmed).sort().forEach(function(d){if(nrBase(d)<=now)return;var cf=D.confirmed[d],h0=(cf.hist||[])[0],at=(h0&&h0.at)||cf.at||"";if(!at||cs[d]===at)return;/* 確定した時刻(盛替え業者の入力では変わらない) */
+    var rs=(cf.rows||[]).filter(function(r){return nrNum(r.units)>0}),u=0,vs={};rs.forEach(function(r){u+=nrNum(r.units);vs[r.vid]=1});
+    t.push({t:fmtLong(d)+"の確定した回収を確認する",s:u+'台・'+Object.keys(vs).length+'社'+(cf.auto?'(自動で確定)':''),tab:"cal",d:d,seen:at})});
   Object.keys(D.confirmed).sort().forEach(function(d){if(nrBase(d)!==now)return;var rs=(D.confirmed[d].rows||[]).filter(function(r){return nrNum(r.units)>0}),np=rs.filter(function(r){return isPlaced(d,r)}).length,nb=rs.filter(function(r){return r.back}).length,bad=rs.filter(function(r){return r.chk&&r.chk.k!=="ok"&&!r.back}).length;
     t.unshift({t:'本日の回収'+(sesLabel(d)?' '+sesLabel(d):''),s:'置いた '+np+'/'+rs.length+'・戻した '+nb+'/'+rs.length+(bad?'・足りない/ない '+bad+'件':''),tab:"cal",d:d,warn:!!bad})});
   var rmd={};nrRemind(C.am,D.days,D.confirmed,C.cfg,C.t).forEach(function(x){(rmd[x.d]=rmd[x.d]||[]).push(vname(x.vid))});
@@ -1682,7 +1688,7 @@ function sAdminTasks(C){
 function sAdminHome(C){
   var t=sAdminTasks(C),h='<section class="panel simple"><div class="pane-h"><h2>今日やること</h2><span class="hint" style="margin:0">'+t.length+'件</span></div>';
   if(!t.length)h+='<p class="empty">いまやることはありません。</p>';
-  else h+='<div class="tasks">'+t.map(function(x){return '<div class="task'+(x.warn?' warn':'')+'"><div><b>'+esc(x.t)+'</b><small>'+esc(x.s)+'</small></div><button class="btn primary" data-act="sgo" data-tab="'+x.tab+'"'+(x.d?' data-d="'+x.d+'"':'')+'>開く</button></div>'}).join("")+'</div>';
+  else h+='<div class="tasks">'+t.map(function(x){return '<div class="task'+(x.warn?' warn':'')+'"><div><b>'+esc(x.t)+'</b><small>'+esc(x.s)+'</small></div><button class="btn primary" data-act="sgo" data-tab="'+x.tab+'"'+(x.d?' data-d="'+x.d+'"':'')+(x.seen?' data-seen="'+esc(x.seen)+'"':'')+'>開く</button></div>'}).join("")+'</div>';
   return h+'<p class="hint">やることが終わると、この一覧から消えます。他の機能は上のボタンから開きます。全部のタブを使うときは「詳しく表示へ」を押します。</p></section>';
 }
 
@@ -2338,7 +2344,7 @@ function onClick(ev){
   else if(act==="simple"){ui.simple=!ui.simple;saveUiPref();if(ENV.admin)ui.tab=ui.simple?"home":"cal";else if(!ENV.crew)ui.tab="cal";else ui.tab="cal";window.scrollTo(0,0)}
   else if(act==="stab"){ui.stab=b.getAttribute("data-tab");window.scrollTo(0,0)}
   else if(act==="sfull"){ui.simple=false;saveUiPref();ui.tab=b.getAttribute("data-tab")||"cal";window.scrollTo(0,0)}
-  else if(act==="sgo"){ui.tab=b.getAttribute("data-tab");var gd=b.getAttribute("data-d");if(gd){ui.sel=gd;ui.month=new Date(nrPd(nrBase(gd)).getFullYear(),nrPd(nrBase(gd)).getMonth(),1,12)}window.scrollTo(0,0)}
+  else if(act==="sgo"){ui.tab=b.getAttribute("data-tab");var gd=b.getAttribute("data-d");if(gd&&b.getAttribute("data-seen"))cfSeenMark(gd,b.getAttribute("data-seen"));if(gd){ui.sel=gd;ui.month=new Date(nrPd(nrBase(gd)).getFullYear(),nrPd(nrBase(gd)).getMonth(),1,12)}window.scrollTo(0,0)}
   else if(act==="sday"){ui.sday=b.getAttribute("data-d")}
   else if(act==="sev"){ui.sev=ui.sev||{};ui.sev[b.getAttribute("data-key")]=Number(b.getAttribute("data-ev"))}
   else if(act==="sshort"){ui.sshort=b.getAttribute("data-k")||null}

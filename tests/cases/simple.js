@@ -46,7 +46,7 @@ console.log(' 進み具合:',(await p.locator('.sprog span').innerText()));await
 ({cx,p}=await open('g1','kowa0371@gmail.com','main-test.html',{viewport:{width:1280,height:900}}));
 console.log('管理者 タブ:',(await p.locator('.tabs button').allInnerTexts()).join('|').replace(/\n/g,''));
 console.log(' やること:',(await p.locator('.task b').allInnerTexts()).join(' / '));
-await p.click('.task >> nth=0 >> [data-act=sgo]');await p.waitForTimeout(300);console.log(' 開いた先:',await p.locator('.tabs button[aria-selected=true]').innerText(),'選んだ日',await p.locator('.dhead h2').innerText().catch(()=>'-'));
+await p.click('.task >> nth=0 >> [data-act=sgo]');await p.waitForTimeout(300);await p.click('[data-act=tab][data-tab=home]');await p.waitForTimeout(300);await p.click('.task >> nth=1 >> [data-act=sgo]');await p.waitForTimeout(300);await p.click('[data-act=tab][data-tab=home]');await p.waitForTimeout(300);console.log(' 確定した回収を開いた後のやること:',(await p.locator('.task b').allInnerTexts()).join(' / '));await p.click('.task >> nth=0 >> [data-act=sgo]');await p.waitForTimeout(300);console.log(' 開いた先:',await p.locator('.tabs button[aria-selected=true]').innerText(),'選んだ日',await p.locator('.dhead h2').innerText().catch(()=>'-'));
 console.log(' 車の帯:',(await p.locator('.bands').first().innerText().catch(()=>'')).replace(/\s+/g,' '));
 await p.click('[data-act=simple]');await p.waitForTimeout(300);console.log(' くわしく:',(await p.locator('.tabs button').count()),'タブ');
 await b.close()})();
