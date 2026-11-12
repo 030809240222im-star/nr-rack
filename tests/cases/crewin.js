@@ -24,3 +24,17 @@ console.log('入れた:',JSON.stringify(S.orders.v2.items.o1.done),' 25階:',JSO
 console.log('表示:',(await p.locator('.addbox').innerText()).replace(/\s+/g,' ').slice(0,100));
 console.log('sw',await p.evaluate(()=>document.documentElement.scrollWidth));
 await b.close()})();
+// 並び: 階の上から順、新しいBOXの搬入はその下
+(async()=>{const {chromium,devices}=require('playwright');const b=await chromium.launch();
+for(const simple of [false,true]){const cx=await b.newContext({...devices['iPhone 13']});
+await cx.addInitScript(v=>{localStorage.setItem('nr-uipref',JSON.stringify({simple:v}))},simple);
+await cx.route(/gstatic\.com\/firebasejs/,r=>r.fulfill({contentType:'text/javascript',body:fs.readFileSync('fake-fb.js','utf8')}));
+await cx.route(/jsdelivr/,r=>r.fulfill({contentType:'text/javascript',body:fs.readFileSync('qrcode.min.js','utf8')}));
+const F2=JSON.parse(JSON.stringify(FS));F2.confirmed[k].rows=[{vid:'v1',floor:9,units:1,ev:1,n:'サンユー'},{vid:'v2',floor:24,units:2,ev:1,n:'日本建工'},{vid:'v1',floor:17,units:4,ev:1,n:'サンユー'}];
+await cx.addInitScript(w=>{window.__FAKE_UID='c1';window.__FAKE_EMAIL='c@x.jp';window.__FS=w},F2);
+const p=await cx.newPage();await p.goto('file://'+WORK+'/crew-test.html');await p.click('#lg-google');await p.waitForTimeout(800);
+if(!simple){await p.click(`[data-act=sel][data-date="${k}"]`).catch(()=>{});await p.waitForTimeout(300)}
+const txt=(await (simple?p.locator('.simple').first():p.locator('.ccards').first().locator('xpath=..')).innerText()).replace(/\s+/g,' ');
+const order=[...txt.matchAll(/(\d+)階 (\d+)台/g)].map(m=>m[1]+'階');const bi=txt.indexOf('新しいBOX'),ri=txt.indexOf('17階');
+console.log(simple?'簡単表示':'詳しい表示','の並び:',order.join(' → '),'| 搬入は下:',bi>ri);await cx.close()}
+await b.close()})();

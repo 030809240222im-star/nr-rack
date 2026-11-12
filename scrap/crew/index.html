@@ -61,7 +61,7 @@ button:disabled{opacity:.45;cursor:default}
 .wdboard{margin:0 0 12px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface2)}.wdboard h3{margin:0 0 6px;font-size:14px}
 .wdgrid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}.wdgrid>div{min-width:0;font-size:12px}.wdgrid b{display:block;margin-bottom:2px}.wdn{display:block;overflow-wrap:anywhere;line-height:1.3;margin-bottom:1px}
 @media (max-width:700px){.wdgrid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-.addbox{margin:0 0 12px}.addbox h3{margin:0 0 6px}.ccard.done{opacity:.7}
+.addbox{margin:12px 0 0}.addbox h3{margin:0 0 6px}.ccard.done{opacity:.7}
 
 /* かんたん表示 */
 .tabs:empty{display:none}
@@ -1118,8 +1118,9 @@ function backSet(bd,bi,on,ev){
   if(fx){applyAdj(fx[0],fx[1],fx[2]);ui.msg=(ENV.admin?vname(fx[0]):"業者")+"の保有台数と回収希望を"+(fx[2]>0?"更新":"元に戻")+"しました。";ui.msgKind="ok"}
 }
 function crewCards(d){
-  var cf=D.confirmed[d],h=crewAdds(d)+'<div class="ccards">';
-  ((cf&&cf.rows)||[]).forEach(function(r,i){
+  var cf=D.confirmed[d],h='<div class="ccards">';
+  /* 業者の並びは階の上から順。新しいBOXの搬入はその下 */
+  ((cf&&cf.rows)||[]).map(function(r,i){return {r:r,i:i}}).sort(function(a,b){return b.r.floor-a.r.floor||a.i-b.i}).forEach(function(x){var r=x.r,i=x.i;
     if(nrNum(r.units)<=0)return;
     h+='<div class="ccard"><div class="cc-h"><b>'+esc(rowName(r))+'</b> '+r.floor+'階 <b>'+nrNum(r.units)+'台</b> → <b>'+evLabel(r.ev,r.to)+'</b></div>'
       +((D.vendors[r.vid]||{}).note?'<div class="cc-r"><span>業者の備考</span><div style="white-space:pre-wrap">'+esc(D.vendors[r.vid].note)+'</div></div>':'')
@@ -1127,7 +1128,7 @@ function crewCards(d){
       +'<div class="cc-r"><span>搬出確認</span><div>'+chkCell(d,r,i)+'</div></div>'
       +'<div class="cc-r"><span>戻し '+esc(retLabel(r))+'</span><div>'+backCell(d,r,i)+'</div></div></div>';
   });
-  return h+'</div>';
+  return h+'</div>'+crewAdds(d);
 }
 function dayRowsTable(d){
   var cf=D.confirmed[d],rows=(cf&&cf.rows)||[];
@@ -1606,14 +1607,10 @@ function sCrew(C){
   var ds=sCrewDays(C),d=ui.sday&&ds.indexOf(ui.sday)>=0?ui.sday:ds[0],h='<section class="panel simple">'+moveBox(C);
   if(!d)return h+'<p class="empty">いま決まっている搬出の予定はありません。</p></section>';
   if(ds.length>1)h+='<div class="dchips">'+ds.map(function(x){return '<button class="'+(x===d?'on':'')+'" data-act="sday" data-d="'+x+'">'+esc(fmtD(x))+(sesLabel(x)?' '+esc(sesLabel(x)):'')+'</button>'}).join("")+'</div>';
-  var cf=D.confirmed[d],rows=((cf&&cf.rows)||[]).map(function(r,i){return {r:r,i:i}}).filter(function(x){return nrNum(x.r.units)>0}),day=D.days[d]||{};
+  var cf=D.confirmed[d],rows=((cf&&cf.rows)||[]).map(function(r,i){return {r:r,i:i}}).filter(function(x){return nrNum(x.r.units)>0}).sort(function(a,b){return b.r.floor-a.r.floor||a.i-b.i}),day=D.days[d]||{};
   var adds=orderList().filter(function(x){return x.o.plan&&x.o.plan.d===nrBase(d)&&(x.o.st==="plan"||x.o.st==="done")});
   var nc=rows.filter(function(x){return x.r.chk}).length,nb=rows.filter(function(x){return x.r.back}).length,ni=adds.filter(function(x){return x.o.st==="done"}).length;
   h+='<div class="sprog"><b>'+esc(fmtLong(d))+' '+esc(fmtTime(day))+'</b><span>確かめた '+nc+'/'+rows.length+'・戻した '+nb+'/'+rows.length+(adds.length?'・入れた '+ni+'/'+adds.length:'')+'</span></div>';
-  if(adds.length){h+='<div class="sect">📦 新しいBOXの搬入</div>';
-    adds.forEach(function(x){var o=x.o,done=o.st==="done",key="in:"+x.vid+":"+x.id,ev=(ui.sev&&ui.sev[key])||((day.elev||[])[0])||1;
-      h+='<div class="newbox'+(done?' ok':'')+'"><div class="k">'+(done?'入れました(業者の台数にも反映)':'入れる')+'</div><div class="nb-h">'+vchip(x.vid,o.n||vname(x.vid))+'<b>'+o.f+'階 '+nrNum(o.u)+'台</b></div>'
-        +(done?'<div class="hint" style="margin:0">EV'+(nrNum(o.done.ev)||"?")+'で '+nrNum(o.done.u)+'台</div>':'<div class="evrow">'+evButtons(key,ev)+'</div><button class="big okb" data-act="sin" data-vid="'+esc(x.vid)+'" data-id="'+esc(x.id)+'" data-d="'+nrBase(d)+'">EV'+ev+'で 入れました</button>')+'</div>'})}
   if(rows.length)h+='<div class="sect">⬆ 出すBOXの確かめと、戻し</div>';
   rows.forEach(function(x){var r=x.r,i=x.i,c=r.chk,b=r.back,on=isPlaced(d,r),pe=placedEv(d,r),key="b:"+d+":"+i,bev=b?nrNum(b.ev):((ui.sev&&ui.sev[key])||pe||nrNum(r.ev)||1),sk=d+"|"+i;
     h+='<div class="job'+(c?(c.k==="ok"?' ok':' bad'):'')+(b?' back':'')+'"><div class="job-h">'+vchip(r.vid,rowName(r))+'<b>'+r.floor+'階 '+nrNum(r.units)+'台</b></div>'
@@ -1629,6 +1626,10 @@ function sCrew(C){
       }
     }
     h+='</div>'});
+  if(adds.length){h+='<div class="sect">📦 新しいBOXの搬入</div>';
+    adds.forEach(function(x){var o=x.o,done=o.st==="done",key="in:"+x.vid+":"+x.id,ev=(ui.sev&&ui.sev[key])||((day.elev||[])[0])||1;
+      h+='<div class="newbox'+(done?' ok':'')+'"><div class="k">'+(done?'入れました(業者の台数にも反映)':'入れる')+'</div><div class="nb-h">'+vchip(x.vid,o.n||vname(x.vid))+'<b>'+o.f+'階 '+nrNum(o.u)+'台</b></div>'
+        +(done?'<div class="hint" style="margin:0">EV'+(nrNum(o.done.ev)||"?")+'で '+nrNum(o.done.u)+'台</div>':'<div class="evrow">'+evButtons(key,ev)+'</div><button class="big okb" data-act="sin" data-vid="'+esc(x.vid)+'" data-id="'+esc(x.id)+'" data-d="'+nrBase(d)+'">EV'+ev+'で 入れました</button>')+'</div>'})}
   return h+'</section>';
 }
 
