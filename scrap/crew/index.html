@@ -76,10 +76,10 @@ button:disabled{opacity:.45;cursor:default}
 .what{font-size:18px;line-height:1.5;margin:0}.what b{font-size:22px;font-family:var(--f-head)}
 .place{display:inline-block;background:var(--fg);color:var(--bg);font-weight:700;border-radius:8px;padding:0 10px}
 .srow{display:flex;flex-direction:column;gap:6px}
-.big{border:2px solid var(--line);border-radius:12px;min-height:52px;font-size:17px;font-weight:700;font-family:var(--f-head);background:var(--surface2);width:100%;padding:0 10px;color:var(--fg)}
-.big.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
-.big.okb{background:var(--ok);border-color:var(--ok);color:#fff}
-.big.badb{color:var(--bad);border-color:var(--bad);background:var(--surface)}
+.sbig{border:2px solid var(--line);border-radius:12px;min-height:52px;font-size:17px;font-weight:700;font-family:var(--f-head);background:var(--surface2);width:100%;padding:0 10px;color:var(--fg)}
+.sbig.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.sbig.okb{background:var(--ok);border-color:var(--ok);color:#fff}
+.sbig.badb{color:var(--bad);border-color:var(--bad);background:var(--surface)}
 .scard{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:8px}
 .scard.read{opacity:.7}
 .fl-h{font-family:var(--f-head);font-weight:700;font-size:22px}
@@ -96,12 +96,12 @@ button:disabled{opacity:.45;cursor:default}
 .job-h,.nb-h{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.job-h b,.nb-h b{font-family:var(--f-head);font-size:20px}
 .job-s{display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:14px}
 .pill{border-radius:999px;padding:1px 10px;font-size:12.5px;font-weight:700;background:var(--surface2);color:var(--muted);border:1px solid var(--line)}.pill.ok{background:var(--okbg);color:var(--ok);border-color:transparent}
-.tri{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:6px}.tri .big{font-size:15px;padding:0 4px}
+.tri{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:6px}.tri .sbig{font-size:15px;padding:0 4px}
 .tri2{display:grid;grid-template-columns:2fr 1fr;gap:6px}
 .res-l{display:flex;justify-content:space-between;align-items:center;gap:8px}
 .job.bad .res-l b{color:var(--bad)}.job.ok .res-l b{color:var(--ok)}
 .link{border:0;background:none;color:var(--accent);font-weight:700;text-decoration:underline;padding:4px}
-.evrow{display:flex;flex-direction:column;gap:4px;font-size:14px;font-weight:700}
+.s-evrow{display:flex;flex-direction:column;gap:4px;font-size:14px;font-weight:700}
 .evp{display:inline-flex;flex-wrap:wrap;gap:4px}
 .evp button{border:2px solid var(--line);background:var(--surface);border-radius:10px;min-height:42px;min-width:48px;font-weight:700;font-size:14px;padding:0 6px}
 .evp button[aria-pressed="true"]{background:var(--fg);border-color:var(--fg);color:var(--bg)}
@@ -1589,21 +1589,21 @@ function sVendorHome(C){
   /* 入力のお願い・警告(まだ「見ました」を押していないもの)は、予定の画面の一番上にも出す */
   noticeList(ENV.vid).filter(function(x){return !x.ack&&(x.o.kind==="remind"||x.o.kind==="remind2")}).forEach(function(x){
     h+='<div class="todo'+(x.o.kind==="remind2"?' warnb':'')+'"><div class="k">'+(x.o.kind==="remind2"?'⚠ 重要':'⏰ 入力のお願い')+'</div><p style="margin:0">'+esc(x.o.msg.replace(/^【[^】]*】/,''))+'</p>'
-      +'<button class="big primary" data-act="stab" data-tab="s-count">台数を入れる</button><button class="big" data-act="ack" data-id="'+esc(x.id)+'">見ました</button></div>'});
+      +'<button class="sbig primary" data-act="stab" data-tab="s-count">台数を入れる</button><button class="sbig" data-act="ack" data-id="'+esc(x.id)+'">見ました</button></div>'});
   if(!mr.length)h+='<div class="todo"><div class="k">次に出す日</div><p class="what">まだ決まっていません。</p><p class="hint" style="margin:0">「台数」で、今ある台数と出したい台数を入れておくと、管理者が出す日を決めます。決まったら、ここに大きく出ます。</p></div>';
   else{var d0=mr[0].d,first=mr.filter(function(x){return x.d===d0}),day=D.days[d0]||{},allp=first.every(function(x){return isPlaced(x.d,x.r)});
     h+='<div class="todo'+(allp?' done':'')+'"><div class="k">'+(nrBase(d0)===C.t?'今日出す':'次に出す日')+'</div><div class="when">'+esc(fmtLong(d0))+' <small>'+esc(fmtTime(day))+'</small></div>';
     first.forEach(function(x){var r=x.r,on=isPlaced(x.d,r);
       h+='<div class="srow"><p class="what"><b>'+r.floor+'階</b> の <b>'+nrNum(r.units)+'台</b> を <span class="place">'+esc(evLabel(r.ev,r.to))+'</span> に置く</p>'
         +(r.to?'<p class="hint" style="margin:0">前の日までに'+r.to+'階へ移してから置いてください。</p>':'')
-        +'<button class="big '+(on?'okb':'primary')+'" data-act="splace" data-d="'+x.d+'" data-i="'+x.i+'">'+(on?'✓ 置きました(取り消す)':'置きました')+'</button></div>'});
+        +'<button class="sbig '+(on?'okb':'primary')+'" data-act="splace" data-d="'+x.d+'" data-i="'+x.i+'">'+(on?'✓ 置きました(取り消す)':'置きました')+'</button></div>'});
     h+='<p class="hint" style="margin:0">'+(allp?'置いたことが管理者に伝わりました。':'前の日までに置いて、「置きました」を押してください。')+'</p></div>';
     var rest=mr.filter(function(x){return x.d!==d0});
     if(rest.length)h+='<div class="scard"><div class="k">その後の予定</div>'+rest.map(function(x){return '<div>'+esc(fmtD(x.d))+' '+x.r.floor+'階 '+nrNum(x.r.units)+'台 → '+esc(evLabel(x.r.ev,x.r.to))+'</div>'}).join("")+'</div>';
   }
   var fl=(D.vendors[ENV.vid]||{}).floors||{},ks=Object.keys(fl).map(Number).sort(function(a,b){return b-a});
   h+='<div class="scard"><div class="k">今入れてある台数</div>'+(ks.length?ks.map(function(f){return '<div>'+f+'階 今ある <b>'+nrNum(fl[f].h)+'</b>台 / 出したい <b>'+nrNum(fl[f].w)+'</b>台</div>'}).join(""):'<div>まだ入れていません。</div>')
-    +'<button class="big" data-act="stab" data-tab="s-count">台数を入れる・なおす</button></div>';
+    +'<button class="sbig" data-act="stab" data-tab="s-count">台数を入れる・なおす</button></div>';
   return h+'</section>';
 }
 function sVendorCount(C){
@@ -1620,14 +1620,14 @@ function sVendorCount(C){
      +(ww?'<label class="chk sprio"><input type="checkbox" id="sp-'+f+'" data-f="prio" data-fl="'+f+'"'+(nrNum(e.p)?' checked':'')+'>先に出す</label>'
        +(nrNum(e.p)?'<div class="q"><span>順番</span><input type="number" min="1" id="spn-'+f+'" data-f="prank" data-fl="'+f+'" value="'+nrNum(e.p)+'" aria-label="'+f+'階の先に出す順番"></div><div class="q"><span>先に出す台数</span><input type="number" min="1" max="'+ww+'" id="spq-'+f+'" data-f="pqty" data-fl="'+f+'" value="'+(nrNum(e.pq)?Math.min(nrNum(e.pq),ww):ww)+'" aria-label="'+f+'階から先に出す台数"></div>':''):'')+'</div>'});
   h+='<div class="scard"><div class="q"><span>他の階を足す</span><span class="mvbox"><input type="number" min="'+LIM.fmin+'" max="'+LIM.fmax+'" id="s-addf" data-keep placeholder="階" aria-label="足す階"><button class="btn" data-act="saddf">足す</button></span></div></div>'
-   +'<div class="scard"><div class="k">詳しい設定</div><p class="hint" style="margin:0">戻してほしい階を変える、先に出したい階を決める、スクラップ台車を追加で注文する、は「詳しく表示」の「業者入力」で行います。</p><button class="big" data-act="sfull" data-tab="vin">詳しい設定を開く</button></div>';
+   +'<div class="scard"><div class="k">詳しい設定</div><p class="hint" style="margin:0">戻してほしい階を変える、先に出したい階を決める、スクラップ台車を追加で注文する、は「詳しく表示」の「業者入力」で行います。</p><button class="sbig" data-act="sfull" data-tab="vin">詳しい設定を開く</button></div>';
   return h+'</section>';
 }
 function sVendorNews(){
   var all=noticeList(ENV.vid),h='<section class="panel simple">';
   if(!all.length)return h+'<p class="empty">お知らせはありません。</p></section>';
   all.forEach(function(x){var k=NK[x.o.kind]||NK.trouble;
-    h+='<div class="scard'+(x.ack?' read':'')+'"><div class="k">'+esc(fmtAt(x.o.at))+' '+k[1]+'</div><div>'+esc(x.o.msg)+'</div>'+(x.ack?'<div class="hint" style="margin:0">見ました</div>':'<button class="big primary" data-act="ack" data-id="'+esc(x.id)+'">見ました</button>')+'</div>'});
+    h+='<div class="scard'+(x.ack?' read':'')+'"><div class="k">'+esc(fmtAt(x.o.at))+' '+k[1]+'</div><div>'+esc(x.o.msg)+'</div>'+(x.ack?'<div class="hint" style="margin:0">見ました</div>':'<button class="sbig primary" data-act="ack" data-id="'+esc(x.id)+'">見ました</button>')+'</div>'});
   return h+'<p class="hint">「見ました」を押すと、管理者に伝わります。</p></section>';
 }
 
@@ -1648,20 +1648,20 @@ function sCrew(C){
     h+='<div class="job'+(c?(c.k==="ok"?' ok':' bad'):'')+(b?' back':'')+'"><div class="job-h">'+vchip(r.vid,rowName(r))+'<b>'+r.floor+'階 '+nrNum(r.units)+'台</b></div>'
       +'<div class="job-s"><span class="place">'+esc(evLabel(r.ev,r.to))+'</span><span class="pill'+(on?' ok':'')+'">'+(on?'置いてあります'+(pe?'(EV'+pe+')':''):'まだ置いていません')+'</span></div>';
     if(!c){
-      if(ui.sshort===sk)h+='<div class="k">あった台数を入れて送ります</div><div class="mvbox"><input type="number" min="0" max="'+nrNum(r.units)+'" id="ck-'+d+'-'+i+'" data-keep value="'+Math.max(nrNum(r.units)-1,0)+'" aria-label="あった台数"><span class="hint" style="margin:0">台</span></div><div class="tri2"><button class="big primary" data-act="chk" data-k="short" data-d="'+d+'" data-i="'+i+'">これで送る</button><button class="big" data-act="sshort" data-k="">もどる</button></div>';
-      else h+='<div class="tri"><button class="big okb" data-act="chk" data-k="ok" data-d="'+d+'" data-i="'+i+'">揃っている</button><button class="big" data-act="sshort" data-k="'+sk+'">足りない</button><button class="big badb" data-act="chk" data-k="none" data-d="'+d+'" data-i="'+i+'">ない</button></div>';
+      if(ui.sshort===sk)h+='<div class="k">あった台数を入れて送ります</div><div class="mvbox"><input type="number" min="0" max="'+nrNum(r.units)+'" id="ck-'+d+'-'+i+'" data-keep value="'+Math.max(nrNum(r.units)-1,0)+'" aria-label="あった台数"><span class="hint" style="margin:0">台</span></div><div class="tri2"><button class="sbig primary" data-act="chk" data-k="short" data-d="'+d+'" data-i="'+i+'">これで送る</button><button class="sbig" data-act="sshort" data-k="">もどる</button></div>';
+      else h+='<div class="tri"><button class="sbig okb" data-act="chk" data-k="ok" data-d="'+d+'" data-i="'+i+'">揃っている</button><button class="sbig" data-act="sshort" data-k="'+sk+'">足りない</button><button class="sbig badb" data-act="chk" data-k="none" data-d="'+d+'" data-i="'+i+'">ない</button></div>';
     }else{
       h+='<div class="res-l"><b>'+(c.k==="ok"?'揃っている':c.k==="none"?'ない(業者と管理者に伝えました)':'足りない: '+nrNum(c.got)+'台だけ(業者と管理者に伝えました)')+'</b>'+(b?'':'<button class="link" data-act="chk" data-k="" data-d="'+d+'" data-i="'+i+'">なおす</button>')+'</div>';
       if(c.k!=="none"){
-        if(!b)h+='<div class="evrow">'+evButtons(key,bev)+'</div>';
-        h+='<button class="big '+(b?'okb':'primary')+'" data-act="sback" data-d="'+d+'" data-i="'+i+'" data-ev="'+bev+'">'+(b?'✓ '+esc(retLabel(r))+'の EV'+bev+'前へ 戻しました(取り消す)':esc(retLabel(r))+'の EV'+bev+'前へ 戻しました')+'</button>';
+        if(!b)h+='<div class="s-evrow">'+evButtons(key,bev)+'</div>';
+        h+='<button class="sbig '+(b?'okb':'primary')+'" data-act="sback" data-d="'+d+'" data-i="'+i+'" data-ev="'+bev+'">'+(b?'✓ '+esc(retLabel(r))+'の EV'+bev+'前へ 戻しました(取り消す)':esc(retLabel(r))+'の EV'+bev+'前へ 戻しました')+'</button>';
       }
     }
     h+='</div>'});
   if(adds.length){h+='<div class="sect">📦 新しいBOXの搬入</div>';
     adds.forEach(function(x){var o=x.o,done=o.st==="done",key="in:"+x.vid+":"+x.id,ev=(ui.sev&&ui.sev[key])||((day.elev||[])[0])||1;
       h+='<div class="newbox'+(done?' ok':'')+'"><div class="k">'+(done?'入れました(業者の台数にも反映)':'入れる')+'</div><div class="nb-h">'+vchip(x.vid,o.n||vname(x.vid))+'<b>'+o.f+'階 '+nrNum(o.u)+'台</b></div>'
-        +(done?'<div class="hint" style="margin:0">EV'+(nrNum(o.done.ev)||"?")+'で '+nrNum(o.done.u)+'台</div>':'<div class="evrow">'+evButtons(key,ev)+'</div><button class="big okb" data-act="sin" data-vid="'+esc(x.vid)+'" data-id="'+esc(x.id)+'" data-d="'+nrBase(d)+'">EV'+ev+'で 入れました</button>')+'</div>'})}
+        +(done?'<div class="hint" style="margin:0">EV'+(nrNum(o.done.ev)||"?")+'で '+nrNum(o.done.u)+'台</div>':'<div class="s-evrow">'+evButtons(key,ev)+'</div><button class="sbig okb" data-act="sin" data-vid="'+esc(x.vid)+'" data-id="'+esc(x.id)+'" data-d="'+nrBase(d)+'">EV'+ev+'で 入れました</button>')+'</div>'})}
   return h+'</section>';
 }
 
