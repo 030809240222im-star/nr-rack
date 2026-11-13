@@ -12,7 +12,7 @@ await cx.route(/jsdelivr/,r=>r.fulfill({contentType:'text/javascript',body:fs.re
 await cx.addInitScript(w=>{window.__FAKE_UID=w.uid;window.__FAKE_EMAIL=w.email;if(!sessionStorage.__FS)window.__FS=w.F},{uid,email,F:F||FS});
 const p=await cx.newPage();p.on('pageerror',e=>console.log('ERR',e.message));await p.goto('file://'+WORK+'/'+f);await p.click('#lg-google');await p.waitForTimeout(800);return {cx,p}};
 let {cx,p}=await open('g1','kowa0371@gmail.com','main-test.html');console.log('宛先の一覧(台数未入力のオガシワも出る):',(await p.locator('#am-to option').allInnerTexts()).join('|'));
-console.log('選べない宛先の数(0のはず):',await p.locator('#am-to option[disabled]').count());console.log('届かない会社の説明:',(await p.locator('#am-to ~ p.hint, .mvbox + p.hint').first().innerText().catch(()=>'(なし)')).slice(0,30));
+console.log('選べない宛先の数(0のはず):',await p.locator('#am-to option[disabled]').count());
 await p.selectOption('#am-to','v1');await p.fill('#am-msg','明日はEV2が点検です。');await p.click('[data-act=amsend]');await p.waitForTimeout(300);console.log('1社:',(await p.locator('.note').first().innerText()).slice(0,40));
 await p.selectOption('#am-to','*v');await p.fill('#am-msg','全員へのお知らせです。');await p.click('[data-act=amsend]');await p.waitForTimeout(300);console.log('全員:',(await p.locator('.note').first().innerText()).slice(0,40));
 await p.selectOption('#am-to','*c');await p.fill('#am-msg','盛替えの皆さんへ。');await p.click('[data-act=amsend]');await p.waitForTimeout(300);console.log('盛替え:',(await p.locator('.note').first().innerText()).slice(0,40));
