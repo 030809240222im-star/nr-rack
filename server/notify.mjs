@@ -8,7 +8,7 @@
      通知の鍵(VAPID)は最初の実行で作って pushkeys/main(アプリからは読めない)に保存し、公開鍵だけを config/main.vapid に書く。
    メール: MAIL_USER と MAIL_PASS があるときだけ送る。
    読むのは送信待ちだけ(空なら少しの読み取りで終わる)。送るものがあるときだけ、宛先を調べるために approved・crews・push などを読む。
-   業者・盛替え業者あての送信待ちは、入れた人が管理者(業者あては盛替え業者も可)のときだけ送る(ルールでも制限している)。
+   業者・盛替え業者あての送信待ちは、入れた人が管理者・利用中の業者(業者あては盛替え業者も)のときだけ送る(ルールでも制限している)。
    1日以上前の送信待ちは、送らずに消す(設定前にたまった分をまとめて送らないため)。 */
 import fs from "node:fs";
 import admin from "firebase-admin";
@@ -77,12 +77,12 @@ for (const app of APPS) {
   for (const x of items) {
     done.push(x.ref);
     if (!x.at || x.at < dayAgo || !x.msg) { dropped++; continue; }
-    const who = x.uid === "server" ? "" : await userEmail(x.uid), byAdmin = x.uid === "server" || ADMINS.includes(who), byCrew = !!crews[x.uid];
+    const who = x.uid === "server" ? "" : await userEmail(x.uid), byAdmin = x.uid === "server" || ADMINS.includes(who), byCrew = !!crews[x.uid], byVendor = !!approved[x.uid];
     let key = null, to = [], uids = [], title = "", url = app.url;
-    if (x.to === "vendor" && x.vid && (byAdmin || byCrew)) {
+    if (x.to === "vendor" && x.vid && (byAdmin || byCrew || byVendor)) {
       if (vendors[x.vid] && vendors[x.vid].manual) continue;
       key = "v:" + x.vid; to = vendorMails(x.vid); uids = vendorUids(x.vid); title = vname(x.vid) + " 御中";
-    } else if (x.to === "crew" && byAdmin) {
+    } else if (x.to === "crew" && (byAdmin || byVendor)) {
       key = "c"; to = [...new Set(Object.values(crews).map(c => String(c.email || "").trim()).filter(okMail))]; uids = Object.keys(crews); title = "盛替え業者の皆さま"; url = app.crewUrl;
     } else if (x.to === "admin") {
       key = "a"; to = (config.mailAdmins || []).map(e => String(e).toLowerCase()).filter(e => ADMINS.includes(e)); uids = adminPushUids; title = "管理者の皆さま";

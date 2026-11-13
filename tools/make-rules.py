@@ -96,11 +96,41 @@ BLOCK = """
       allow update: if isCrew{S}() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['items', 'at']);
     }}
 
-    // 業者へのお知らせ: 管理者が出し、業者本人は「確認した」(ack)だけ書ける
+    // 業者から送る連絡: 利用中の業者は、連絡を1件ずつ足すことだけができる(last = 足した連絡のID、fv = 差出人の会社 = 自分の会社)
+    function msgAdd{S}() {{
+      let d = request.resource.data;
+      let k = d.get('last', '');
+      let me = get(/databases/$(database)/documents/{P}approved/$(request.auth.uid)).data;
+      return k is string && k.size() > 0 && k.size() <= 40
+        && d.items is map && k in d.items
+        && d.items[k].keys().hasOnly(['d', 'kind', 'msg', 'at', 'by', 'fv', 'fn'])
+        && d.items[k].kind == 'msg' && d.items[k].fv == me.get('vid', request.auth.uid)
+        && d.items[k].msg is string && d.items[k].msg.size() <= 300
+        && (resource == null
+            ? d.keys().hasOnly(['items', 'last']) && d.items.keys().hasOnly([k])
+            : d.diff(resource.data).affectedKeys().hasOnly(['items', 'last'])
+              && d.items.diff(resource.data.get('items', {{}})).affectedKeys().hasOnly([k])
+              && !(k in resource.data.get('items', {{}})));
+    }}
+    // 業者へのお知らせ: 管理者が出し、業者本人は「確認した」(ack)だけ書ける。ほかの業者は連絡を1件ずつ足せる
     match /{P}notices/{{id}} {{
       allow read: if isAdmin() || isMember{S}(id);
       allow write: if isAdmin();
       allow update: if isMember{S}(id) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ack']);
+      allow create, update: if isApproved{S}() && msgAdd{S}();
+    }}
+    // 業者から管理者・盛替え業者への連絡(admin・crew の2つだけ)。盛替え業者は「見ました」(ack)だけ書ける
+    match /{P}inbox/{{id}} {{
+      allow read: if isAdmin() || (id == 'crew' && isCrew{S}());
+      allow write: if isAdmin();
+      allow update: if id == 'crew' && isCrew{S}() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ack']);
+      allow create, update: if id in ['admin', 'crew'] && isApproved{S}() && msgAdd{S}();
+    }}
+    // 業者が送った連絡の控え: その会社のメンバーが書く。受け取った人は「見ました」(seen)だけ書ける
+    match /{P}sent/{{id}} {{
+      allow read: if isAdmin() || isMember{S}(id);
+      allow write: if isAdmin() || (isMember{S}(id) && isApproved{S}());
+      allow update: if (isApproved{S}() || isCrew{S}()) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['seen']);
     }}
     // 参加コード: コードを知っている人だけが1件ずつ読める(一覧は管理者だけ)。会社のメンバーと管理者が作る
     match /{P}codes/{{code}} {{
@@ -163,7 +193,8 @@ BLOCK = """
         && (isAdmin()
             || request.resource.data.to == 'admin'
             || request.resource.data.to == 'me'
-            || (request.resource.data.to == 'vendor' && isCrew{S}()));
+            || (request.resource.data.to == 'vendor' && isCrew{S}())
+            || (request.resource.data.to in ['vendor', 'crew'] && isApproved{S}()));
     }}
 """
 

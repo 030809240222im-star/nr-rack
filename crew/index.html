@@ -691,10 +691,10 @@ var COLORS=["var(--c0)","var(--c1)","var(--c2)","var(--c3)","var(--c4)","var(--c
 /* 色の上に会社名を書くときの文字の色(明るい色には黒、暗い色には白) */
 var VTEXT=["#fff","#13222b","#13222b","#fff","#13222b","#fff","#fff","#fff","#fff","#13222b","#fff","#13222b"];
 var ENV={vid:"local",crew:false,mode:"local",uid:"local",realUid:"local",admin:true,preview:false,db:null,email:"",name:""};
-var D={config:{},days:{},vendors:{},plans:{},members:{},approved:{},blocked:{},confirmed:{},crews:{},crewreq:{},crewblocked:{},orders:{},notices:{},codes:{},seen:{}};
+var D={config:{},days:{},vendors:{},plans:{},members:{},approved:{},blocked:{},confirmed:{},crews:{},crewreq:{},crewblocked:{},orders:{},notices:{},codes:{},seen:{},inbox:{},sent:{}};
 var LOADED={};
 /* 全データのリセットで消す入れ物。設定(config)は残す */
-var RESET_COLLS=["days","confirmed","vendors","plans","orders","notices","members","approved","blocked","codes","crews","crewreq","crewblocked","seen"];
+var RESET_COLLS=["days","confirmed","vendors","plans","orders","notices","members","approved","blocked","codes","crews","crewreq","crewblocked","seen","inbox"];
 var ui={tab:"cal",month:null,sel:null,vsel:null,only:false,confirm:"",msg:"",msgKind:""};
 /* 表示の好み(チェックや絞り込み)は、この端末に覚えておき、読み込み直しても戻す */
 var UIPREF=["only","mapOnly","mapMode","mapVen","simple"];
@@ -868,6 +868,8 @@ function watchVid(){
       /* 会社を替えた直後は、サーバーに反映されるまで読めないことがある。少し待って読み直す */
       if(VSUB.retry<5){VSUB.retry++;setTimeout(function(){VSUB.vid=null;watchVid()},2000)}}));
   });
+  /* 自分の会社が送った連絡(sent/{会社})。ルールを貼る前は読めないので、黙って空にする */
+  D.sent={};VSUB.off.push(ENV.db.doc("sent/"+ENV.vid).onSnapshot(function(s){var m={};if(s.exists)m[ENV.vid]=s.data();D.sent=m;render(true)},function(){}));
 }
 /* 開いたとき(と画面に戻ったとき)に、最終ログインの時刻を残す。5分以内の繰り返しは書かない。失敗しても画面には出さない */
 var SEEN_AT=0;
@@ -888,6 +890,8 @@ function subscribe(){
   markSeen();
   document.addEventListener("visibilitychange",function(){if(document.visibilityState==="visible")markSeen()});
   ENV.db.doc("config/main").onSnapshot(function(s){D.config=s.exists?s.data():{};LOADED.config=true;ui.synced=new Date();render(true)},err);
+  /* 業者から届いた連絡: 管理者は inbox/admin、盛替え業者は inbox/crew。ルールを貼る前でも画面を止めない */
+  if(ENV.admin||ENV.crew){var ibx=ENV.admin?"admin":"crew";ENV.db.doc("inbox/"+ibx).onSnapshot(function(s){var m={};if(s.exists)m[ibx]=s.data();D.inbox=m;LOADED.inbox=true;render(true)},function(){})}
 }
 
 /* ---- 計算 ---- */
@@ -1306,6 +1310,7 @@ function noticeList(vid){
     if(hit){hit.dups.push(x.id);if(x.ack&&!hit.ack)hit.ack=x.ack}else keep.push(x)});
   return keep.filter(function(x){return (x.o.d||"")>=from||!x.ack}).sort(function(a,b){return (a.o.at||"")<(b.o.at||"")?1:-1});
 }
+function nkName(o){return o&&o.kind==="msg"&&o.fn?o.fn+"から":(NK[o&&o.kind]||NK.trouble)[1]}
 var NK={confirm:["📋","確定"],change:["⚠","変更"],cancel:["✖","取り消し"],trouble:["📣","連絡"],remind:["⏰","入力のお願い"],remind2:["⚠","重要"],move:["🔁","盛替え"],msg:["✉","管理者から"]};
 /* 業者: まだ「確認した」を押していないお知らせ */
 function noticeBox(){
@@ -1313,12 +1318,12 @@ function noticeBox(){
   var list=noticeList(ENV.vid).filter(function(x){return !x.ack});if(!list.length)return "";
   var bad=list.some(function(x){return x.o.kind!=="confirm"});
   var h='<div class="todaybox '+(bad?'alert':'next')+'" role="alert"><h3>'+(bad?'⚠ 予定の変更・連絡があります':'📋 予定が確定しました')+'('+list.length+'件)</h3><ul>';
-  list.forEach(function(x){var k=NK[x.o.kind]||NK.trouble;h+='<li><b>'+k[0]+' '+k[1]+'</b> '+esc(x.o.msg)+' <span class="hint" style="margin:0">'+esc(fmtAt(x.o.at))+'</span> <button class="btn sm primary" data-act="ack" data-id="'+esc(x.id)+'">確認した</button></li>'});
+  list.forEach(function(x){var k=NK[x.o.kind]||NK.trouble;h+='<li><b>'+k[0]+' '+esc(nkName(x.o))+'</b> '+esc(x.o.msg)+' <span class="hint" style="margin:0">'+esc(fmtAt(x.o.at))+'</span> <button class="btn sm primary" data-act="ack" data-id="'+esc(x.id)+'">確認した</button></li>'});
   return h+'</ul><p>内容を確かめたら「確認した」を押してください。管理者に伝わります。</p></div>';
 }
 /* 管理者・盛替え業者: その日の業者へのお知らせと、業者が確認したか */
 function noticeStatus(d){
-  var rows=[];Object.keys(D.notices).forEach(function(vid){noticeList(vid).forEach(function(x){if(x.o.d===d)rows.push(x)})});
+  var rows=[];Object.keys(D.notices).forEach(function(vid){noticeList(vid).forEach(function(x){if(x.o.d===d&&!x.o.fv)rows.push(x)})});
   if(!rows.length)return "";
   var h='<h3 style="margin-top:14px">業者へのお知らせ</h3><div class="tablewrap"><table class="rtable"><thead><tr><th class="l">業者</th><th class="l">内容</th><th class="l">確認</th></tr></thead><tbody>';
   rows.forEach(function(x){var k=NK[x.o.kind]||NK.trouble;h+='<tr><td class="l vn">'+esc(ENV.admin?vname(x.vid):(((D.confirmed[d]||{}).rows||[]).filter(function(r){return r.vid===x.vid}).map(function(r){return r.n})[0]||"業者"))+'</td><td class="l" style="white-space:normal">'+k[0]+' '+esc(x.o.msg)+'<div class="hint" style="margin:0">'+esc(fmtAt(x.o.at))+(x.o.by?' '+esc(x.o.by):'')+'</div></td><td class="l">'+(x.ack?'<span class="st ok">✅ '+esc(fmtAt(x.ack))+'</span>':'<span class="st warn">未確認</span>')+'</td></tr>'});
@@ -1381,7 +1386,9 @@ function mvDefault(d,t){var p=nrDs(new Date(nrPd(nrBase(d)).getTime()-864e5));re
 /* 盛替え業者へ: 管理者からの連絡(最近7日) */
 function crewMsgBox(){
   var lim=new Date(Date.now()-7*864e5).toISOString(),l=((D.config||{}).crewMsgs||[]).filter(function(x){return x.at>=lim}).slice().reverse();
-  return l.length?'<div class="todaybox next" role="status"><h3>✉ 管理者からの連絡</h3><ul>'+l.map(function(x){return '<li>'+esc(x.msg)+' <span class="hint" style="margin:0">'+esc(fmtAt(x.at))+'</span></li>'}).join("")+'</ul></div>':'';
+  var vl=inboxItems().filter(function(x){return !x.ack||(x.o.at||"")>=lim});
+  var vh=vl.length?'<div class="todaybox next" role="status"><h3>✉ 業者からの連絡</h3><ul>'+vl.map(function(x){return '<li><b>'+esc(x.o.fn||"業者")+'</b> '+esc(x.o.msg)+' <span class="hint" style="margin:0">'+esc(fmtAt(x.o.at))+'</span> '+(x.ack?'<span class="st ok">見ました</span>':'<button class="btn sm primary" data-act="iack" data-id="'+esc(x.id)+'">見ました</button>')+'</li>'}).join("")+'</ul></div>':'';
+  return vh+(l.length?'<div class="todaybox next" role="status"><h3>✉ 管理者からの連絡</h3><ul>'+l.map(function(x){return '<li>'+esc(x.msg)+' <span class="hint" style="margin:0">'+esc(fmtAt(x.at))+'</span></li>'}).join("")+'</ul></div>':'');
 }
 function moveBox(C){
   var out=[];Object.keys(D.days).sort().forEach(function(d){if(nrBase(d)<C.t)return;var mv=D.days[d].moves||{};
@@ -1637,7 +1644,7 @@ function sVendorHome(C){
   h+=problemBox();
   /* 入力のお願い・警告(まだ「見ました」を押していないもの)は、予定の画面の一番上にも出す */
   noticeList(ENV.vid).filter(function(x){return !x.ack&&(x.o.kind==="remind"||x.o.kind==="remind2"||x.o.kind==="msg")}).forEach(function(x){var mk=x.o.kind==="msg";
-    h+='<div class="todo'+(x.o.kind==="remind2"?' warnb':'')+'"><div class="k">'+(mk?'✉ 管理者から':x.o.kind==="remind2"?'⚠ 重要':'⏰ 入力のお願い')+'</div><p style="margin:0">'+esc(x.o.msg.replace(/^【[^】]*】/,''))+'</p>'
+    h+='<div class="todo'+(x.o.kind==="remind2"?' warnb':'')+'"><div class="k">'+(mk?'✉ '+esc(nkName(x.o)):x.o.kind==="remind2"?'⚠ 重要':'⏰ 入力のお願い')+'</div><p style="margin:0">'+esc(x.o.msg.replace(/^【[^】]*】/,''))+'</p>'
       +(mk?'':'<button class="sbig primary" data-act="stab" data-tab="s-count">台数を入れる</button>')+'<button class="sbig" data-act="ack" data-id="'+esc(x.id)+'">見ました</button></div>'});
   if(!mr.length)h+='<div class="todo"><div class="k">次に出す日</div><p class="what">まだ決まっていません。</p><p class="hint" style="margin:0">「台数」で、今ある台数と出したい台数を入れておくと、管理者が出す日を決めます。決まったら、ここに大きく出ます。</p></div>';
   else{var d0=mr[0].d,first=mr.filter(function(x){return x.d===d0}),day=D.days[d0]||{},allp=first.every(function(x){return isPlaced(x.d,x.r)});
@@ -1676,8 +1683,8 @@ function sVendorNews(){
   var all=noticeList(ENV.vid),h='<section class="panel simple">';
   if(!all.length)return h+'<p class="empty">お知らせはありません。</p></section>';
   all.forEach(function(x){var k=NK[x.o.kind]||NK.trouble;
-    h+='<div class="scard'+(x.ack?' read':'')+'"><div class="k">'+esc(fmtAt(x.o.at))+' '+k[1]+'</div><div>'+esc(x.o.msg)+'</div>'+(x.ack?'<div class="hint" style="margin:0">見ました</div>':'<button class="sbig primary" data-act="ack" data-id="'+esc(x.id)+'">見ました</button>')+'</div>'});
-  return h+'<p class="hint">「見ました」を押すと、管理者に伝わります。</p></section>';
+    h+='<div class="scard'+(x.ack?' read':'')+'"><div class="k">'+esc(fmtAt(x.o.at))+' '+esc(nkName(x.o))+'</div><div>'+esc(x.o.msg)+'</div>'+(x.ack?'<div class="hint" style="margin:0">見ました</div>':'<button class="sbig primary" data-act="ack" data-id="'+esc(x.id)+'">見ました</button>')+'</div>'});
+  return h+'<p class="hint">「見ました」を押すと、送った人に伝わります。</p></section>';
 }
 
 /* ---- 盛替え業者 ---- */
@@ -1734,6 +1741,7 @@ function sAdminTasks(C){
   Object.keys(rmd).forEach(function(d){t.push({t:fmtD(d)+'の搬出予定が未入力の業者 '+rmd[d].length+'社',s:rmd[d].join('・')+'(お願いの通知を送りました)',tab:"cal",d:d,warn:true})});
   var no=newOrders();if(no)t.push({t:'追加の注文が'+no+'件あります',s:orderList().filter(function(x){return x.o.st==="new"}).slice(0,2).map(function(x){return (x.o.n||vname(x.vid))+' '+x.o.f+'階に'+nrNum(x.o.u)+'台'}).join('・'),tab:"ord"});
   var st=stageTodo(C);if(st)t.push({t:'EVが停まらない階の指示が'+st+'件',s:'前の日までに、どのEV前へ盛替えるかを決めます',tab:"stg"});
+  var ib=inboxItems().filter(function(x){return !x.ack});if(ib.length)t.unshift({t:'業者から連絡が'+ib.length+'件あります',s:ib.slice(0,2).map(function(x){return (x.o.fn||"業者")+': '+x.o.msg.slice(0,20)}).join('・'),tab:"mem"});
   var pc=Object.keys(D.members).filter(function(id){return !D.approved[id]}).length;if(pc)t.push({t:'業者の登録が'+pc+'件あります',s:'登録した業者を確かめます',tab:"mem"});
   return t;
 }
@@ -1741,7 +1749,7 @@ function sAdminHome(C){
   var t=sAdminTasks(C),h='<section class="panel simple"><div class="pane-h"><h2>今日やること</h2><span class="hint" style="margin:0">'+t.length+'件</span></div>';
   if(!t.length)h+='<p class="empty">いまやることはありません。</p>';
   else h+='<div class="tasks">'+t.map(function(x){return '<div class="task'+(x.warn?' warn':'')+'"><div><b>'+esc(x.t)+'</b><small>'+esc(x.s)+'</small></div><button class="btn primary" data-act="sgo" data-tab="'+x.tab+'"'+(x.d?' data-d="'+x.d+'"':'')+(x.seen?' data-seen="'+esc(x.seen)+'"':'')+'>開く</button></div>'}).join("")+'</div>';
-  return h+'<p class="hint">やることが終わると、この一覧から消えます。他の機能は上のボタンから開きます。全部のタブを使うときは「詳しく表示へ」を押します。</p></section>'+msgForm();
+  return h+'<p class="hint">やることが終わると、この一覧から消えます。他の機能は上のボタンから開きます。全部のタブを使うときは「詳しく表示へ」を押します。</p></section>'+inboxView()+msgForm();
 }
 
 function renderPriority(C){
@@ -2192,18 +2200,53 @@ function msgForm(){
    +'<textarea id="am-msg" data-keep maxlength="300" rows="3" style="width:100%;margin-top:8px" placeholder="例: 明日はEV2が点検のため、EV1前に置いてください。" aria-label="連絡の内容"></textarea>'
    +'<div style="margin-top:8px"><button class="btn primary" data-act="amsend">送る</button></div>'+msgSent()+'</section>';
 }
+/* 業者から届いた連絡(管理者: inbox/admin、盛替え業者: inbox/crew) */
+function inboxItems(){var b=D.inbox[ENV.admin?"admin":"crew"]||{},it=b.items||{},ack=b.ack||{};
+  return Object.keys(it).map(function(id){return {id:id,o:it[id],ack:ack[id]||null}}).sort(function(a,c){return (a.o.at||"")<(c.o.at||"")?1:-1})}
+function inboxView(){var l=inboxItems();if(!l.length)return "";
+  return '<section class="panel"><h2 style="margin-bottom:6px">業者から届いた連絡</h2>'+l.slice(0,30).map(function(x){
+    return '<div class="scard'+(x.ack?' read':'')+'"><div class="k">'+esc(fmtAt(x.o.at))+' '+esc(x.o.fn||"業者")+'から</div><div>'+esc(x.o.msg)+'</div><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">'
+      +(x.ack?'<span class="st ok">見ました</span>':'<button class="btn sm primary" data-act="iack" data-id="'+esc(x.id)+'">見ました</button>')
+      +(ENV.admin?'<button class="btn sm" data-act="idel" data-id="'+esc(x.id)+'">削除</button>':'')+'</div></div>'}).join("")+'</section>';
+}
+/* 「見ました」を押したら、送った業者の「送った連絡」に伝える */
+function seenTell(o,id,at){if(!o||!o.fv||ENV.mode!=="db"||window.NR_DEMO||ENV.preview||ui.pv)return;var sn={};sn[id]=at;
+  try{var pr=ENV.db.doc("sent/"+o.fv).patch({seen:sn});if(pr&&pr.catch)pr.catch(function(){})}catch(e){}}
+/* 業者が連絡を送れる会社の一覧(管理者のアプリが config.vdir に書く。業者は他の会社の情報を読めないため) */
+function syncDir(){
+  if(!ENV.admin||ENV.mode!=="db"||window.NR_DEMO||ENV.preview||ui.pv)return;
+  if(!["config","vendors","approved","members","blocked","orders"].every(function(c){return LOADED[c]}))return;
+  var l=msgVendors().map(function(v){return {id:v,n:vname(v)}}).concat(msgNoReach().map(function(x){return {id:x.id,n:x.n}})).sort(function(a,c){return a.n<c.n?-1:1});
+  if(JSON.stringify(l)===JSON.stringify((D.config||{}).vdir||[]))return;
+  D.config.vdir=l;send(ENV.db.doc("config/main").patch({vdir:l}));
+}
+function dirName(id){var x=((D.config||{}).vdir||[]).filter(function(y){return y.id===id})[0];return x?x.n:"業者"}
+/* 業者: 連絡を送る(管理者・盛替え業者・他の業者)と、送った連絡 */
+function vMsgForm(){
+  if(ENV.admin||ENV.crew)return "";
+  var dir=((D.config||{}).vdir||[]).filter(function(x){return x.id!==ENV.vid}),sd=D.sent[ENV.vid]||{},it=sd.items||{},seen=sd.seen||{};
+  var rows=Object.keys(it).map(function(id){return {id:id,o:it[id]}}).sort(function(a,c){return (a.o.at||"")<(c.o.at||"")?1:-1});
+  var h='<section class="panel"><h2 style="margin-bottom:6px">連絡を送る</h2><p class="hint" style="margin:0 0 8px">宛先を選んで送ると、相手のアプリのお知らせと、通知を受け取る設定をした端末に届きます(5〜10分ほどかかります)。相手が「見ました」を押すと、下の一覧で分かります。</p>'
+   +'<div class="mvbox" style="flex-wrap:wrap"><select id="vm-to" data-keep aria-label="宛先"><option value="">宛先を選ぶ</option><option value="*a">管理者</option><option value="*c">盛替え業者</option>'
+   +dir.map(function(x){return '<option value="'+esc(x.id)+'">'+esc(x.n)+'</option>'}).join("")+'</select></div>'
+   +'<textarea id="vm-msg" data-keep maxlength="300" rows="3" style="width:100%;margin-top:8px" placeholder="例: 明日の搬出は午後になります。" aria-label="連絡の内容"></textarea>'
+   +'<div style="margin-top:8px"><button class="btn primary" data-act="vmsend">送る</button></div>';
+  if(rows.length)h+='<h3 style="margin:12px 0 4px">送った連絡</h3><div class="tablewrap"><table class="rtable"><thead><tr><th class="l">宛先</th><th class="l">内容</th><th class="l">見た</th><th class="l">削除</th></tr></thead><tbody>'
+   +rows.slice(0,30).map(function(x){return '<tr><td class="l vn">'+esc(x.o.tn||"")+'</td><td class="l" style="white-space:normal">'+esc(x.o.msg)+'<div class="hint" style="margin:0">'+esc(fmtAt(x.o.at))+'</div></td><td class="l">'+(seen[x.id]?'<span class="st ok">見ました</span>':'<span class="st off">まだ</span>')+'</td><td class="l"><button class="btn sm" data-act="vmdel" data-id="'+esc(x.id)+'">削除</button></td></tr>'}).join("")+'</tbody></table></div>';
+  return h+'</section>';
+}
 /* 送った連絡と、業者が見たか(最近14日) */
 function msgSent(){
-  var rows=[];Object.keys(D.notices).forEach(function(vid){noticeList(vid).forEach(function(x){if(x.o.kind==="msg")rows.push(x)})});
-  ((D.config||{}).crewMsgs||[]).forEach(function(m){rows.push({crew:true,o:{msg:m.msg,at:m.at},ack:null})});
+  var rows=[];Object.keys(D.notices).forEach(function(vid){noticeList(vid).forEach(function(x){if(x.o.kind==="msg"&&!x.o.fv&&!x.o.hid)rows.push(x)})});
+  ((D.config||{}).crewMsgs||[]).forEach(function(m){if(!m.hid)rows.push({crew:true,id:m.at,vid:"*c",o:{msg:m.msg,at:m.at},ack:null})});
   if(!rows.length)return "";
   rows.sort(function(a,b){return (a.o.at||"")<(b.o.at||"")?1:-1});
-  return '<h3 style="margin:12px 0 4px">送った連絡</h3><div class="tablewrap"><table class="rtable"><thead><tr><th class="l">業者</th><th class="l">内容</th><th class="l">見た</th></tr></thead><tbody>'
-   +rows.slice(0,30).map(function(x){return '<tr><td class="l vn">'+(x.crew?'盛替え業者全員':esc(vname(x.vid)))+'</td><td class="l" style="white-space:normal">'+esc(x.o.msg)+'<div class="hint" style="margin:0">'+esc(fmtAt(x.o.at))+'</div></td><td class="l">'+(x.crew?'<span class="hint" style="margin:0">—</span>':x.ack?'<span class="st ok">見ました</span>':'<span class="st off">まだ</span>')+'</td></tr>'}).join("")+'</tbody></table></div>';
+  return '<h3 style="margin:12px 0 4px">送った連絡</h3><div class="tablewrap"><table class="rtable"><thead><tr><th class="l">業者</th><th class="l">内容</th><th class="l">見た</th><th class="l">削除</th></tr></thead><tbody>'
+   +rows.slice(0,30).map(function(x){return '<tr><td class="l vn">'+(x.crew?'盛替え業者全員':esc(vname(x.vid)))+'</td><td class="l" style="white-space:normal">'+esc(x.o.msg)+'<div class="hint" style="margin:0">'+esc(fmtAt(x.o.at))+'</div></td><td class="l">'+(x.crew?'<span class="hint" style="margin:0">—</span>':x.ack?'<span class="st ok">見ました</span>':'<span class="st off">まだ</span>')+'</td><td class="l"><button class="btn sm" data-act="amdel" data-vid="'+esc(x.vid)+'" data-id="'+esc(x.id)+'">削除</button></td></tr>'}).join("")+'</tbody></table></div>';
 }
 function renderMem(C){
   var pend=Object.keys(D.members).filter(function(id){return !D.approved[id]}),ap=Object.keys(D.approved);
-  var h=msgForm()+'<section class="panel"><h2 style="margin-bottom:6px">業者の登録</h2><p class="hint" style="margin:0 0 10px">業者はURLから会社名とメールアドレスを登録すると、すぐに使えるようになります。心当たりのない登録は「利用を停止」してください。</p><h3>利用停止中・未完了('+pend.length+')</h3>';
+  var h=inboxView()+msgForm()+'<section class="panel"><h2 style="margin-bottom:6px">業者の登録</h2><p class="hint" style="margin:0 0 10px">業者はURLから会社名とメールアドレスを登録すると、すぐに使えるようになります。心当たりのない登録は「利用を停止」してください。</p><h3>利用停止中・未完了('+pend.length+')</h3>';
   if(!pend.length)h+='<p class="empty">ありません。</p>';
   else{h+='<div class="tablewrap"><table><thead><tr><th class="l">会社名</th><th class="l">担当者</th><th class="l">メールアドレス</th><th class="l">申請日時</th><th></th></tr></thead><tbody>';
     pend.forEach(function(id){var m=D.members[id];h+='<tr><td class="l vn">'+esc(m.company)+'</td><td class="l">'+esc(m.contact||"")+'</td><td class="l">'+esc(m.email)+'</td><td class="l">'+esc(fmtAt(m.at))+'</td><td><button class="btn sm primary" data-act="approve" data-id="'+esc(id)+'">'+(D.blocked[id]?'利用を再開':'利用を許可')+'</button> <button class="btn sm danger" data-act="reject" data-id="'+esc(id)+'">却下</button></td></tr>'});
@@ -2321,6 +2364,7 @@ function render(remote){
   /* 業者のデータは会社(vid)単位。同じ会社の人は approved/{本人}.vid に会社のIDを持つ。最初に登録した人の会社IDは本人のID */
   if(!ENV.preview&&!ENV.admin)ENV.vid=(D.approved[ENV.uid]&&D.approved[ENV.uid].vid)||ENV.uid;
   if(ENV.mode==="db"&&!ENV.admin&&!ENV.crew)watchVid();
+  syncDir();
   var C=compute(),vendorOk=ENV.admin||ENV.preview||ENV.mode==="local"||!!D.approved[ENV.uid],h,tabs;
   if(autoConfirm(C))C=compute();
   remindCheck(C);
@@ -2352,7 +2396,7 @@ function render(remote){
   else if(ENV.admin){
     h+=ui.simple&&ui.tab==="home"?sAdminHome(C):ui.tab==="home"?renderCal(C):ui.tab==="cal"?renderCal(C):ui.tab==="pri"?renderPriority(C):ui.tab==="map"?renderMap(C):ui.tab==="stg"?renderStageTab(C):ui.tab==="cnf"?renderConfirmed(C):ui.tab==="rec"?renderRec(C):ui.tab==="ord"?renderOrders(C):ui.tab==="rep"?renderReport(C):ui.tab==="mem"?renderMem(C):ui.tab==="set"?renderSet(C):renderVin(C);
   }else if(ENV.crew)h+=ui.tab==="creg"?renderCrewReg():ui.simple?sCrew(C):ui.tab==="ret"?renderRet(C):ui.tab==="ord"?renderOrders(C):renderCal(C);
-  else h+=!vendorOk?renderReg():ui.simple?sVendor(C):(ui.tab==="cal"?renderCal(C):renderVin(C));
+  else h+=!vendorOk?renderReg():ui.simple?sVendor(C)+(ui.stab==="s-news"?vMsgForm():""):(ui.tab==="cal"?renderCal(C):renderVin(C))+vMsgForm();
   var box=document.createElement("div");box.innerHTML=h;
   /* 数字の欄の左に −、右に ＋ を付ける。押すと1ずつ、押し続けると続けて増減し、離したときに保存する */
   Array.prototype.forEach.call(box.querySelectorAll('input[type="number"],input.tinput'),function(inp){
@@ -2553,7 +2597,23 @@ function onClick(ev){
   }
   else if(act==="note"){var nd=b.getAttribute("data-d"),nta=document.getElementById("nt-"+nd),nt=nta?nta.value.trim().slice(0,300):"";
     if(!nt){ui.msg="連絡の内容を入れてください。";ui.msgKind="bad"}else{addNote(nd,nt);nta.value="";ui.msg="連絡を書きました。この日の業者と管理者に表示されます。";ui.msgKind="ok"}}
-  else if(act==="ack"){var ak={},now0=nowIso();ak[id]=now0;noticeList(ENV.vid).forEach(function(x){if(x.id===id)x.dups.forEach(function(y){ak[y]=now0})});patch("notices",ENV.vid,{ack:ak})}
+  else if(act==="ack"){var ak={},now0=nowIso();ak[id]=now0;noticeList(ENV.vid).forEach(function(x){if(x.id===id){x.dups.forEach(function(y){ak[y]=now0});seenTell(x.o,id,now0)}});patch("notices",ENV.vid,{ack:ak})}
+  else if(act==="iack"){var ib=ENV.admin?"admin":"crew",ia={},it0=((D.inbox[ib]||{}).items||{})[id],now1=nowIso();ia[id]=now1;patch("inbox",ib,{ack:ia});seenTell(it0,id,now1)}
+  else if(act==="idel"){var dd0={},da0={};dd0[id]={$op:"del"};da0[id]={$op:"del"};patch("inbox","admin",{items:dd0,ack:da0})}
+  else if(act==="vmdel"){var vd0={},vs0={};vd0[id]={$op:"del"};vs0[id]={$op:"del"};patch("sent",ENV.vid,{items:vd0,seen:vs0})}
+  else if(act==="amdel"){var av=b.getAttribute("data-vid");
+    if(av==="*c"){var cc1=clone(D.config||{});cc1.crewMsgs=(cc1.crewMsgs||[]).map(function(m){if(m.at===id)m.hid=true;return m});putCfg(cc1)}
+    else{var ah={};ah[id]={hid:true};noticeList(av).forEach(function(x){if(x.id===id)x.dups.forEach(function(y){ah[y]={hid:true}})});patch("notices",av,{items:ah})}}
+  else if(act==="vmsend"){
+    var vto=(document.getElementById("vm-to")||{}).value||"",vm=((document.getElementById("vm-msg")||{}).value||"").trim().slice(0,300);
+    if(!vto||!vm){ui.msg="宛先と連絡の内容を入れてください。";ui.msgKind="bad"}
+    else{var vid0="n"+Date.now().toString(36)+Math.floor(Math.random()*1e4).toString(36),vat=nowIso(),vme=vname(ENV.vid),vit={},vbox=vto==="*a"?"admin":vto==="*c"?"crew":vto,vtn=vto==="*a"?"管理者":vto==="*c"?"盛替え業者":dirName(vto);
+      vit[vid0]={d:nrDs(new Date()),kind:"msg",msg:vm,at:vat,by:who(),fv:ENV.vid,fn:vme};
+      patch(vto.charAt(0)==="*"?"inbox":"notices",vbox,{items:vit,last:vid0});
+      var vso={};vso[vid0]={to:vbox,tn:vtn,msg:vm,at:vat};patch("sent",ENV.vid,{items:vso});
+      mailOut("vm-"+vid0,{to:vto==="*a"?"admin":vto==="*c"?"crew":"vendor",vid:vto.charAt(0)==="*"?"":vbox,d:nrDs(new Date()),msg:vme+"から: "+vm});
+      document.getElementById("vm-msg").value="";ui.msg=vtn+"に連絡を送りました。通知は5〜10分ほどで届きます。";ui.msgKind="ok"}
+  }
   else if(act==="trouble"){
     var td=b.getAttribute("data-d"),tk=document.getElementById("tr-kind").value,tm=document.getElementById("tr-msg").value.trim().slice(0,300),cf6=D.confirmed[td],sent={};
     if(!tm&&tk==="その他"){ui.msg="連絡の内容を入れてください。";ui.msgKind="bad"}
@@ -2709,7 +2769,7 @@ function onClick(ev){
   else if(act==="resetall"){
     var rw=document.getElementById("resetword");
     if(!rw||rw.value.trim()!=="リセット"){ui.msg="消すときは、確認のため入力欄に「リセット」と入れてから押してください。";ui.msgKind="bad"}
-    else if(RESET_COLLS.some(function(c){return c!=="codes"&&c!=="seen"&&!LOADED[c]})){ui.msg="まだデータを読み込み中です。少し待ってからもう一度押してください。";ui.msgKind="bad"}
+    else if(RESET_COLLS.some(function(c){return c!=="codes"&&c!=="seen"&&c!=="inbox"&&!LOADED[c]})){ui.msg="まだデータを読み込み中です。少し待ってからもう一度押してください。";ui.msgKind="bad"}
     else{var rn=0;Object.keys(D.vendors).forEach(function(k){var cd=D.vendors[k]&&D.vendors[k].code;if(cd&&!D.codes[cd]){remove("codes",cd)}});RESET_COLLS.forEach(function(c){Object.keys(D[c]||{}).forEach(function(k){remove(c,k);rn++})});
       rw.value="";ui.sel=today();ui.vsel=null;ui.msg="全データを消しました("+rn+"件)。設定と管理者は残っています。";ui.msgKind="ok"}
   }
