@@ -20,4 +20,6 @@ const cp=c.nrCfg({evn:1,ev:{1:[1,30]},wd:{a:[2],b:[2]},wper:{2:3},eq:false,wdFro
 const r2=c.nrSimulate({a:mk(20,20,10),b:mk(20,20,11),u:mk(5,5,12)},{"2026-11-17":{cap:12,elev:[1]}},cp,"2026-11-11",{});
 const g2={};r2.byDate["2026-11-17"].asg.forEach(x=>{g2[x.vid]=(g2[x.vid]||0)+x.units});
 eq(g2,{a:3,b:3,u:5},"火曜1社3台: a・bは3台ずつ、残りは逼迫した業者へ(希望の5台)");
+// 1日の始まり(初期値6時): 0時〜5時59分は前の日
+eq([c.nrToday(cfg,new Date(2026,10,14,3,0)),c.nrToday(cfg,new Date(2026,10,14,5,59)),c.nrToday(cfg,new Date(2026,10,14,6,0)),c.nrToday(c.nrCfg({dayStart:0}),new Date(2026,10,14,3,0))],["2026-11-13","2026-11-13","2026-11-14","2026-11-14"],"3:00と5:59は前の日、6:00から新しい日。0時に設定すると今までどおり");
 console.log(bad?"NG "+bad+"件":"すべてOK");if(bad)process.exit(1);

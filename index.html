@@ -441,6 +441,8 @@ function nrHolName(d,cfg){
 function nrBiz(d,cfg){var w=nrPd(nrBase(d)).getDay();return w!==0&&w!==6&&!nrHolName(d,cfg)}
 /* d の n 営業日前(d より前の営業日を n 日さかのぼった日) */
 function nrBizBack(d,n,cfg){var t=nrPd(nrBase(d)).getTime(),k=0;for(var i=0;i<400&&k<n;i++){t-=864e5;if(nrBiz(nrDs(new Date(t)),cfg))k++}return nrDs(new Date(t))}
+/* 1日の始まり(cfg.dayStart 時。初期値6時)。夜間の作業のため、0時〜始まりの前までは前の日として扱う */
+function nrToday(cfg,now){var h=cfg&&cfg.dayStart!=null?cfg.dayStart:6;return nrDs(new Date((now||new Date()).getTime()-h*36e5))}
 /* 自動で確定する日: 回収日の cfg.auto 営業日前(土日祝を除く) */
 function nrConfirmDay(d,cfg){return nrBizBack(d,cfg.auto,cfg)}
 /* 前日の知らせ(LINE・前日メール)の対象: 今日が営業日なら、明日から次の営業日までの日。休みの日は空(前の営業日に知らせ済み) */
@@ -470,6 +472,8 @@ function nrCfg(c){
   }
   /* 業者ごとの回収曜日 {業者:[0=日〜6=土]}。指定のない業者はどの曜日でも回収する */
   o.eq=c.eq==null?true:!!c.eq;
+  /* 1日の始まり(時)。0〜6。毎朝の自動処理(6:15)より後にはしない */
+  o.dayStart=c.dayStart==null||c.dayStart===""?6:Math.max(0,Math.min(6,parseInt(c.dayStart,10)||0));
   o.holx={};Object.keys(c.holx||{}).forEach(function(d){if(/^\d{4}-\d{2}-\d{2}$/.test(d))o.holx[d]=c.holx[d]});
   o.wdFrom=c.wdFrom==null?NR_WD_FROM:(/^\d{4}-\d{2}-\d{2}$/.test(c.wdFrom)?c.wdFrom:"");
   o.wd={};Object.keys(c.wd||{}).forEach(function(v){var a=(c.wd[v]||[]).filter(function(x){return x>=0&&x<=6});if(a.length)o.wd[v]=a});
@@ -725,7 +729,7 @@ function saveUiPref(){try{var o={};UIPREF.forEach(function(k){if(ui[k]!==undefin
 
 function clone(x){return JSON.parse(JSON.stringify(x))}
 function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
-function today(){return nrDs(new Date())}
+function today(){return nrToday(nrCfg(D.config))}
 function p2(n){return (n<10?"0":"")+n}
 /* 回収日のキー(日付、または日付-2)から、その日の回の一覧と名前を出す。再描画のたびに作り直す */
 var SESC=null;
@@ -749,7 +753,7 @@ function fmtTime(d){return d&&d.tf?(d.tf+"〜"+(d.tt||"")):"時間未定"}
 function nowIso(){return new Date().toISOString()}
 /* 保存した時刻(UTC)を、見ている端末の時刻で「10/31 9:05」の形にする */
 function fmtAt(iso){var d=iso?new Date(iso):null;return d&&!isNaN(d)?(d.getMonth()+1)+"/"+d.getDate()+" "+d.getHours()+":"+p2(d.getMinutes()):""}
-ui.month=(function(){var t=new Date();return new Date(t.getFullYear(),t.getMonth(),1,12)})();
+ui.month=(function(){var t=new Date(Date.now()-6*36e5);return new Date(t.getFullYear(),t.getMonth(),1,12)})();
 ui.sel=today();
 
 /* ---- 保存 ----
@@ -2330,7 +2334,8 @@ function renderSet(C){
    +'<label>待機日数の重み<input type="number" min="0" id="s-ww" data-f="wW" value="'+c.wW+'"></label>'
    +'<label>保有台数の重み<input type="number" min="0" id="s-wh" data-f="wH" value="'+c.wH+'"></label>'
    +'<label>余力なしとみなす逼迫度(%)<input type="number" min="1" max="100" id="s-crit" data-f="crit" value="'+c.crit+'"></label>'
-   +'<label>自動確定(搬出日の何営業日前。土日祝を除く・0で自動確定しない)<input type="number" min="0" max="14" id="s-auto" data-f="auto" value="'+c.auto+'"></label></div>'
+   +'<label>自動確定(搬出日の何営業日前。土日祝を除く・0で自動確定しない)<input type="number" min="0" max="14" id="s-auto" data-f="auto" value="'+c.auto+'"></label>'
+   +'<label>1日の始まり(時。0〜6。この時刻の前は前の日として扱う)<input type="number" min="0" max="6" id="s-daystart" data-f="dayStart" value="'+c.dayStart+'"></label></div>'
    +'<p class="hint">逼迫度が「余力なし」の基準以上の階(初期値100%=保有している台数を全部出したい階)を最優先で回収し、その中と残りは評価点が高い順に回収します。逼迫度は保有台数に対する搬出希望台数の割合、待機日数は希望を登録してからの日数です。</p>'
    +'<h3 style="margin:16px 0 4px">建物の設定</h3><div class="set">'
    +'<label>最下階<input type="number" min="1" max="'+NR_MAXF+'" id="s-fmin" data-f="fmin" value="'+c.fmin+'"></label>'
@@ -2576,11 +2581,11 @@ function onClick(ev){
     else mutDay(ui.sel,function(d){d.moves=d.moves||{};d.moves[sv+"|"+sf]={ev:se,to:st}});
   }
   else if(act==="stage2"){
-    var sb2=b.closest(".mvbox"),sv2=sb2.getAttribute("data-vid"),sf2=sb2.getAttribute("data-fl"),sd2=sb2.querySelector('[data-role="d"]').value,se2=nrNum(sb2.querySelector('[data-role="ev"]').value),st2=Math.min(LIM.fmax,nrNum(sb2.querySelector('[data-role="to"]').value)),mi2=sb2.querySelector('[data-role="md"]'),md2=mi2?mi2.value:"",tdy2=nrDs(new Date());
+    var sb2=b.closest(".mvbox"),sv2=sb2.getAttribute("data-vid"),sf2=sb2.getAttribute("data-fl"),sd2=sb2.querySelector('[data-role="d"]').value,se2=nrNum(sb2.querySelector('[data-role="ev"]').value),st2=Math.min(LIM.fmax,nrNum(sb2.querySelector('[data-role="to"]').value)),mi2=sb2.querySelector('[data-role="md"]'),md2=mi2?mi2.value:"",tdy2=today();
     if(!sd2||!se2||!st2){ui.msg="回収日・集積するエレベーター・階を入力してください。";ui.msgKind="bad"}
     else if(!nrStops(st2,se2,nrCfg(D.config))){ui.msg="EV"+se2+"は"+st2+"階に停まりません。停まる階を指定してください。";ui.msgKind="bad"}
     else if(md2&&(md2<tdy2||md2>sd2)){ui.msg="盛替え日は、今日("+fmtD(tdy2)+")から回収日("+(/^\d{4}-\d{2}-\d{2}$/.test(sd2)?fmtD(sd2):"")+")までの日を選んでください。";ui.msgKind="bad"}
-    else if(!D.days[sd2]||D.confirmed[sd2]||sd2<nrDs(new Date())){ui.msg=(/^\d{4}-\d{2}-\d{2}$/.test(sd2)?fmtD(sd2):"その日")+"は、まだ確定していない回収日ではありません。カレンダーで回収日を選び直してください。";ui.msgKind="bad"}
+    else if(!D.days[sd2]||D.confirmed[sd2]||sd2<today()){ui.msg=(/^\d{4}-\d{2}-\d{2}$/.test(sd2)?fmtD(sd2):"その日")+"は、まだ確定していない回収日ではありません。カレンダーで回収日を選び直してください。";ui.msgKind="bad"}
     else{var su2=nrNum(sb2.getAttribute("data-u"));mutDay(sd2,function(d){d.moves=d.moves||{};d.moves[sv2+"|"+sf2]={ev:se2,to:st2,u:su2,at:nowIso(),md:md2||null}});
       /* 該当の業者にも知らせる(アプリのお知らせ・プッシュ通知・メール) */
       notify(sv2,sd2,"move",fmtD(sd2)+"の回収に向けて、御社の"+sf2+"階"+(su2?"の"+su2+"台":"")+"を、"+(md2?fmtD(md2)+"に":"前日までに")+"EV"+se2+"前の"+st2+"階へ盛替えます(盛替え業者が移します)。当日はEV"+se2+"前("+st2+"階)から回収します。");
@@ -2637,10 +2642,10 @@ function onClick(ev){
     var vto=(document.getElementById("vm-to")||{}).value||"",vm=((document.getElementById("vm-msg")||{}).value||"").trim().slice(0,300);
     if(!vto||!vm){ui.msg="宛先と連絡の内容を入れてください。";ui.msgKind="bad"}
     else{var vid0="n"+Date.now().toString(36)+Math.floor(Math.random()*1e4).toString(36),vat=nowIso(),vme=vname(ENV.vid),vit={},vbox=vto==="*a"?"admin":vto==="*c"?"crew":vto,vtn=vto==="*a"?"管理者":vto==="*c"?"盛替え業者":dirName(vto);
-      vit[vid0]={d:nrDs(new Date()),kind:"msg",msg:vm,at:vat,by:who(),fv:ENV.vid,fn:vme};
+      vit[vid0]={d:today(),kind:"msg",msg:vm,at:vat,by:who(),fv:ENV.vid,fn:vme};
       patch(vto.charAt(0)==="*"?"inbox":"notices",vbox,{items:vit,last:vid0});
       var vso={};vso[vid0]={to:vbox,tn:vtn,msg:vm,at:vat};patch("sent",ENV.vid,{items:vso});
-      mailOut("vm-"+vid0,{to:vto==="*a"?"admin":vto==="*c"?"crew":"vendor",vid:vto.charAt(0)==="*"?"":vbox,d:nrDs(new Date()),msg:vme+"から: "+vm});
+      mailOut("vm-"+vid0,{to:vto==="*a"?"admin":vto==="*c"?"crew":"vendor",vid:vto.charAt(0)==="*"?"":vbox,d:today(),msg:vme+"から: "+vm});
       document.getElementById("vm-msg").value="";ui.msg=vtn+"に連絡を送りました。通知は5〜10分ほどで届きます。";ui.msgKind="ok"}
   }
   else if(act==="trouble"){
@@ -2679,7 +2684,7 @@ function onClick(ev){
       ui.msg=fmtDP(dd)+"に"+df+"階へ"+du+"台上げたことを業者に報告し、保有台数を増やしました。";ui.msgKind="ok"}
   }
   else if(act==="amsend"){
-    var at0=(document.getElementById("am-to")||{}).value||"",am=((document.getElementById("am-msg")||{}).value||"").trim().slice(0,300),td0=nrDs(new Date());
+    var at0=(document.getElementById("am-to")||{}).value||"",am=((document.getElementById("am-msg")||{}).value||"").trim().slice(0,300),td0=today();
     if(!at0||!am){ui.msg="宛先と連絡の内容を入れてください。";ui.msgKind="bad"}
     else{var n0=0;
       if(at0==="*c"){mailOut("am-c-"+Date.now().toString(36),{to:"crew",d:td0,msg:"管理者から: "+am});n0=-1;
@@ -2895,6 +2900,7 @@ function onChange(ev){
     if(pn0)c.wper[pw0]=Math.min(999,pn0);else delete c.wper[pw0];if(!Object.keys(c.wper).length)delete c.wper;putCfg(c)}
   else if(f==="wd"){var wv=el.getAttribute("data-vid"),ww=Number(el.getAttribute("data-w"));c.wd=c.wd||{};
     var wa=(c.wd[wv]||[]).filter(function(x){return x!==ww});if(el.checked)wa.push(ww);wa.sort();if(wa.length)c.wd[wv]=wa;else delete c.wd[wv];putCfg(c)}
+  else if(f==="dayStart"){c.dayStart=Math.max(0,Math.min(6,parseInt(el.value,10)||0));putCfg(c)}
   else if(f==="auto"){c.auto=Math.min(14,nrNum(el.value));putCfg(c)}
   else if(f==="wdfrom"){c.wdFrom=/^\d{4}-\d{2}-\d{2}$/.test(el.value)?el.value:"";putCfg(c)}
   else if(f==="mailadm"){var me2=el.getAttribute("data-e");c.mailAdmins=(c.mailAdmins||[]).filter(function(x){return x!==me2});if(el.checked)c.mailAdmins.push(me2);putCfg(c)}
@@ -2955,7 +2961,7 @@ app.addEventListener("pointerdown",function(ev){
 app.addEventListener("click",function(ev){var b=ev.target.closest(".stp");if(b&&ev.detail===0){var inp=spinInput(b);spinStep(inp,Number(b.getAttribute("data-step")));inp.dispatchEvent(new Event("change",{bubbles:true}))}});
 app.addEventListener("click",function(ev){if(!onPreview(ev))asVendor(function(){onClick(ev)})});
 app.addEventListener("change",function(ev){
-  if(ev.target.getAttribute&&ev.target.getAttribute("data-role")==="d"){var mb0=ev.target.closest(".mvbox"),mm=mb0&&mb0.querySelector('[data-role="md"]');if(mm&&/^\d{4}-\d{2}-\d{2}$/.test(ev.target.value))mm.value=mvDefault(ev.target.value,nrDs(new Date()))}
+  if(ev.target.getAttribute&&ev.target.getAttribute("data-role")==="d"){var mb0=ev.target.closest(".mvbox"),mm=mb0&&mb0.querySelector('[data-role="md"]');if(mm&&/^\d{4}-\d{2}-\d{2}$/.test(ev.target.value))mm.value=mvDefault(ev.target.value,today())}
   if(ev.target.getAttribute&&ev.target.getAttribute("data-role")==="ev"){var mb=ev.target.closest(".mvbox"),mf=mb&&Number(mb.getAttribute("data-fl")),mt=mb&&mb.querySelector('[data-role="to"]');
     if(mf&&mt){var mc=nrCfg(D.config),me=nrNum(ev.target.value),mn=nrStops(mf,me,mc)?mf:nrNearest(mf,me,mc);if(mn!==null&&mn!==undefined)mt.value=mn}}
   if(ev.target.getAttribute&&ev.target.getAttribute("data-f")==="pv"){ui.pv=ev.target.value||null;render();return}
