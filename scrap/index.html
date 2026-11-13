@@ -954,7 +954,9 @@ function compute(){
 function vname(id){
   /* 会社名は、いまその会社にいる人の会社名。別の会社に移った人(approvedのidが同じでも会社IDが違う人)の名前は使わない */
   var ms=companyMembers(id),mem=ms.indexOf(id)>=0?id:ms[0];
-  return (mem&&D.approved[mem].company)||(D.vendors[id]&&D.vendors[id].name)||(D.members[id]&&D.members[id].company)||"名称未設定";
+  return (mem&&D.approved[mem].company)||(D.vendors[id]&&D.vendors[id].name)||(D.members[id]&&D.members[id].company)||ordName(id)||"名称未設定";
+}
+function ordName(id){var it=((D.orders||{})[id]||{}).items||{},n="";Object.keys(it).forEach(function(i){n=n||it[i].n||""});return n;
 }
 function vcolor(id){var ids=Object.keys(D.vendors).sort(),i=ids.indexOf(id);return COLORS[(i<0?0:i)%COLORS.length]}
 function retText(r){return r?(r+"階"):"同じ階"}
@@ -1245,7 +1247,7 @@ function renderCal(C){
    確定・確定後の変更・取り消し・当日の連絡を業者に知らせ、業者は「確認した」を押す。管理者は確認したかを見られる */
 function nid(){return "n"+Date.now().toString(36)+Math.floor(Math.random()*1e4).toString(36)}
 function notify(vid,d,kind,msg){
-  if(!vid||(D.vendors[vid]&&D.vendors[vid].manual))return;
+  if(!vid||(kind!=="msg"&&D.vendors[vid]&&D.vendors[vid].manual))return;/* 管理者からの連絡だけは、アプリを使っていない会社にも記録する(あとで登録したときに見られる) */
   var id=nid(),it={};it[id]={d:d,kind:kind,msg:msg,at:nowIso(),by:who()};patch("notices",vid,{items:it});
   mailOut("n-"+vid+"-"+id,{to:"vendor",vid:vid,d:d,msg:msg});
 }
@@ -2175,20 +2177,20 @@ function renderReg(){
 /* 連絡を送れる会社: アプリに登録している会社すべて(台数をまだ入れていない会社も含む)。管理者が追加した業者(アプリを使わない)は除く */
 function msgVendors(){var m={};Object.keys(D.approved).forEach(function(u){m[vidOf(u)]=1});Object.keys(D.vendors).forEach(function(v){if(isActive(v))m[v]=1});
   return Object.keys(m).filter(function(v){return !(D.vendors[v]||{}).manual}).sort(function(a,b){return vname(a)<vname(b)?-1:1})}
-/* 連絡が届かない会社(宛先の一覧に、選べない形で理由と一緒に出す): 管理者が追加した業者・承認待ち・利用者がいなくなった会社 */
+/* アプリを使っている人がいない会社(宛先の一覧に理由と一緒に出す。選んで送るとアプリのお知らせに残り、その会社の人が登録したときに見られる。端末への通知は届かない): 管理者が追加した業者・承認待ち・利用者がいなくなった会社 */
 function msgNoReach(){var ok={},out=[],seen={};msgVendors().forEach(function(v){ok[v]=1});
-  var add=function(id,name,why){var k=name+"|"+why;if(ok[id]||seen[k]||!name)return;seen[k]=1;out.push({n:name,why:why})};
+  var add=function(id,name,why){if(ok[id]||seen[id]||!name)return;seen[id]=1;out.push({id:id,n:name,why:why})};
   Object.keys(D.vendors).forEach(function(v){var x=D.vendors[v]||{};if(x.sample)return;add(v,vname(v),x.manual?"管理者が追加・アプリ未使用":"利用者がいません")});
   Object.keys(D.members||{}).forEach(function(u){if(!D.approved[u]&&!D.blocked[u])add(u,(D.members[u]||{}).company,"承認待ち")});
-  Object.keys(D.orders||{}).forEach(function(v){if(D.vendors[v])return;var it=(D.orders[v]||{}).items||{},n="";Object.keys(it).forEach(function(i){n=n||it[i].n||""});add(v,n,"利用者がいません")});
+  Object.keys(D.orders||{}).forEach(function(v){if(!D.vendors[v])add(v,ordName(v),"利用者がいません")});
   return out.sort(function(a,b){return a.n<b.n?-1:1})}
 function msgForm(){
   var vs=msgVendors(),nr=msgNoReach();
   return '<section class="panel"><h2 style="margin-bottom:6px">連絡を送る</h2><p class="hint" style="margin:0 0 8px">宛先を選んで送ると、相手のアプリのお知らせと、通知を受け取る設定をした端末に届きます(5〜10分ほどかかります)。業者には「見ました」のボタンが付き、見たかどうかが分かります。</p>'
    +'<div class="mvbox" style="flex-wrap:wrap"><select id="am-to" data-keep aria-label="宛先"><option value="">宛先を選ぶ</option><option value="*v">業者全員</option><option value="*c">盛替え業者全員</option>'
    +vs.map(function(v){return '<option value="'+esc(v)+'">'+esc(vname(v))+'</option>'}).join("")
-   +(nr.length?'<optgroup label="届かない会社(アプリを使っている人がいない)">'+nr.map(function(x){return '<option value="" disabled>'+esc(x.n)+'('+esc(x.why)+')</option>'}).join("")+'</optgroup>':'')+'</select></div>'
-   +(nr.length?'<p class="hint" style="margin:6px 0 0">'+nr.length+'社は、アプリを使っている人がいないので連絡が届きません(一覧の下に、選べない形で理由と一緒に出ています)。届けるには、その会社の人にアプリで登録してもらい、「利用を許可」してください。</p>':'')
+   +(nr.length?'<optgroup label="アプリを使っている人がいない会社(通知は届きません)">'+nr.map(function(x){return '<option value="'+esc(x.id)+'">'+esc(x.n)+'('+esc(x.why)+')</option>'}).join("")+'</optgroup>':'')+'</select></div>'
+   +(nr.length?'<p class="hint" style="margin:6px 0 0">一覧の下の'+nr.length+'社は、アプリを使っている人がいないので端末への通知は届きません。送った連絡はその会社のお知らせに残り、その会社の人がアプリに登録して「利用を許可」されると見られます。</p>':'')
    +'<textarea id="am-msg" data-keep maxlength="300" rows="3" style="width:100%;margin-top:8px" placeholder="例: 明日はEV2が点検のため、EV1前に置いてください。" aria-label="連絡の内容"></textarea>'
    +'<div style="margin-top:8px"><button class="btn primary" data-act="amsend">送る</button></div>'+msgSent()+'</section>';
 }
@@ -2596,9 +2598,9 @@ function onClick(ev){
       if(at0==="*c"){mailOut("am-c-"+Date.now().toString(36),{to:"crew",d:td0,msg:"管理者から: "+am});n0=-1;
         /* 盛替え業者のアプリにも出す(設定に、最近14日の分だけ残す) */
         var cc=clone(D.config||{}),lim0=new Date(Date.now()-14*864e5).toISOString();cc.crewMsgs=(cc.crewMsgs||[]).filter(function(x){return x.at>=lim0}).concat([{at:nowIso(),msg:am,by:who()}]).slice(-20);putCfg(cc)}
-      else (at0==="*v"?msgVendors():[at0]).forEach(function(v){notify(v,td0,"msg",am);n0++});
+      else (at0==="*v"?msgVendors().concat(msgNoReach().map(function(x){return x.id})):[at0]).forEach(function(v){notify(v,td0,"msg",am);n0++});var nrc=at0==="*v"?msgNoReach().length:msgNoReach().some(function(x){return x.id===at0})?1:0;
       document.getElementById("am-msg").value="";
-      ui.msg=(n0<0?"盛替え業者全員":at0==="*v"?"業者"+n0+"社":vname(at0))+"に連絡を送りました。通知は5〜10分ほどで届きます。";ui.msgKind="ok"}
+      ui.msg=(n0<0?"盛替え業者全員":at0==="*v"?"業者"+n0+"社":vname(at0))+"に連絡を送りました。通知は5〜10分ほどで届きます。"+(n0>0&&nrc?(at0==="*v"?"(うち"+nrc+"社は":"(")+"アプリを使っている人がいないので、お知らせに残すだけで通知は届きません)":"");ui.msgKind="ok"}
   }
   else if(act==="crewin"){
     var cvv=b.getAttribute("data-vid"),ck=cvv+"-"+id;
