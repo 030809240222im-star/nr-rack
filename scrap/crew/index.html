@@ -1062,10 +1062,11 @@ function offBox(){
 function isPlaced(d,r){var v=D.vendors[r.vid];return !!(v&&v.placed&&v.placed[d+"|"+r.floor])}
 /* 業者が置いたエレベーター。古い記録は時刻だけなので null */
 function placedEv(d,r){var v=D.vendors[r.vid],p=v&&v.placed&&v.placed[d+"|"+r.floor];return p&&typeof p==="object"?nrNum(p.ev)||null:null}
+/* 自社の搬出予定: 搬出日から3日たった行は一覧から外す(搬出日の翌日・翌々日までは「終了」として残す) */
 function myRows(){
-  var out=[],from=nrDs(new Date(Date.now()-7*864e5));
+  var out=[],from=nrDs(new Date(nrPd(today()).getTime()-2*864e5));
   Object.keys(D.confirmed).sort().forEach(function(d){
-    if(d<from)return;
+    if(nrBase(d)<from)return;
     (D.confirmed[d].rows||[]).forEach(function(r,i){if(r.vid===ENV.vid&&nrNum(r.units)>0)out.push({d:d,i:i,r:r})});
   });
   return out;
