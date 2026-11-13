@@ -12,7 +12,7 @@ const root = new URL("..", import.meta.url).pathname;
 const html = fs.readFileSync(root + "index.html", "utf8");
 const core = html.match(/<script>\s*([\s\S]*?function nrRank[\s\S]*?)<\/script>/)[1];
 const ctx = {}; vm.createContext(ctx); vm.runInContext(core, ctx);
-const { nrCfg, nrSimulate, nrDs, nrPd, nrNum, nrRemind, nrBase } = ctx;
+const { nrCfg, nrSimulate, nrDs, nrPd, nrNum, nrRemind, nrBase, nrConfirmDay, nrPreDays } = ctx;
 
 const sa = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT || "null");
 if (!sa) { console.log("FIREBASE_SERVICE_ACCOUNT がないので終了します"); process.exit(0); }
@@ -68,8 +68,8 @@ for (const app of APPS) {
   if (cfg.auto > 0) {
     for (const d of Object.keys(D.days).sort()) {
       const day = D.days[d], s = sim.byDate[d];
-      const until = Math.round((nrPd(d) - nrPd(today)) / 864e5);
-      if (D.confirmed[d] || day.hold || !nrNum(day.cap) || !(day.elev || []).length || d < today || until > cfg.auto || !s || !s.asg.length) continue;
+      /* 確定日は、回収日の cfg.auto 営業日前(土日祝を除く) */
+      if (D.confirmed[d] || day.hold || !nrNum(day.cap) || !(day.elev || []).length || nrBase(d) < today || today < nrConfirmDay(d, cfg) || !s || !s.asg.length) continue;
       if (day.edited && Date.now() - Date.parse(day.edited) < 10 * 60 * 1000) continue;
       const rows = s.asg.map(a => { const o = { vid: a.vid, floor: a.floor, units: a.units, ev: a.ev || null, to: a.to || null, ret: a.ret || null, n: vname(D, a.vid) }; if (a.rets) o.rets = JSON.parse(JSON.stringify(a.rets)); return o; });
       const at = new Date().toISOString();
@@ -104,13 +104,14 @@ for (const app of APPS) {
   if (rem.length) console.log(app.name + ": 入力のお願い・警告 " + rem.length + "件");
 
   /* 2. LINE の文面 */
+  /* 本日と、次の営業日まで(金曜なら土・日・月)の予定。土日祝は前の営業日に知らせ済みなので、本日の分だけ */
   const tm = nrDs(new Date(nrPd(today).getTime() + 864e5));
-  for (const [d, label] of [[today, "本日"], [tm, "明日"]].flatMap(([b, l]) => sesKeysOf(D, b).map(k => [k, l]))) {
+  for (const [d, label] of [[today, "本日"], ...nrPreDays(today, cfg).map(b => [b, b === tm ? "明日" : "次の搬出"])].flatMap(([b, l]) => sesKeysOf(D, b).map(k => [k, l]))) {
     const cf = D.confirmed[d]; if (!cf || !(cf.rows || []).length) continue;
     const day = D.days[d] || {};
     lines.push("【" + app.name + "】" + label + " " + fmtD(d) + sesLab(D, d) + " " + fmtTime(day));
     cf.rows.filter(r => nrNum(r.units) > 0).forEach(r => {
-      lines.push("・" + (r.n || vname(D, r.vid)) + " " + r.floor + "階 " + nrNum(r.units) + "台 → " + evLabel(r.ev, r.to) + (label === "明日" && r.to ? "(今日中に移動)" : ""));
+      lines.push("・" + (r.n || vname(D, r.vid)) + " " + r.floor + "階 " + nrNum(r.units) + "台 → " + evLabel(r.ev, r.to) + (label !== "本日" && r.to ? "(今日中に移動)" : ""));
       /* 管理者が指定したEV以外に業者が置いていたら知らせる */
       const pl = D.vendors[r.vid] && D.vendors[r.vid].placed && D.vendors[r.vid].placed[d + "|" + r.floor], pe = pl && typeof pl === "object" ? nrNum(pl.ev) : 0;
       const dg = [...new Set([...(day.elev || []), ...Object.values(day.moves || {}).map(m => nrNum(m.ev))])].filter(Boolean).sort((p, q) => p - q);

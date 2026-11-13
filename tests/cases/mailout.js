@@ -4,7 +4,7 @@ const {chromium}=require('playwright');const fs=require('fs');
 fs.writeFileSync('main-test.html',fs.readFileSync(REPO+'index.html','utf8'));
 fs.writeFileSync('crew-test.html',fs.readFileSync(REPO+'crew/index.html','utf8'));
 const D=n=>{const d=new Date(Date.now()+n*864e5);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
-const k=D(3),t=D(0);
+const k=D(10),t=D(0);
 const FS={config:{main:{evn:2}},approved:{v1:{company:'サンオキ',vid:'v1',email:'a@x.jp'},v2:{company:'日本建工',vid:'v2'}},crews:{c1:{company:'盛替A',email:'c@x.jp'}},
  vendors:{v1:{floors:{10:{h:6,w:4}}},v2:{floors:{12:{h:6,w:4}}}},days:{[k]:{cap:8,elev:[1]},[t]:{cap:8,elev:[1]}},confirmed:{[t]:{rows:[{vid:'v2',floor:12,units:2,ev:1}]}}};
 (async()=>{const b=await chromium.launch();

@@ -48,6 +48,7 @@ button:disabled{opacity:.45;cursor:default}
 .tabs button{border:0;background:transparent;padding:7px 14px;border-radius:6px;color:var(--muted);font-weight:700}
 .tabs button[aria-selected="true"]{background:var(--surface);color:var(--fg);box-shadow:0 1px 2px rgba(0,0,0,.12)}
 /* 業者・揚重業者のタブは、押しやすく大きく。いま開いているタブは色を付ける */
+.wmaxin{display:block;width:3.4em;margin:3px auto 0;padding:2px 4px;font-size:12px;text-align:center}
 .fmap{border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--surface)}
 .fm-h,.fm-r{display:grid;grid-template-columns:3.4em minmax(5.5em,auto) 1fr minmax(3em,auto);align-items:center;gap:8px;padding:2px 10px}
 .fm-h{background:var(--surface2);font-size:12px;color:var(--muted);font-weight:700;padding-top:6px;padding-bottom:6px}
@@ -436,6 +437,18 @@ function nrHolName(d,cfg){
   if(x&&x[d]!==undefined)return x[d]?(typeof x[d]==="string"?x[d]:"休日"):"";
   return nrJpHol(Number(d.slice(0,4)))[d]||"";
 }
+/* 営業日: 土日と休日(日本の祝日・会社の休日。cfg.holx で足し引き)を除いた日 */
+function nrBiz(d,cfg){var w=nrPd(nrBase(d)).getDay();return w!==0&&w!==6&&!nrHolName(d,cfg)}
+/* d の n 営業日前(d より前の営業日を n 日さかのぼった日) */
+function nrBizBack(d,n,cfg){var t=nrPd(nrBase(d)).getTime(),k=0;for(var i=0;i<400&&k<n;i++){t-=864e5;if(nrBiz(nrDs(new Date(t)),cfg))k++}return nrDs(new Date(t))}
+/* 自動で確定する日: 回収日の cfg.auto 営業日前(土日祝を除く) */
+function nrConfirmDay(d,cfg){return nrBizBack(d,cfg.auto,cfg)}
+/* 前日の知らせ(LINE・前日メール)の対象: 今日が営業日なら、明日から次の営業日までの日。休みの日は空(前の営業日に知らせ済み) */
+function nrPreDays(today,cfg){if(!nrBiz(today,cfg))return [];var out=[],t=nrPd(today).getTime();for(var i=0;i<14;i++){t+=864e5;var x=nrDs(new Date(t));out.push(x);if(nrBiz(x,cfg))break}return out}
+/* その日にその業者がどの曜日の担当として入るか(祝日の週は1日ずつずらした元の曜日)。担当でなければ -1 */
+function nrWdOf(vid,d,cfg){var a=cfg.wd[vid];if(!a)return -1;var m=nrWdMap(d,cfg),w=nrPd(nrBase(d)).getDay();for(var i=0;i<a.length;i++){if((m&&m[a[i]]!=null?m[a[i]]:a[i])===w)return a[i]}return -1}
+/* その日にその業者が出せる最大台数(管理者が曜日ごとに決めたもの)。決めていなければ 0 */
+function nrWmax(vid,d,cfg){var x=nrWdOf(vid,d,cfg);return x<0?0:nrNum(((cfg.wmax||{})[vid]||{})[x])}
 /* その日を含む週(月曜はじまり)の月曜の日付 */
 function nrWeek(d){var p=nrPd(d);return nrDs(new Date(p.getTime()-((p.getDay()+6)%7)*864e5))}
 /* 休日がある週か。業者ごとの回収曜日に使っている曜日に休日が当たる週だけを数える */
@@ -460,6 +473,8 @@ function nrCfg(c){
   o.holx={};Object.keys(c.holx||{}).forEach(function(d){if(/^\d{4}-\d{2}-\d{2}$/.test(d))o.holx[d]=c.holx[d]});
   o.wdFrom=c.wdFrom==null?NR_WD_FROM:(/^\d{4}-\d{2}-\d{2}$/.test(c.wdFrom)?c.wdFrom:"");
   o.wd={};Object.keys(c.wd||{}).forEach(function(v){var a=(c.wd[v]||[]).filter(function(x){return x>=0&&x<=6});if(a.length)o.wd[v]=a});
+  /* 曜日ごとの業者の最大搬出数 {業者:{曜日:台数}}。0・空は「均等割り」 */
+  o.wmax={};Object.keys(c.wmax||{}).forEach(function(v){var m={};Object.keys(c.wmax[v]||{}).forEach(function(w){var n=nrNum(c.wmax[v][w]);if(n&&w>=0&&w<=6)m[w]=n});if(Object.keys(m).length)o.wmax[v]=m});
   return o;
 }
 function nrOnDay(vid,d,cfg){var a=cfg.wd[vid];if(cfg.wdFrom&&nrBase(d)<cfg.wdFrom)return true;if(!a)return true;
@@ -621,9 +636,11 @@ function nrSimulate(vendors,days,cfg,startStr,confirmed){
         var by2={},vs2=[],du={};
         nrPrio(ass.slice().sort(nrCmp)).forEach(function(c){if(!by2[c.vid]){by2[c.vid]=[];vs2.push(c.vid)}by2[c.vid].push(c)});
         var nAss=Object.keys(vendors).filter(function(v){return cfg.wd[v]&&nrOnDay(v,d,cfg)}).length||vs2.length,share=Math.floor(left/nAss);/* 担当業者1社あたりの均等な台数。この日に搬出予定がない担当業者も数える */
+        /* 管理者が曜日ごとの最大搬出数を決めている業者は、その台数まで(均等割りの代わり) */
+        var shareOf=function(v){return nrWmax(v,d,cfg)||share};
         while(left>0){
           var pv=null;
-          vs2.forEach(function(v){var l=by2[v];while(l.length&&(l[0].q<=0||l[0].it.rem<=0))l.shift();if(!l.length||(du[v]||0)>=share)return;
+          vs2.forEach(function(v){var l=by2[v];while(l.length&&(l[0].q<=0||l[0].it.rem<=0))l.shift();if(!l.length||(du[v]||0)>=shareOf(v))return;
             var x=du[v]||0,y=pv===null?0:(du[pv]||0);
             if(pv===null||x<y||(x===y&&nrCmp(l[0],by2[pv][0])<0))pv=v});
           if(pv===null)break;
@@ -632,9 +649,11 @@ function nrSimulate(vendors,days,cfg,startStr,confirmed){
         /* 希望が少なくて余った分と、均等割りで割り切れなかった分は、逼迫している業者(担当業者もほかの業者も)から順に入れる */
         rest=cand.slice().sort(nrUrgCmp);
       }else{rest.sort(nrUrgCmp)}
+      /* 最大搬出数を決めた業者は、余りを回すときも、その日の合計がその台数を超えないようにする */
+      var dayTot=function(v){var n=0;Object.keys(rowOf).forEach(function(k){if(rowOf[k].vid===v)n+=rowOf[k].units});return n};
       nrPrio(rest).forEach(function(c){
         if(left<=0)return;
-        var take=Math.min(c.q,c.it.rem,left);if(take<=0)return;
+        var take=Math.min(c.q,c.it.rem,left),mx=nrWmax(c.vid,d,cfg);if(mx)take=Math.min(take,mx-dayTot(c.vid));if(take<=0)return;
         give(c,take);
       });
     }else nrPrio(mine).concat(nrPrio(other)).forEach(function(c){
@@ -648,7 +667,7 @@ function nrSimulate(vendors,days,cfg,startStr,confirmed){
   });
   return {byDate:byDate,dates:dates,first:first,left:items.filter(function(i){return i.rem>0})};
 }
-/* 搬出予定の入力のお願い: 回収日の(自動確定の日数+2)日前に、その曜日の担当なのに出したい台数が0の業者へ「お願い」、
+/* 搬出予定の入力のお願い: 回収日の(自動確定の日数+2)営業日前に、その曜日の担当なのに出したい台数が0の業者へ「お願い」、
    (自動確定の日数+1)日前に「予定無しとして他の業者に配置します」の警告。曜日の担当がない業者は対象にしない。
    返すのは [{d:回収日, vid, lv:1|2, msg}]。アプリ(管理者が開いたとき)と毎朝の自動処理の両方で使う */
 function nrRemind(vendors,days,confirmed,cfg,today){
@@ -656,11 +675,12 @@ function nrRemind(vendors,days,confirmed,cfg,today){
   function f(s){var x=nrPd(s);return (x.getMonth()+1)+"/"+x.getDate()+"("+W[x.getDay()]+")"}
   Object.keys(days).sort().forEach(function(k){var d=nrBase(k),day=days[k]||{};
     if(confirmed[k]||!nrNum(day.cap)||seen[d])return;
-    var until=Math.round((nrPd(d)-nrPd(today))/864e5),lv=until===cfg.auto+2?1:until===cfg.auto+1?2:0;if(!lv)return;seen[d]=1;
+    /* 営業日(土日祝を除く)で数える。確定日の2営業日前から「お願い」、前の営業日から「警告」。休みの日に重なっても、同じ id なので二重には出ない */
+    var cd=nrConfirmDay(d,cfg),b1=nrBizBack(d,cfg.auto+2,cfg),b2=nrBizBack(d,cfg.auto+1,cfg);
+    var lv=today>=b2&&today<cd?2:today>=b1&&today<b2?1:0;if(!lv||d<today)return;seen[d]=1;
     Object.keys(vendors).forEach(function(vid){var v=vendors[vid]||{};if(v.manual||!cfg.wd[vid]||!nrOnDay(vid,d,cfg))return;
       if(cfg.wdFrom&&d<cfg.wdFrom)return;
       var w=0;Object.keys(v.floors||{}).forEach(function(fl){w+=nrNum((v.floors[fl]||{}).w)});if(w>0)return;
-      var cd=nrDs(new Date(nrPd(d).getTime()-cfg.auto*864e5));
       out.push({d:d,vid:vid,lv:lv,msg:lv===1?"【入力のお願い】"+f(d)+"は御社の回収日です。まだ搬出の予定(出したい台数)が入っていません。"+f(cd)+"の確定までに、アプリの「台数」から入力してください。"
         :"【重要】"+f(d)+"の搬出の予定が入っていないため、予定無しとして、この日の枠は他の業者に配置します。出したい場合は、今日中にアプリの「台数」から入力してください。"});
     });
@@ -1347,7 +1367,7 @@ function troubleForm(d){
 /* ---- 自動確定 ---- */
 var AUTO_WAIT=10*60*1000,autoTimer=null;
 function daysUntil(d,t){return Math.round((nrPd(d)-nrPd(t))/864e5)}
-function inAuto(d,C){return C.cfg.auto>0&&d>=C.t&&daysUntil(d,C.t)<=C.cfg.auto}
+function inAuto(d,C){return C.cfg.auto>0&&nrBase(d)>=C.t&&C.t>=nrConfirmDay(d,C.cfg)}
 function confirmDay(d,s,auto){
   var rows=s.asg.map(function(a){var o={vid:a.vid,floor:a.floor,units:a.units,ev:a.ev||null,to:a.to||null,ret:a.ret||null,n:vname(a.vid)};if(a.rets)o.rets=a.rets;return o});
   var o={rows:rows,at:nowIso(),by:who(),hist:[histEntry(auto?"自動で確定":"確定")]};if(auto)o.auto=true;put("confirmed",d,o);notifyConfirm(d,o);
@@ -1374,7 +1394,7 @@ function autoConfirm(C){
     confirmDay(d,s,true);done.push(d);
   });
   if(wait){clearTimeout(autoTimer);autoTimer=setTimeout(function(){render()},wait)}
-  if(done.length){ui.msg=done.map(fmtD).join("・")+"の配分を自動で確定しました(搬出日の"+C.cfg.auto+"日前)。";ui.msgKind="ok"}
+  if(done.length){ui.msg=done.map(fmtD).join("・")+"の配分を自動で確定しました(土日祝を除いて"+C.cfg.auto+"営業日前)。";ui.msgKind="ok"}
   return done.length>0;
 }
 
@@ -1474,7 +1494,7 @@ function renderDayVOne(k){
   if(!cap)return h+'<p class="empty">この日は回収がありません。</p></section>';
   var el=doc.elev||[],tot=cf?rowsTotal(cf,-1):0;
   h+='<div class="sum"><div><small>回収時間</small><b style="font-size:15px">'+esc(fmtTime(doc))+'</b></div><div><small>回収台数</small><b>'+(cf?tot+'/':'')+cap+'台</b></div><div><small>回収エレベーター</small><b style="font-size:15px">'+(el.length?el.map(function(e){return "EV"+e}).join("・"):'未指定')+'</b></div></div>';
-  if(!cf){var au=nrCfg(D.config).auto;return h+'<p class="empty">回収する業者と台数は、確定すると表示されます。'+(au>0?'通常は搬出日の'+au+'日前に自動で確定します。':'')+'</p></section>'}
+  if(!cf){var au=nrCfg(D.config).auto;return h+'<p class="empty">回収する業者と台数は、確定すると表示されます。'+(au>0?'通常は'+fmtD(nrConfirmDay(k,nrCfg(D.config)))+'(土日祝を除いて'+au+'営業日前)に自動で確定します。':'')+'</p></section>'}
   h+=ENV.crew?crewCards(k):dayRowsTable(k);
   if(cf&&(ENV.crew||!ENV.admin))h+=notesView(k,ENV.crew);
   if(ENV.crew)h+='<p class="hint">搬出エレベーター前で台数を確かめ、揃っていれば「揃っている」、無ければ「無い」、足りなければ実際の台数を入れて「不足」を押します。「無い」「不足」はその業者のアプリにすぐ表示されます。戻したら「戻した」に✅を付けます(エレベーターと台数は自動で入り、違うときは管理者が直します)。</p>';
@@ -1544,9 +1564,9 @@ function renderDay(C){
   h+='<button class="btn danger sm" data-act="dayoff">'+(ui.confirm==="dayoff"?'もう一度押すと削除':sesKeys(k).length>1?'この回を削除':'この日を回収なしに戻す')+'</button></div>';
   if(!cf)h+=doc.hold?'<p class="hint">確定を取り消したため、この日は自動確定を止めています。「この日の配分を確定」を押すと確定します。</p>'
     :inAuto(k,C)?'<p class="hint"><b>自動確定の期間に入っています。</b>'+(elev.length?'設定を変えてから10分たつと、この配分で自動で確定されます。':'集積するエレベーターを選ぶと、10分後に自動で確定されます。')+'すぐ確定するときは「今すぐ確定」を押します。</p>'
-    :C.cfg.auto>0?'<p class="hint">この日は<b>'+fmtDP(nrDs(new Date(nrPd(k).getTime()-C.cfg.auto*864e5)))+'('+C.cfg.auto+'日前)に自動で確定</b>されます。それより早く確定するときは「今すぐ確定」を押します。確定すると、各業者の「回収予定」に日付・時間・集積場所・階が表示されます。</p>'
+    :C.cfg.auto>0?'<p class="hint">この日は<b>'+fmtDP(nrConfirmDay(k,C.cfg))+'(土日祝を除いて'+C.cfg.auto+'営業日前)に自動で確定</b>されます。それより早く確定するときは「今すぐ確定」を押します。確定すると、各業者の「回収予定」に日付・時間・集積場所・階が表示されます。</p>'
     :'<p class="hint">確定すると、各業者の「回収予定」に日付・時間・集積場所・階が表示されます。</p>';
-  else if(cf.auto)h+='<p class="hint"><span class="st ok">自動確定</span> 搬出日の'+C.cfg.auto+'日前に自動で確定しました。追加の業者や急ぎの業者は「確定内容の再振り分け」で変更できます。</p>';
+  else if(cf.auto)h+='<p class="hint"><span class="st ok">自動確定</span> 土日祝を除いて'+C.cfg.auto+'営業日前に自動で確定しました。追加の業者や急ぎの業者は「確定内容の再振り分け」で変更できます。</p>';
   else h+='<p class="hint">「搬出EVまで配置」は業者がチェックします(管理者も代わりにチェックできます)。台車を戻したら「戻した」にチェックし、使ったエレベーターと台数を入れてください。</p>';
   if(cf)h+=notesView(k,true)+troubleForm(k)+noticeStatus(k)+histView(k);
   return h+'</section>';
@@ -1732,6 +1752,11 @@ function sAdminTasks(C){
   Object.keys(D.confirmed).sort().forEach(function(d){if(nrBase(d)<=now)return;var cf=D.confirmed[d],h0=(cf.hist||[])[0],at=(h0&&h0.at)||cf.at||"";if(!at||cs[d]===at)return;/* 確定した時刻(盛替え業者の入力では変わらない) */
     var rs=(cf.rows||[]).filter(function(r){return nrNum(r.units)>0}),u=0,vs={};rs.forEach(function(r){u+=nrNum(r.units);vs[r.vid]=1});
     t.push({t:fmtLong(d)+"の確定した回収を確認する",s:u+'台・'+Object.keys(vs).length+'社'+(cf.auto?'(自動で確定)':''),tab:"cal",d:d,seen:at})});
+  /* 次の確定: 確定日(土日祝を除いた営業日で数える)の前の営業日から、確定前の回収日を「確定前の確認」として出す */
+  if(C.cfg.auto>0)Object.keys(D.days).sort().forEach(function(k){var day=D.days[k];if(D.confirmed[k]||!nrNum(day.cap)||nrBase(k)<now)return;
+    var cd=nrConfirmDay(k,C.cfg);if(now<nrBizBack(cd,1,C.cfg))return;
+    var sl=sesLabel(k),why=day.hold?'確定を取り消したので自動では確定しません。「この日の配分を確定」で確定します':!(day.elev||[]).length?'集積するエレベーターが未指定のため、まだ確定できません。EVを選びます':now>=cd?'今日が確定日です(土日祝を除いて'+C.cfg.auto+'営業日前)。配分と集積EVを確かめます':fmtD(cd)+'に自動で確定します(土日祝を除いて'+C.cfg.auto+'営業日前)。前もって配分と集積EVを確かめます';
+    t.push({t:fmtLong(k)+(sl?' '+sl:'')+'の搬出確定を確認する',s:why,tab:"cal",d:k,warn:!!(day.hold||!(day.elev||[]).length)})});
   /* 最終回収日の1週間前になったら、その次の日から先の回収日(車輌)の入力を促す */
   var last="";Object.keys(D.days).forEach(function(d){if(nrNum(D.days[d].cap)&&nrBase(d)>last)last=nrBase(d)});
   var lim7=nrDs(new Date(nrPd(now).getTime()+7*864e5));
@@ -1856,7 +1881,7 @@ function wdByDay(C){var out=[[],[],[],[],[],[],[]],anyD=[];
 function wdBoard(C){
   var b=wdByDay(C),any=b.any,has=b.days.some(function(l){return l.length});if(!has)return "";
   var order=[1,2,3,4,5,6,0],h='<div class="wdboard"><h3>曜日ごとの担当業者'+(C.cfg.wdFrom?'<span class="hint" style="margin:0 0 0 8px">'+esc(fmtD(C.cfg.wdFrom))+'の回収日から</span>':'')+'</h3><div class="wdgrid">';
-  order.forEach(function(w){h+='<div><b>'+WD[w]+'</b>'+(b.days[w].length?b.days[w].map(function(v){return '<span class="wdn">'+vchip(v)+'</span>'}).join(""):'<span class="hint" style="margin:0">なし</span>')+'</div>'});
+  order.forEach(function(w){h+='<div><b>'+WD[w]+'</b>'+(b.days[w].length?b.days[w].map(function(v){var mx=nrNum(((C.cfg.wmax||{})[v]||{})[w]);return '<span class="wdn">'+vchip(v,mx?vname(v)+' 最大'+mx+'台':null)+'</span>'}).join(""):'<span class="hint" style="margin:0">なし</span>')+'</div>'});
   h+='</div>'+(any.length?'<p class="hint" style="margin:6px 0 0">曜日を決めていない業者(どの曜日でも回収): '+esc(any.map(vname).join("・"))+'</p>':'')+'</div>';
   return h;
 }
@@ -1870,12 +1895,15 @@ function renderMailSet(C){
 function renderWd(C){
   var ids=Object.keys(C.am).sort(function(a,b){return vname(a)<vname(b)?-1:1}),h='<section class="panel"><h2 style="margin-bottom:8px">業者ごとの回収曜日</h2>'
    +'<div class="field"><label>曜日の振り分けを始める日 <input type="date" data-f="wdfrom" value="'+esc(C.cfg.wdFrom||'')+'" aria-label="曜日の振り分けを始める日"></label><span class="hint" style="margin:0">この日より前の回収日は、曜日に関係なく、これまでどおり全業者を逼迫度の順に割り当てます。空にすると、すべての日で曜日を使います。</span></div>'
-   +'<p class="hint" style="margin:0 0 8px">曜日の振り分けを始める日以降は、その曜日に割り当てた業者どうしで、積載を均等に割ります(積載÷担当業者数の台数ずつ。その日に搬出予定がない担当業者も数えます)。希望が少なくて余った分や、割り切れなかった分は、逼迫している業者(担当の業者もほかの業者も)から順(余力なし → 逼迫度が高い順)に入れます。担当の業者が1社もいない曜日は、全業者を逼迫している順に入れます。曜日を何も選ばない業者は、担当の業者ではなく、余った積載に逼迫している順で入ります。</p>';
+   +'<p class="hint" style="margin:0 0 8px">曜日の振り分けを始める日以降は、その曜日に割り当てた業者どうしで、積載を均等に割ります(積載÷担当業者数の台数ずつ。その日に搬出予定がない担当業者も数えます)。希望が少なくて余った分や、割り切れなかった分は、逼迫している業者(担当の業者もほかの業者も)から順(余力なし → 逼迫度が高い順)に入れます。担当の業者が1社もいない曜日は、全業者を逼迫している順に入れます。曜日を何も選ばない業者は、担当の業者ではなく、余った積載に逼迫している順で入ります。</p>'
+   +'<p class="hint" style="margin:0 0 8px"><b>最大搬出数</b>: チェックした曜日の下の欄に台数を入れると、その曜日はその業者を最大その台数まで回収します(均等割りの代わり)。空のままなら均等割りです。担当業者の合計が回収できる台数に満たないときは、残りを逼迫している業者から順に割り振ります。</p>';
   if(!ids.length)return h+'<p class="empty">利用中の業者がまだありません。</p></section>';
   h+='<div class="tablewrap"><table><thead><tr><th class="l">業者</th>'+WD.map(function(w){return '<th>'+w+'</th>'}).join("")+'</tr></thead><tbody>';
   ids.forEach(function(v){var a=C.cfg.wd[v]||[];
     h+='<tr><td class="l vn"><i class="chip" style="background:'+vcolor(v)+'"></i>'+esc(vname(v))+'</td>';
-    for(var w=0;w<7;w++)h+='<td><input type="checkbox" data-f="wd" data-vid="'+esc(v)+'" data-w="'+w+'"'+(a.indexOf(w)>=0?' checked':'')+' aria-label="'+esc(vname(v))+' '+WD[w]+'曜日"></td>';
+    for(var w=0;w<7;w++){var on=a.indexOf(w)>=0,mx=nrNum(((C.cfg.wmax||{})[v]||{})[w]);
+      h+='<td><input type="checkbox" data-f="wd" data-vid="'+esc(v)+'" data-w="'+w+'"'+(on?' checked':'')+' aria-label="'+esc(vname(v))+' '+WD[w]+'曜日">'
+        +(on?'<input class="wmaxin" type="text" inputmode="numeric" maxlength="3" data-f="wmax" data-vid="'+esc(v)+'" data-w="'+w+'" value="'+(mx||'')+'" placeholder="均等" aria-label="'+esc(vname(v))+' '+WD[w]+'曜日の最大搬出数">':'')+'</td>'}
     h+='</tr>'});
   return h+'</tbody></table></div></section>';
 }
@@ -2301,7 +2329,7 @@ function renderSet(C){
    +'<label>待機日数の重み<input type="number" min="0" id="s-ww" data-f="wW" value="'+c.wW+'"></label>'
    +'<label>保有台数の重み<input type="number" min="0" id="s-wh" data-f="wH" value="'+c.wH+'"></label>'
    +'<label>余力なしとみなす逼迫度(%)<input type="number" min="1" max="100" id="s-crit" data-f="crit" value="'+c.crit+'"></label>'
-   +'<label>自動確定(搬出日の何日前・0で自動確定しない)<input type="number" min="0" max="14" id="s-auto" data-f="auto" value="'+c.auto+'"></label></div>'
+   +'<label>自動確定(搬出日の何営業日前。土日祝を除く・0で自動確定しない)<input type="number" min="0" max="14" id="s-auto" data-f="auto" value="'+c.auto+'"></label></div>'
    +'<p class="hint">逼迫度が「余力なし」の基準以上の階(初期値100%=保有している台数を全部出したい階)を最優先で回収し、その中と残りは評価点が高い順に回収します。逼迫度は保有台数に対する搬出希望台数の割合、待機日数は希望を登録してからの日数です。</p>'
    +'<h3 style="margin:16px 0 4px">建物の設定</h3><div class="set">'
    +'<label>最下階<input type="number" min="1" max="'+NR_MAXF+'" id="s-fmin" data-f="fmin" value="'+c.fmin+'"></label>'
@@ -2862,6 +2890,8 @@ function onChange(ev){
     mutConfirmed(d3,function(cf){var r=cf.rows[i3];if(!r)return;var cap=nrNum((D.days[d3]||{}).cap),room=Math.max(0,cap-rowsTotal(cf,i3));r.units=Math.min(nv3,room)});
     if(r3&&nv3<nrNum(r3.units))markFillSkip(d3,r3);
   }
+  else if(f==="wmax"){var mv0=el.getAttribute("data-vid"),mw0=el.getAttribute("data-w"),mn0=nrNum(String(el.value).replace(/[０-９]/g,function(z){return String.fromCharCode(z.charCodeAt(0)-0xFEE0)}));c.wmax=c.wmax||{};c.wmax[mv0]=c.wmax[mv0]||{};
+    if(mn0)c.wmax[mv0][mw0]=Math.min(999,mn0);else delete c.wmax[mv0][mw0];if(!Object.keys(c.wmax[mv0]).length)delete c.wmax[mv0];if(!Object.keys(c.wmax).length)delete c.wmax;putCfg(c)}
   else if(f==="wd"){var wv=el.getAttribute("data-vid"),ww=Number(el.getAttribute("data-w"));c.wd=c.wd||{};
     var wa=(c.wd[wv]||[]).filter(function(x){return x!==ww});if(el.checked)wa.push(ww);wa.sort();if(wa.length)c.wd[wv]=wa;else delete c.wd[wv];putCfg(c)}
   else if(f==="auto"){c.auto=Math.min(14,nrNum(el.value));putCfg(c)}

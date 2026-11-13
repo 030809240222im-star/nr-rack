@@ -1,5 +1,5 @@
 /* 業者へのメール(GitHub Actions から動かす)
-   MAIL_MODE=pre   : 搬出日の前日 13:00 … 明日の搬出予定(前日メール)と、搬出日から3日たってもアプリを開いていない業者への確認メール
+   MAIL_MODE=pre   : 搬出日の前の営業日 13:00 … 次の営業日までの搬出予定(前日メール。土日祝を除く)と、搬出日から3日たってもアプリを開いていない業者への確認メール
    MAIL_MODE=day   : 搬出日の当日 6:30 … 今日の搬出予定(当日メール)
    送り先は、その会社で利用中の人(approved)のメールアドレス全員。管理者が追加した業者(アプリを使わない業者)には送らない。
    同じメールを二度送らないよう、送った記録を maillog/{日付} に残す(アプリからは読まない)。
@@ -11,12 +11,12 @@ const root = new URL("..", import.meta.url).pathname;
 const html = fs.readFileSync(root + "index.html", "utf8");
 const core = html.match(/<script>\s*([\s\S]*?function nrRank[\s\S]*?)<\/script>/)[1];
 const ctx = {}; vm.createContext(ctx); vm.runInContext(core, ctx);
-const { nrDs, nrPd, nrNum, nrRowRets, nrBase, nrSesNo } = ctx;
+const { nrDs, nrPd, nrNum, nrRowRets, nrBase, nrSesNo, nrCfg, nrPreDays } = ctx;
 
 const MODE = process.env.MAIL_MODE || "pre";
 const APP_URL = "https://030809240222im-star.github.io/nr-rack/";
 const APPS = [{ prefix: "", name: "NRボックス", item: "NRボックス", url: APP_URL }, { prefix: "scrap_", name: "スクラップ搬出", item: "スクラップ台車", url: APP_URL + "scrap/" }];
-const COLLS = ["days", "vendors", "approved", "members", "confirmed", "seen", "maillog"];
+const COLLS = ["days", "vendors", "approved", "members", "confirmed", "seen", "maillog", "config"];
 const WD = ["日", "月", "火", "水", "木", "金", "土"];
 const fmtD = s => { const d = nrPd(s); return (d.getMonth() + 1) + "月" + d.getDate() + "日(" + WD[d.getDay()] + ")"; };
 const fmtTime = d => d && d.tf ? d.tf + "〜" + (d.tt || "") : "時間未定";
@@ -77,7 +77,7 @@ const footer = app => "\n\n予定の確認や連絡は、アプリから行っ�
 
 function rowsText(rows, label) {
   return rows.map(r => "・" + r.floor + "階 " + nrNum(r.units) + "台 → " + evLabel(r.ev, r.to)
-    + (r.to && label === "明日" ? "(今日中に" + r.to + "階へ移動してください)" : "")
+    + (r.to && label && label !== "本日" ? "(今日中に" + r.to + "階へ移動してください)" : "")
     + (Array.isArray(r.rets) ? "(戻し先: " + nrRowRets(r).map(x => (x.f === r.floor ? "同じ階" : x.f + "階") + " " + x.u + "台").join("・") + ")"
       : r.ret && Number(r.ret) !== Number(r.floor) ? "(戻し先: " + r.ret + "階)" : "")).join("\n");
 }
@@ -89,8 +89,11 @@ async function mark(app, d, key) {
 for (const app of APPS) {
   const D = await load(app.prefix);
   const log = D.maillog || {};
-  /* 前日メール・当日メール */
-  const d = MODE === "pre" ? addDays(today, 1) : today, label = MODE === "pre" ? "明日" : "本日", kind = MODE === "pre" ? "pre" : "day";
+  /* 前日メール・当日メール。前日メールは営業日(土日祝を除く)に、次の営業日までの搬出日の分を送る(金曜なら土・日・月の分) */
+  const cfg = nrCfg((D.config || {}).main);
+  const targets = MODE === "pre" ? nrPreDays(today, cfg) : [today], kind = MODE === "pre" ? "pre" : "day";
+  for (const d of targets) {
+  const label = MODE === "pre" ? (d === addDays(today, 1) ? "明日" : "次の搬出日") : "本日";
   const sess = sesKeysOf(D, d).filter(k => D.confirmed[k] && (D.confirmed[k].rows || []).length);
   if (sess.length) {
     const byV = {};
@@ -110,6 +113,7 @@ for (const app of APPS) {
         + footer(app);
       if (await send(to, subject, text)) await mark(app, d, key);
     }
+  }
   }
   /* 搬出日から3日たってもアプリを開いていない業者への確認メール(前日メールと同じ 13:00 に送る。7日を過ぎたら送らない) */
   if (MODE === "pre") {
