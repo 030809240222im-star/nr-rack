@@ -15,6 +15,7 @@ const p=await cx.newPage();p.on('pageerror',e=>console.log('ERR',e.message));awa
 console.log(n,'今日やること:',(await p.locator('.task').allInnerTexts()).filter(t=>/搬出確定/.test(t)).map(t=>t.replace(/\s+/g,' ').slice(0,90)).join(' / ')||'(なし)');
 await p.click('[data-act=tab][data-tab=set]');await p.waitForTimeout(300);
 const pi=p.locator('input[data-f=wper][data-w="3"]');await pi.fill('4');await pi.press('Tab');await p.waitForTimeout(400);console.log(' 水曜の1社あたり:',JSON.stringify((await p.evaluate(()=>JSON.parse(sessionStorage.__FS))).config.main.wper));
+console.log(' 曜日の欄が全部見えて押せる(隠れ・細すぎの数, 0のはず):',await p.evaluate(()=>[...document.querySelectorAll('input[data-f=wper],input[data-f=wd]')].filter(e=>{const r=e.getBoundingClientRect(),w=e.closest('.tablewrap,.wper').getBoundingClientRect();return r.right>w.right+1||r.left<w.left-1||(e.dataset.f==='wper'&&r.width<30)}).length));
 console.log(' はみ出し:',await p.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth));
 await cx.close()}
 await b.close()})();

@@ -32,7 +32,10 @@ function mg(t,p){t=(t&&typeof t==='object'&&!Array.isArray(t))?t:{};for(const k 
   else if(v&&typeof v==='object'&&!Array.isArray(v))t[k]=mg(t[k],v);else t[k]=JSON.parse(JSON.stringify(v))}return t}
 export function collection(f,c){return {c}}
 export function doc(f,a,b){const [c,id]=b?[a,b]:a.split('/');return {c,id}}
-export async function setDoc(r,d,o){S[r.c]=S[r.c]||{};S[r.c][r.id]=(o&&o.merge)?mg(S[r.c][r.id],d):JSON.parse(JSON.stringify(d));PEND=true;emit();await new Promise(z=>setTimeout(z,300));save();PEND=false;emit()}
+/* 本物の Firestore と同じく、undefined の値・関数・NaN を含む書き込みは拒否する(気づかずに保存できない不具合を試験で見つけるため) */
+function badVal(v,path){if(v===undefined)return path;if(typeof v==='function')return path;if(typeof v==='number'&&isNaN(v))return path;
+  if(v&&typeof v==='object'&&!v.__fv){if(Array.isArray(v)){for(let i=0;i<v.length;i++){if(Array.isArray(v[i]))return path+'['+i+'](配列の中の配列)';const x=badVal(v[i],path+'['+i+']');if(x)return x}}else for(const k of Object.keys(v)){const x=badVal(v[k],path+'.'+k);if(x)return x}}return null}
+export async function setDoc(r,d,o){const bad=badVal(d,r.c+'/'+r.id);if(bad){const e=new Error('Unsupported field value at '+bad);e.code='invalid-argument';console.error('FAKE-FB 書き込み拒否: '+bad);throw e}S[r.c]=S[r.c]||{};S[r.c][r.id]=(o&&o.merge)?mg(S[r.c][r.id],d):JSON.parse(JSON.stringify(d));PEND=true;emit();await new Promise(z=>setTimeout(z,300));save();PEND=false;emit()}
 export async function deleteDoc(r){if(S[r.c])delete S[r.c][r.id];save();setTimeout(emit,1)}
 export function onSnapshot(r,o,cb,err){if(typeof o==='function'){err=cb;cb=o;o={}}const meta=!!o.includeMetadataChanges;
   const f=()=>{ if(PEND&&!meta&&false)return; if(r.id!==undefined){const d=(S[r.c]||{})[r.id];cb({id:r.id,exists:()=>!!d,data:()=>d,metadata:{hasPendingWrites:PEND}})}
