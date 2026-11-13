@@ -1,4 +1,4 @@
-// 管理者: 「今日やること」の搬出確定の確認(土日祝を除いた営業日)と、曜日ごとの最大搬出数の設定
+// 管理者: 「今日やること」の搬出確定の確認(土日祝を除いた営業日)と、曜日ごとの1社あたりの台数の設定
 const REPO=require('path').resolve(__dirname,'..','..')+'/';const WORK=process.cwd();
 const {chromium,devices}=require('playwright');const fs=require('fs');
 fs.writeFileSync('main-test.html',fs.readFileSync(REPO+'index.html','utf8'));
@@ -14,9 +14,7 @@ await cx.addInitScript(w=>{window.__FAKE_UID='g1';window.__FAKE_EMAIL='kowa0371@
 const p=await cx.newPage();p.on('pageerror',e=>console.log('ERR',e.message));await p.goto('file://'+WORK+'/main-test.html');await p.click('#lg-google');await p.waitForTimeout(900);
 console.log(n,'今日やること:',(await p.locator('.task').allInnerTexts()).filter(t=>/搬出確定/.test(t)).map(t=>t.replace(/\s+/g,' ').slice(0,90)).join(' / ')||'(なし)');
 await p.click('[data-act=tab][data-tab=set]');await p.waitForTimeout(300);
-const inp=p.locator('input[data-f=wmax][data-vid=v1][data-w="2"]');console.log(' 火曜の最大の欄:',await inp.count());
-await inp.fill('3');await inp.press('Tab');await p.waitForTimeout(400);
-const S=await p.evaluate(()=>JSON.parse(sessionStorage.__FS));console.log(' 保存:',JSON.stringify(S.config.main.wmax));
+const pi=p.locator('input[data-f=wper][data-w="3"]');await pi.fill('4');await pi.press('Tab');await p.waitForTimeout(400);console.log(' 水曜の1社あたり:',JSON.stringify((await p.evaluate(()=>JSON.parse(sessionStorage.__FS))).config.main.wper));
 console.log(' はみ出し:',await p.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth));
 await cx.close()}
 await b.close()})();

@@ -1,4 +1,4 @@
-// 土日祝を除いた営業日での確定日・入力のお願い・前日の知らせと、曜日ごとの業者の最大搬出数
+// 土日祝を除いた営業日での確定日・入力のお願い・前日の知らせと、曜日ごとの1社あたりの台数
 import fs from "node:fs";import vm from "node:vm";
 const html=fs.readFileSync(new URL("../../index.html",import.meta.url).pathname,"utf8");
 const core=html.match(/<script>\s*([\s\S]*?function nrRank[\s\S]*?)<\/script>/)[1];
@@ -14,11 +14,10 @@ eq(c.nrConfirmDay("2026-11-19",c.nrCfg({holx:{"2026-11-17":"会社休み"}})),"2
 const cw=c.nrCfg({wd:{a:[1]}}),vs={a:{floors:{}}},days={"2026-11-16":{cap:8,elev:[1]}};
 const lv=t=>c.nrRemind(vs,days,{},cw,t).map(x=>x.lv);
 eq([lv("2026-11-09"),lv("2026-11-10"),lv("2026-11-11"),lv("2026-11-12")],[[],[1],[2],[]],"月曜の回収: 火曜にお願い・水曜に警告・木曜(確定日)はなし");
-// 曜日ごとの最大搬出数
-const cm=c.nrCfg({evn:1,ev:{1:[1,30]},wd:{a:[2],b:[2]},wmax:{a:{2:2}},eq:false,wdFrom:""});
 const mk=(h,w,f)=>({floors:{[f]:{h,w,s:"2026-11-01"}}});
-const am={a:mk(20,20,10),b:mk(20,6,11),u:mk(5,5,12)};
-const r=c.nrSimulate(am,{"2026-11-17":{cap:12,elev:[1]}},cm,"2026-11-11",{});
-const got={};r.byDate["2026-11-17"].asg.forEach(x=>{got[x.vid]=(got[x.vid]||0)+x.units});
-eq(got,{a:2,b:6,u:4},"火曜: aは最大2台、bは均等割り6台まで、残り4台は逼迫した業者へ");
+// 曜日ごとの1社あたりの台数(業者ごとの台数があればそちら)
+const cp=c.nrCfg({evn:1,ev:{1:[1,30]},wd:{a:[2],b:[2]},wper:{2:3},eq:false,wdFrom:""});
+const r2=c.nrSimulate({a:mk(20,20,10),b:mk(20,20,11),u:mk(5,5,12)},{"2026-11-17":{cap:12,elev:[1]}},cp,"2026-11-11",{});
+const g2={};r2.byDate["2026-11-17"].asg.forEach(x=>{g2[x.vid]=(g2[x.vid]||0)+x.units});
+eq(g2,{a:3,b:3,u:5},"火曜1社3台: a・bは3台ずつ、残りは逼迫した業者へ(希望の5台)");
 console.log(bad?"NG "+bad+"件":"すべてOK");if(bad)process.exit(1);
