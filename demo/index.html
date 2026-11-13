@@ -54,8 +54,8 @@ button:disabled{opacity:.45;cursor:default}
 .fm-r{border-top:1px solid var(--line);min-height:26px;font-size:13px}.fm-r.empty{color:var(--muted);opacity:.55;min-height:20px}
 .fm-f{font-weight:700;text-align:right;font-variant-numeric:tabular-nums}
 .fm-e u{text-decoration:none;font-size:11px;margin-right:4px}.fm-e u.on{color:var(--ok)}.fm-e u.off{color:var(--bad)}
-.fm-b{display:flex;min-width:0;height:18px;border-radius:4px;overflow:hidden}
-.fm-s{display:flex;align-items:center;justify-content:center;min-width:1px;height:100%;overflow:hidden;font-style:normal;font-size:11px;color:#fff;text-shadow:0 0 2px rgba(0,0,0,.6)}.fm-s b{font-weight:700}
+.fm-b{display:flex;flex-wrap:wrap;row-gap:2px;min-width:0;min-height:18px;border-radius:4px;overflow:hidden}.fm-s{height:18px!important}
+.fm-s{display:flex;align-items:center;justify-content:center;min-width:max-content;padding:0 5px;white-space:nowrap;box-sizing:border-box;height:100%;overflow:hidden;font-style:normal;font-size:11px;color:#fff;text-shadow:0 0 2px rgba(0,0,0,.6)}.fm-s b{font-weight:700}
 .fm-t{text-align:right;font-weight:700;font-variant-numeric:tabular-nums}.fm-t em{font-style:normal;display:block;font-size:10.5px}
 @media (max-width:560px){.fm-h,.fm-r{grid-template-columns:3em 1fr 3em;gap:6px;padding:2px 8px}.fm-h span:nth-child(2),.fm-e{display:none}}
 .wdboard{margin:0 0 12px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface2)}.wdboard h3{margin:0 0 6px;font-size:14px}
@@ -1601,7 +1601,7 @@ function renderMap(C){
   Object.keys(C.am).forEach(function(vid){var fl=(C.am[vid]||{}).floors||{};if(ven&&vid!==ven)return;
     Object.keys(fl).forEach(function(k){var f=Number(k),h=nrNum(fl[k].h),w=nrNum(fl[k].w);if(!(f>=cfg.fmin&&f<=cfg.fmax)||(h<=0&&w<=0))return;
       var o=floors[f]=floors[f]||{h:0,w:0,list:[]};o.h+=h;o.w+=w;o.list.push({vid:vid,h:h,w:w});tot.h+=h;tot.w+=w;var q=vs[vid]=vs[vid]||{h:0,w:0};q.h+=h;q.w+=w})});
-  var h='<section class="panel"><div class="mhead"><h2>階マップ</h2></div><p class="hint" style="margin:0 0 10px">建物を横から見た図です。各階にある'+(mode==="h"?'NRボックスの保有台数':'搬出希望の台数')+'を、業者の色で積み上げています(色の上にカーソルを置く・押すと業者名と台数が出ます)。右の○×は、その階にEVが停まるかどうかです。</p>'
+  var h='<section class="panel"><div class="mhead"><h2>階マップ</h2></div><p class="hint" style="margin:0 0 10px">建物を横から見た図です。各階にある'+(mode==="h"?'NRボックスの保有台数':'搬出希望の台数')+'を、業者の色で積み上げています(色の中に業者名と台数が出ます。台数が少なくても名前が読めるよう、少ない業者の色は長さより少し広く出ます。入りきらないときは2段になります)。右の○×は、その階にEVが停まるかどうかです。</p>'
    +'<div class="field"><label>表示 <select data-f="mapMode" aria-label="表示する数"><option value="h"'+(mode==="h"?' selected':'')+'>保有台数</option><option value="w"'+(mode==="w"?' selected':'')+'>搬出希望</option></select></label>'
    +'<label>業者 <select data-f="mapVen" aria-label="業者で絞る"><option value="">すべて</option>'+Object.keys(C.am).filter(function(v){return D.vendors[v]}).sort(function(a,b){return vname(a)<vname(b)?-1:1}).map(function(v){return '<option value="'+esc(v)+'"'+(v===ven?' selected':'')+'>'+esc(vname(v))+'</option>'}).join("")+'</select></label>'
    +'<label class="chk"><input type="checkbox" data-f="mapOnly"'+(ui.mapOnly?' checked':'')+'>台数のある階だけ表示</label></div>';
@@ -1611,7 +1611,7 @@ function renderMap(C){
   h+='<div class="fmap"><div class="fm-h"><span>階</span><span>EV</span><span>'+(mode==="h"?'保有台数':'搬出希望')+'</span><span>合計</span></div>';
   var evs=evList();
   for(var f=cfg.fmax;f>=cfg.fmin;f--){var o=floors[f];if(ui.mapOnly&&!o)continue;
-    var segs=o?o.list.filter(function(x){return x[mode]>0}).sort(function(a,b){return b[mode]-a[mode]}).map(function(x){return '<i class="fm-s" style="width:'+(x[mode]/max*100).toFixed(2)+'%;background:'+vcolor(x.vid)+';color:'+vtext(x.vid)+'" title="'+esc(vname(x.vid))+' '+x[mode]+'台" tabindex="0"><b>'+(x[mode]/max>=.28?esc(vname(x.vid))+' ':x[mode]/max>=.16?esc(shortName(vname(x.vid)))+' ':'')+x[mode]+'</b></i>'}).join(""):"";
+    var segs=o?o.list.filter(function(x){return x[mode]>0}).sort(function(a,b){return b[mode]-a[mode]}).map(function(x){return '<i class="fm-s" style="flex:0 1 '+(x[mode]/max*100).toFixed(2)+'%;background:'+vcolor(x.vid)+';color:'+vtext(x.vid)+'" title="'+esc(vname(x.vid))+' '+x[mode]+'台" tabindex="0"><b>'+esc(vname(x.vid))+' '+x[mode]+'</b></i>'}).join(""):"";
     var ev=evs.map(function(e){var st=nrStops(f,e,cfg);return '<u class="'+(st?'on':'off')+'" title="EV'+e+(st?'が停まる':'は停まらない')+'">'+(st?'○':'×')+'</u>'}).join("");
     var ns=!nrAnyElev(f,cfg);
     h+='<div class="fm-r'+(o?'':' empty')+'"><span class="fm-f">'+f+'階</span><span class="fm-e">'+ev+'</span><span class="fm-b">'+segs+'</span><span class="fm-t">'+(o?o[mode]:'')+(ns&&o?' <em class="st bad">どのEVも停まらない</em>':'')+'</span></div>';

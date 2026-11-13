@@ -2,8 +2,8 @@
 const REPO=require('path').resolve(__dirname,'..','..')+'/';const WORK=process.cwd();
 const {chromium,devices}=require('playwright');const fs=require('fs');
 fs.writeFileSync('main-test.html',fs.readFileSync(REPO+'index.html','utf8'));
-const FS={config:{main:{evn:3,fmax:30,ev:{1:[1,30],2:[1,30],3:[1,12]},ns:{2:'13,14'}}},approved:{v1:{company:'サンオキ',vid:'v1'},v2:{company:'日本建工',vid:'v2'},v3:{company:'萬',vid:'v3'}},
- vendors:{v1:{floors:{10:{h:6,w:3},12:{h:4,w:4},25:{h:2,w:2}}},v2:{floors:{10:{h:3,w:1},14:{h:5,w:5}}},v3:{floors:{25:{h:7,w:2}}}}};
+const FS={config:{main:{evn:3,fmax:30,ev:{1:[1,30],2:[1,30],3:[1,12]},ns:{2:'13,14'}}},approved:{v1:{company:'サンオキ',vid:'v1'},v2:{company:'日本建工',vid:'v2'},v3:{company:'萬',vid:'v3'},v4:{company:'ミルックス',vid:'v4'}},
+ vendors:{v1:{floors:{16:{h:1,w:1},10:{h:6,w:3},12:{h:4,w:4},25:{h:2,w:2}}},v2:{floors:{16:{h:1,w:1},10:{h:3,w:1},14:{h:5,w:5}}},v3:{floors:{25:{h:7,w:2},16:{h:1,w:1}}},v4:{floors:{16:{h:1,w:1}}}}};
 (async()=>{const b=await chromium.launch();
 for(const [n,o] of [['pc',{viewport:{width:1280,height:900}}],['ph',devices['iPhone 13']]]){
 const cx=await b.newContext(o);await cx.addInitScript(()=>{try{if(!localStorage.getItem('nr-uipref'))localStorage.setItem('nr-uipref','{"simple":false}')}catch(e){}});/*FULLVIEW*/
@@ -15,5 +15,6 @@ await p.click('button[data-tab=map]');await p.waitForTimeout(300);
 console.log(n,await p.locator('.fm-r').count(),'rows; sw',await p.evaluate(()=>document.documentElement.scrollWidth));
 await p.check('[data-f=mapOnly]');await p.waitForTimeout(200);console.log(' only:',await p.locator('.fm-r').count());
 await p.selectOption('[data-f=mapMode]','w');await p.waitForTimeout(200);console.log(' want 25F:',(await p.locator('.fm-r').first().innerText()).replace(/\s+/g,' '));
+console.log(' 全部のバーに会社名(名前なし・切れの数, 0のはず):',await p.evaluate(()=>[...document.querySelectorAll('.fm-s')].filter(e=>!/[^\d\s]/.test(e.innerText)||e.scrollWidth>e.clientWidth+1||e.getBoundingClientRect().right>e.parentNode.getBoundingClientRect().right+1).length),'/',await p.locator('.fm-s').count());
 await p.screenshot({path:WORK+'/map-'+n+'.png',fullPage:true});await cx.close()}
 await b.close()})();
