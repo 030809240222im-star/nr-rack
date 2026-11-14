@@ -1441,9 +1441,29 @@ function moveBox(C){
     Object.keys(mv).sort().forEach(function(key){var q=key.split("|"),m=mv[key];out.push('<li><b>'+esc(fmtD(d))+'</b>の回収に向けて '+esc(vname(q[0]))+' '+q[1]+'階'+(nrNum(m.u)?' '+nrNum(m.u)+'台':'')+' → <b>'+(m.md?esc(fmtD(m.md))+'に':'前日までに')+'EV'+nrNum(m.ev)+'前の'+nrNum(m.to)+'階へ盛替え</b></li>')})});
   return crewMsgBox()+(out.length?'<div class="todaybox next" role="status"><h3>🔔 盛替えの指示があります</h3><ul>'+out.join("")+'</ul></div>':'');
 }
+/* 業者: 担当の曜日の回収日に、その日のEVが停まらない階があるとき、置き場所を管理者に確認する(vendors/{会社}.ask に残す) */
+function stopAsks(C){
+  if(ENV.admin||ENV.crew)return [];var out=[],ask=((D.vendors[ENV.vid]||{}).ask)||{};
+  C.sim.dates.forEach(function(d){if(nrBase(d)<C.t||D.confirmed[d])return;var s=C.sim.byDate[d];if(!s||s.fixed)return;
+    if(!(C.cfg.wd[ENV.vid]&&nrOnDay(ENV.vid,d,C.cfg)))return;
+    (s.excl||[]).forEach(function(x){if(x.vid!==ENV.vid)return;var key=d+"|"+x.floor;out.push({d:d,floor:x.floor,u:x.rem,key:key,ask:ask[key]||null,elev:s.elev})})});
+  /* 管理者が指示を出した階(回答) */
+  Object.keys(D.days).sort().forEach(function(d){if(nrBase(d)<C.t||D.confirmed[d])return;var mv=D.days[d].moves||{};
+    Object.keys(mv).forEach(function(k){var q=k.split("|");if(q[0]!==ENV.vid)return;out.push({d:d,floor:Number(q[1]),u:nrNum(mv[k].u),key:d+"|"+q[1],mv:mv[k]})})});
+  return out;
+}
+function stopAskBox(C){
+  var l=stopAsks(C);if(!l.length)return "";
+  return '<div class="todaybox next" role="status"><h3>🛗 エレベーターが停まらない階があります</h3><ul>'+l.map(function(x){
+    var head='<b>'+esc(fmtD(x.d))+'</b>の回収: '+x.floor+'階'+(x.u?'の'+x.u+'台':'');
+    if(x.mv)return '<li>'+head+' → '+(nrNum(x.mv.to)===x.floor?'当日は<b>EV'+nrNum(x.mv.ev)+'前('+x.floor+'階)</b>に置いてください(管理者の指示)':'<b>'+(x.mv.md?esc(fmtD(x.mv.md))+'に':'前日までに')+'EV'+nrNum(x.mv.ev)+'前の'+nrNum(x.mv.to)+'階</b>へ盛替えます(管理者の指示。盛替え業者が移します)')+'</li>';
+    return '<li>'+head+'は、この日のEV('+(x.elev.length?x.elev.map(function(e){return 'EV'+e}).join("・"):'未定')+')が停まりません。'
+      +(x.ask?' <span class="st warn">管理者に確認中('+esc(fmtAt(x.ask.at))+')</span>':' <button class="btn sm primary" data-act="stopask" data-key="'+esc(x.key)+'" data-u="'+(x.u||0)+'">置き場所を管理者に確認する</button>')+'</li>'}).join("")
+   +'</ul><p class="hint" style="margin:6px 0 0">管理者が置き場所(EV・階)を決めると、ここと「お知らせ」に出ます。</p></div>';
+}
 function todayBox(C){
   var t=C.t,tm=nrDs(new Date(nrPd(t).getTime()+864e5));
-  return noticeBox()+noteBox(t,tm)+problemBox()+offBox()+backBox()+orderBox(C)+sesKeysOr(t).map(function(k){return dayNotice(k,true)}).join("")+sesKeysOr(tm).map(function(k){return dayNotice(k,false)}).join("");
+  return stopAskBox(C)+noticeBox()+noteBox(t,tm)+problemBox()+offBox()+backBox()+orderBox(C)+sesKeysOr(t).map(function(k){return dayNotice(k,true)}).join("")+sesKeysOr(tm).map(function(k){return dayNotice(k,false)}).join("");
 }
 /* 業者向け: 揚重(盛替え)業者や管理者が戻した分のお知らせ(3日以内) */
 function backBox(){
@@ -1618,6 +1638,10 @@ function stageRows(C){
   order.forEach(function(k){var r=rows[k],e=((D.vendors[r.vid]||{}).floors||{})[r.floor]||{};r.held=nrNum(e.h);r.want=nrNum(e.w)});
   return order.map(function(k){return rows[k]}).sort(function(a,b){return ((b.rem>0)?1:0)-((a.rem>0)?1:0)||((b.sc&&b.sc.crit)?1:0)-((a.sc&&a.sc.crit)?1:0)||((b.sc?b.sc.total:0)-(a.sc?a.sc.total:0))||(vname(a.vid)<vname(b.vid)?-1:vname(a.vid)>vname(b.vid)?1:0)||a.floor-b.floor});
 }
+/* 業者からの置き場所の確認で、まだ指示を出していないもの */
+function pendingAsks(C){var out=[];Object.keys(D.vendors).forEach(function(v){var a=(D.vendors[v]||{}).ask||{};
+  Object.keys(a).forEach(function(k){var q=k.split("|"),d=q[0];if(nrBase(d)<C.t||D.confirmed[d]||!D.days[d])return;if(((D.days[d].moves||{})[v+"|"+q[1]]))return;out.push({vid:v,d:d,floor:Number(q[1]),at:a[k].at})})});
+  return out.sort(function(a,b){return a.d<b.d?-1:1})}
 /* 指示がまだない行の数(タブの数字) */
 function stageTodo(C){return stageRows(C).filter(function(r){return r.days.length&&!r.moves.length}).length}
 function renderStageTab(C){
@@ -1641,7 +1665,8 @@ function renderStageTab(C){
     var why=[];
     if(x.days.length){var d0=x.days[0],de=(D.days[d0]||{}).elev||[];why.push('<b>'+esc(fmtD(d0))+'</b>の回収EV('+(de.length?de.map(function(e){return 'EV'+e}).join("・"):'未指定')+')は'+x.floor+'階に停まりません'+(x.days.length>1?' ほか'+(x.days.length-1)+'日':''))}
     why.push(stops.length?'停まるEV: '+stops.map(function(e){return 'EV'+e}).join("・")+(nostop.length?' / 停まらないEV: '+nostop.map(function(e){return 'EV'+e}).join("・"):''):'<span class="st bad">どのEVも停まりません</span>');
-    h+='<tr><td class="l vn"><i class="chip" style="background:'+vcolor(x.vid)+'"></i>'+esc(vname(x.vid))+'</td><td>'+x.floor+'階</td><td>'+(x.held||0)+' / '+(x.want||0)+'台</td>'
+    var asks=Object.keys(((D.vendors[x.vid]||{}).ask)||{}).filter(function(k){var q=k.split("|");return Number(q[1])===x.floor&&nrBase(q[0])>=C.t&&!x.moves.some(function(m){return m.d===q[0]})}).map(function(k){return fmtD(k.split("|")[0])});
+    h+='<tr><td class="l vn"><i class="chip" style="background:'+vcolor(x.vid)+'"></i>'+esc(vname(x.vid))+(asks.length?'<div><span class="st bad">置き場所の確認あり('+esc(asks.join("・"))+'の回収)</span></div>':'')+'</td><td>'+x.floor+'階</td><td>'+(x.held||0)+' / '+(x.want||0)+'台</td>'
      +'<td>'+(x.sc?x.sc.pr.toFixed(0)+'%'+(x.sc.crit?' <span class="st bad">余力なし</span>':''):'—')+'</td>'
      +'<td class="l" style="white-space:normal">'+why.join('<br>')+'</td>'
      +'<td class="l" style="white-space:normal;min-width:240px">'+(cur||'')+form+'</td></tr>';
@@ -1687,7 +1712,7 @@ function sVendorTabs(){var n=noticeList(ENV.vid).filter(function(x){return !x.ac
 function sVendor(C){var t=ui.stab||"s-home";return t==="s-count"?sVendorCount(C):t==="s-news"?sVendorNews():sVendorHome(C)}
 function sVendorHome(C){
   var mr=myRows().filter(function(x){return nrBase(x.d)>=C.t}),h='<section class="panel simple">';
-  h+=problemBox();
+  h+=stopAskBox(C)+problemBox();
   /* 入力のお願い・警告(まだ「見ました」を押していないもの)は、予定の画面の一番上にも出す */
   noticeList(ENV.vid).filter(function(x){return !x.ack&&(x.o.kind==="remind"||x.o.kind==="remind2"||x.o.kind==="msg")}).forEach(function(x){var mk=x.o.kind==="msg";
     h+='<div class="todo'+(x.o.kind==="remind2"?' warnb':'')+'"><div class="k">'+(mk?'✉ '+esc(nkName(x.o)):x.o.kind==="remind2"?'⚠ 重要':'⏰ 入力のお願い')+'</div><p style="margin:0">'+esc(x.o.msg.replace(/^【[^】]*】/,''))+'</p>'
@@ -1792,6 +1817,7 @@ function sAdminTasks(C){
   Object.keys(rmd).forEach(function(d){t.push({t:fmtD(d)+'の搬出予定が未入力の業者 '+rmd[d].length+'社',s:rmd[d].join('・')+'(お願いの通知を送りました)',tab:"cal",d:d,warn:true})});
   var no=newOrders();if(no)t.push({t:'追加の注文が'+no+'件あります',s:orderList().filter(function(x){return x.o.st==="new"}).slice(0,2).map(function(x){return (x.o.n||vname(x.vid))+' '+x.o.f+'階に'+nrNum(x.o.u)+'台'}).join('・'),tab:"ord"});
   var st=stageTodo(C);if(st)t.push({t:'EVが停まらない階の指示が'+st+'件',s:'前の日までに、どのEV前へ盛替えるかを決めます',tab:"stg"});
+  var sa=pendingAsks(C);if(sa.length)t.unshift({t:'置き場所の確認依頼が'+sa.length+'件あります',s:sa.slice(0,2).map(function(x){return vname(x.vid)+' '+fmtD(x.d)+' '+x.floor+'階'}).join('・')+'(EVが停まらない階。「不停止階」で指示します)',tab:"stg",warn:true});
   var ib=inboxItems().filter(function(x){return !x.ack});if(ib.length)t.unshift({t:'業者から連絡が'+ib.length+'件あります',s:ib.slice(0,2).map(function(x){return (x.o.fn||"業者")+': '+x.o.msg.slice(0,20)}).join('・'),tab:"mem"});
   var pc=Object.keys(D.members).filter(function(id){return !D.approved[id]}).length;if(pc)t.push({t:'業者の登録が'+pc+'件あります',s:'登録した業者を確かめます',tab:"mem"});
   return t;
@@ -2627,8 +2653,10 @@ function onClick(ev){
     else if(md2&&(md2<tdy2||md2>sd2)){ui.msg="盛替え日は、今日("+fmtD(tdy2)+")から回収日("+(/^\d{4}-\d{2}-\d{2}$/.test(sd2)?fmtD(sd2):"")+")までの日を選んでください。";ui.msgKind="bad"}
     else if(!D.days[sd2]||D.confirmed[sd2]||sd2<today()){ui.msg=(/^\d{4}-\d{2}-\d{2}$/.test(sd2)?fmtD(sd2):"その日")+"は、まだ確定していない回収日ではありません。カレンダーで回収日を選び直してください。";ui.msgKind="bad"}
     else{var su2=nrNum(sb2.getAttribute("data-u"));mutDay(sd2,function(d){d.moves=d.moves||{};d.moves[sv2+"|"+sf2]={ev:se2,to:st2,u:su2,at:nowIso(),md:md2||null}});
+      /* 業者からの置き場所の確認は、指示を出したら片付ける */
+      if(((D.vendors[sv2]||{}).ask||{})[sd2+"|"+sf2]){var ak2={};ak2[sd2+"|"+sf2]={$op:"del"};patch("vendors",sv2,{ask:ak2})}
       /* 該当の業者にも知らせる(アプリのお知らせ・プッシュ通知・メール) */
-      notify(sv2,sd2,"move",fmtD(sd2)+"の回収に向けて、御社の"+sf2+"階"+(su2?"の"+su2+"台":"")+"を、"+(md2?fmtD(md2)+"に":"前日までに")+"EV"+se2+"前の"+st2+"階へ盛替えます(盛替え業者が移します)。当日はEV"+se2+"前("+st2+"階)から回収します。");
+      notify(sv2,sd2,"move",Number(sf2)===st2?fmtD(sd2)+"の回収: 御社の"+sf2+"階"+(su2?"の"+su2+"台":"")+"は、当日はEV"+se2+"前("+st2+"階)に置いてください。":fmtD(sd2)+"の回収に向けて、御社の"+sf2+"階"+(su2?"の"+su2+"台":"")+"を、"+(md2?fmtD(md2)+"に":"前日までに")+"EV"+se2+"前の"+st2+"階へ盛替えます(盛替え業者が移します)。当日はEV"+se2+"前("+st2+"階)から回収します。");
       mailOut("m-"+sd2+"-"+sv2+"-"+sf2,{to:"crew",d:sd2,msg:"盛替えの指示: "+fmtD(sd2)+"の回収に向けて "+vname(sv2)+" "+sf2+"階"+(su2?" "+su2+"台":"")+" → "+(md2?fmtD(md2)+"に":"前日までに")+"EV"+se2+"前の"+st2+"階へ盛替えてください。"});ui.msg=fmtD(sd2)+"の回収に向けて、"+vname(sv2)+"の"+sf2+"階を、"+(md2?fmtD(md2)+"に":"前日までに")+"EV"+se2+"前の"+st2+"階へ盛替えるよう指示しました。盛替え業者の画面に表示されます。";ui.msgKind="ok"}
   }
   else if(act==="unstage2"){var ud=b.getAttribute("data-d"),uk2=b.getAttribute("data-key");mutDay(ud,function(d){if(d.moves){delete d.moves[uk2];if(!Object.keys(d.moves).length)delete d.moves}})}
@@ -2678,6 +2706,10 @@ function onClick(ev){
   else if(act==="amdel"){var av=b.getAttribute("data-vid");
     if(av==="*c"){var cc1=clone(D.config||{});cc1.crewMsgs=(cc1.crewMsgs||[]).map(function(m){if(m.at===id)m.hid=true;return m});putCfg(cc1)}
     else{var ah={};ah[id]={hid:true};noticeList(av).forEach(function(x){if(x.id===id)x.dups.forEach(function(y){ah[y]={hid:true}})});patch("notices",av,{items:ah})}}
+  else if(act==="stopask"){var sk=b.getAttribute("data-key"),sq=sk.split("|"),su=nrNum(b.getAttribute("data-u")),ao={};ao[sk]={at:nowIso(),by:who(),u:su};
+    patch("vendors",ENV.vid,{ask:ao});
+    mailOut("sa-"+ENV.vid+"-"+sk.replace("|","-"),{to:"admin",d:nrBase(sq[0]),msg:vname(ENV.vid)+"から置き場所の確認: "+fmtD(sq[0])+"の回収で、"+sq[1]+"階"+(su?"の"+su+"台":"")+"にエレベーターが停まりません。どのEVに置けばよいか、「不停止階」タブで指示してください。"});
+    ui.msg="管理者に確認しました。置き場所が決まると、この画面とお知らせに出ます。";ui.msgKind="ok"}
   else if(act==="vmsend"){
     var vto=(document.getElementById("vm-to")||{}).value||"",vm=((document.getElementById("vm-msg")||{}).value||"").trim().slice(0,300);
     if(!vto||!vm){ui.msg="宛先と連絡の内容を入れてください。";ui.msgKind="bad"}
