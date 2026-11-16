@@ -500,8 +500,6 @@ function nrSlide(wk,cfg){
 }
 /* その日の週の曜日の読み替え(ずらさない週は null) */
 function nrWdMap(d,cfg){if(!cfg.eq||(cfg.wdFrom&&nrBase(d)<cfg.wdFrom))return null;var wk=nrWeek(nrBase(d));return nrHolWeek(wk,cfg)?nrSlide(wk,cfg):null}
-/* 曜日外の業者で空きを埋めるときの順: 余力なし → 逼迫度が高い → 評価点 */
-function nrUrgCmp(a,b){return (b.sc.crit?1:0)-(a.sc.crit?1:0)||b.sc.pr-a.sc.pr||nrCmp(a,b)}
 /* 「930」「1030」「10:30」「10」などを「09:30」の形にする。空は""、読めないときは null */
 function nrTime(v){
   v=String(v||"").replace(/[０-９：]/g,function(c){return c==="："?":":String.fromCharCode(c.charCodeAt(0)-65248)}).trim();
@@ -567,6 +565,7 @@ function nrScore(it,date,cfg){
   /* 余力なし: 保有台数のうち出したい台数の割合が基準(初期値100%=全部出したい)以上。評価点に関係なく最優先にする */
   return {pr:pr,wait:wait,held:it.held,crit:it.held>0&&pr>=cfg.crit,total:cfg.wP*pr+cfg.wW*wait+cfg.wH*it.held};
 }
+/* 優先順位(「優先順位」タブの順): 余力なし → 評価点が高い → 登録が早い → 階 → 業者。配分はすべてこの順で決める */
 function nrCmp(a,b){
   return (b.sc.crit?1:0)-(a.sc.crit?1:0)||b.sc.total-a.sc.total||(a.since<b.since?-1:a.since>b.since?1:0)||a.floor-b.floor||(a.vid<b.vid?-1:a.vid>b.vid?1:0);
 }
@@ -581,7 +580,7 @@ function nrPrio(list){
 /* confirmed: {日付:{rows:[{vid,floor,units,ev,to,ret}]}} 確定済みの日は行をそのまま使い、残りの希望から差し引く。
    days[日付].moves: {"vid|階":{ev,to}} 指定EVが停まらない階を、前日までにto階のEV前へ集積させる管理者の指示 */
 function nrSimulate(vendors,days,cfg,startStr,confirmed){
-  var items=nrItems(vendors,startStr),byDate={},first={},idx={};
+  var items=nrItems(vendors,startStr),byDate={},first={},idx={},snap=null,next=null;
   confirmed=confirmed||{};
   items.forEach(function(it){idx[it.vid+"|"+it.floor]=it});
   var dates=Object.keys(days||{}).filter(function(d){return nrNum(days[d].cap)>0&&(d>=startStr||confirmed[d])}).sort();
@@ -600,6 +599,8 @@ function nrSimulate(vendors,days,cfg,startStr,confirmed){
       });
       res.left=Math.max(0,cap-sum);byDate[d]=res;return;
     }
+    /* まだ確定していない最初の回収日の、配分する前の残り(「優先順位」タブはこの残りで順位を出す) */
+    if(!snap){next=d;snap={};items.forEach(function(it){snap[it.vid+"|"+it.floor]={held:it.held,rem:it.rem}})}
     var left=cap,cand=[];
     items.forEach(function(it){
       if(it.rem<=0||it.since>d)return;
@@ -614,9 +615,9 @@ function nrSimulate(vendors,days,cfg,startStr,confirmed){
       if(pq>0)cand.push({it:it,ev:ev,to:to,vid:it.vid,floor:it.floor,since:it.since,sc:sc,p:it.p,q:pq});
       if(it.rem>pq)cand.push({it:it,ev:ev,to:to,vid:it.vid,floor:it.floor,since:it.since,sc:sc,p:0,q:it.rem-pq});
     });
-    /* その曜日の担当業者を先に回収し、積載に余裕が残ったら曜日外の業者を逼迫している順に入れる */
+    /* その曜日の担当業者を先に回収し、積載に余裕が残ったら曜日外の業者を優先順位の順に入れる */
     var mine=cand.filter(function(c){return nrOnDay(c.vid,d,cfg)}),other=cand.filter(function(c){return !nrOnDay(c.vid,d,cfg)});
-    mine.sort(nrCmp);other.sort(nrUrgCmp);res.excl.sort(nrCmp);
+    mine.sort(nrCmp);other.sort(nrCmp);res.excl.sort(nrCmp);
     var rowOf={};
     function give(c,take){
       c.it.rem-=take;c.it.held-=take;left-=take;c.q-=take;if(c.p)c.it.pl-=take;
@@ -629,22 +630,22 @@ function nrSimulate(vendors,days,cfg,startStr,confirmed){
     }
     if(eqWeek){
       /* 祝日がある週で、曜日を1日ずつずらしても週に収まらないときは、曜日の指定をやめて、その週にこれまで回収した台数がいちばん少ない業者から1台ずつ割り当てる(全業者がほぼ同じ台数になる) */
-      var by={},vids=[];
+      var by={},vids=[];/* vids は優先順位の順(業者の「先に出す」で業者どうしの順は変わらない) */
       nrPrio(cand.slice().sort(nrCmp)).forEach(function(c){if(!by[c.vid]){by[c.vid]=[];vids.push(c.vid)}by[c.vid].push(c)});
       while(left>0){
         var bv=null;
         vids.forEach(function(v){var l=by[v];while(l.length&&(l[0].q<=0||l[0].it.rem<=0))l.shift();if(!l.length)return;
           var a=wu[wk][v]||0,b=bv===null?0:(wu[wk][bv]||0);
-          if(bv===null||a<b||(a===b&&nrCmp(l[0],by[bv][0])<0))bv=v});
+          if(bv===null||a<b)bv=v});/* 同じ台数なら優先順位が上の業者 */
         if(bv===null)break;
         give(by[bv][0],1);
       }
     }else if(Object.keys(cfg.wd).length&&!(cfg.wdFrom&&nrBase(d)<cfg.wdFrom)){
       /* 曜日の指定を使う日: その曜日の担当業者がいれば、担当業者どうしで均等に割る(1台ずつ、その日に回収した台数が少ない業者から)。
-         残りの積載は、ほかの業者を逼迫している順に入れる。担当業者がいない曜日は、全業者を逼迫している順に入れる */
+         残りの積載は、優先順位の順に入れる。担当業者がいない曜日は、全業者を優先順位の順に入れる */
       var ass=cand.filter(function(c){return cfg.wd[c.vid]&&nrOnDay(c.vid,d,cfg)}),rest=cand.filter(function(c){return !(cfg.wd[c.vid]&&nrOnDay(c.vid,d,cfg))});
       if(ass.length){
-        var by2={},vs2=[],du={};
+        var by2={},vs2=[],du={};/* vs2 は担当業者の優先順位の順 */
         nrPrio(ass.slice().sort(nrCmp)).forEach(function(c){if(!by2[c.vid]){by2[c.vid]=[];vs2.push(c.vid)}by2[c.vid].push(c)});
         var nAss=Object.keys(vendors).filter(function(v){return cfg.wd[v]&&nrOnDay(v,d,cfg)}).length||vs2.length,share=Math.floor(left/nAss);/* 担当業者1社あたりの均等な台数。この日に搬出予定がない担当業者も数える */
         /* 管理者が曜日ごとの1社あたりの台数を決めている日は、その台数まで(均等割りの代わり) */
@@ -657,22 +658,21 @@ function nrSimulate(vendors,days,cfg,startStr,confirmed){
           o.earlier=Math.max(0,o.held-o.avail-o.excl)});
         res.wdx=wdx;res.nAss=nAss;
         if(Object.keys(vs2).length&&vs2.some(function(v){return nrWmax(v,d,cfg)})){
-          /* 1社あたりの台数を決めた日: 逼迫している業者から順に、1社ずつその台数まで入れる(積載が足りないときに全員が少しずつにならないように) */
-          var ordV=vs2.slice().sort(function(a,b){return nrUrgCmp(by2[a][0],by2[b][0])});
-          ordV.forEach(function(v){var l=by2[v];
+          /* 1社あたりの台数を決めた日: 優先順位が上の業者から順に、1社ずつその台数まで入れる(積載が足りないときに全員が少しずつにならないように) */
+          vs2.forEach(function(v){var l=by2[v];
             while(left>0&&(du[v]||0)<shareOf(v)){while(l.length&&(l[0].q<=0||l[0].it.rem<=0))l.shift();if(!l.length)break;give(l[0],1);du[v]=(du[v]||0)+1}});
         }
         while(left>0){
           var pv=null;
           vs2.forEach(function(v){var l=by2[v];while(l.length&&(l[0].q<=0||l[0].it.rem<=0))l.shift();if(!l.length||(du[v]||0)>=shareOf(v))return;
             var x=du[v]||0,y=pv===null?0:(du[pv]||0);
-            if(pv===null||x<y||(x===y&&nrCmp(l[0],by2[pv][0])<0))pv=v});
+            if(pv===null||x<y)pv=v});/* 同じ台数なら優先順位が上の業者 */
           if(pv===null)break;
           give(by2[pv][0],1);du[pv]=(du[pv]||0)+1;
         }
-        /* 希望が少なくて余った分と、均等割りで割り切れなかった分は、逼迫している業者(担当業者もほかの業者も)から順に入れる */
-        rest=cand.slice().sort(nrUrgCmp);
-      }else{rest.sort(nrUrgCmp)}
+        /* 希望が少なくて余った分と、均等割りで割り切れなかった分は、優先順位の順(担当業者もほかの業者も)に入れる */
+        rest=cand.slice().sort(nrCmp);
+      }else{rest.sort(nrCmp)}
       /* 最大搬出数を決めた業者は、余りを回すときも、その日の合計がその台数を超えないようにする */
       var dayTot=function(v){var n=0;Object.keys(rowOf).forEach(function(k){if(rowOf[k].vid===v)n+=rowOf[k].units});return n};
       nrPrio(rest).forEach(function(c){
@@ -690,7 +690,9 @@ function nrSimulate(vendors,days,cfg,startStr,confirmed){
     if(res.wdx)Object.keys(res.wdx).forEach(function(v){var n=0;Object.keys(rowOf).forEach(function(k){if(rowOf[k].vid===v)n+=rowOf[k].units});res.wdx[v].given=n});
     res.left=left;byDate[d]=res;
   });
-  return {byDate:byDate,dates:dates,first:first,left:items.filter(function(i){return i.rem>0})};
+  /* 確定していない回収日がないときは、確定した日の分を全部差し引いた残り */
+  if(!snap){snap={};items.forEach(function(it){snap[it.vid+"|"+it.floor]={held:it.held,rem:it.rem}})}
+  return {byDate:byDate,dates:dates,first:first,left:items.filter(function(i){return i.rem>0}),next:next,snap:snap};
 }
 /* 搬出予定の入力のお願い: 回収日の(自動確定の日数+2)営業日前に、その曜日の担当なのに出したい台数が0の業者へ「お願い」、
    (自動確定の日数+1)日前に「予定無しとして他の業者に配置します」の警告。曜日の担当がない業者は対象にしない。
@@ -712,14 +714,17 @@ function nrRemind(vendors,days,confirmed,cfg,today){
   });
   return out;
 }
+/* 優先順位: 基準日は、まだ確定していない最初の回収日(その日の配分に使う順と同じになる)。
+   確定した回収日に出す分は差し引いて評価する。確定した日で全部出す階は一覧に入れない(done に数だけ) */
 function nrRank(vendors,sim,cfg,startStr){
-  var ref=sim.dates.filter(function(d){return d>=startStr})[0]||startStr;
-  var list=nrItems(vendors,startStr).map(function(it){
-    return {vid:it.vid,floor:it.floor,held:it.held,want:it.want,rem:it.rem,since:it.since,ret:it.ret,p:it.p,pq:it.pq,sc:nrScore(it,ref,cfg),first:sim.first[it.vid+"|"+it.floor]||null,noEv:!nrAnyElev(it.floor,cfg)};
+  var ref=sim.next||startStr,snap=sim.snap||{},done=0,list=[];
+  nrItems(vendors,startStr).forEach(function(it){var s=snap[it.vid+"|"+it.floor];
+    if(s){if(s.rem<=0){done++;return}it.held=s.held;it.rem=s.rem}
+    list.push({vid:it.vid,floor:it.floor,held:it.held,want:it.want,rem:it.rem,since:it.since,ret:it.ret,p:it.p,pq:it.pq,sc:nrScore(it,ref,cfg),first:sim.first[it.vid+"|"+it.floor]||null,noEv:!nrAnyElev(it.floor,cfg)});
   });
   list.sort(nrCmp);
   list.forEach(function(r,i){r.rank=i+1});
-  return {ref:ref,list:list};
+  return {ref:ref,list:list,done:done,fixed:Object.keys(sim.byDate).filter(function(d){return d>=startStr&&sim.byDate[d].fixed&&(!sim.next||d<sim.next)}).sort()};
 }
 </script>
 
@@ -1567,7 +1572,7 @@ function renderDay(C){
   if(C.cfg.wdFrom&&nrBase(k)<C.cfg.wdFrom)h+='<p class="hint" style="margin:0 0 8px">この日は曜日の振り分け開始('+esc(fmtD(C.cfg.wdFrom))+')より前なので、曜日に関係なく、これまでどおり割り当てます。</p>';
   else{var wl=Object.keys(C.am).filter(function(v){return D.vendors[v]&&C.cfg.wd[v]&&nrOnDay(v,k,C.cfg)}).sort(function(a,b){return vname(a)<vname(b)?-1:1}),wm=nrWdMap(k,C.cfg);
     if(wm)h+='<p class="hint" style="margin:0 0 8px"><b>祝日がある週のため、業者の曜日を1日ずつずらしています</b>('+Object.keys(wm).filter(function(w){return Number(w)!==wm[w]}).sort(function(a,b){return (Number(a)+6)%7-(Number(b)+6)%7}).map(function(w){return WD[w]+'曜→'+WD[wm[w]]+'曜'}).join('・')+')。</p>';
-    if(!wl.length&&Object.keys(C.cfg.wd).length)h+='<p class="hint" style="margin:0 0 8px"><b>'+WD[nrPd(k).getDay()]+'曜日の担当業者はいません。</b>全業者を、逼迫している順(余力なしが先)に割り当てます。</p>';
+    if(!wl.length&&Object.keys(C.cfg.wd).length)h+='<p class="hint" style="margin:0 0 8px"><b>'+WD[nrPd(k).getDay()]+'曜日の担当業者はいません。</b>全業者を、優先順位の順(「優先順位」タブの順)に割り当てます。</p>';
     if(wl.length){h+='<p class="hint" style="margin:0 0 8px"><b>'+WD[nrPd(k).getDay()]+'曜日の担当:</b> '+wl.map(function(v){return esc(vname(v))}).join("・")+(s0eq(C,k)?'(祝日がある週なので、この週は全業者に等分します)':'(担当業者どうしで均等に割ります)')+'</p>'+(ENV.admin&&!cf?wdBreakdown(s):'');
       if(cf){var off=(cf.rows||[]).filter(function(r){return nrNum(r.units)>0&&!nrOnDay(r.vid,k,C.cfg)}).map(function(r){return vname(r.vid)});
         if(off.length&&!s0eq(C,k))h+='<div class="note" style="margin:0 0 8px"><span>確定済みのため、曜日の担当外の業者('+esc([...new Set(off)].join("・"))+')が入っています。曜日どおりに組み直すときは「確定を取り消す」→「今すぐ確定」を行ってください。</span></div>'}}}
@@ -1831,8 +1836,9 @@ function sAdminHome(C){
 
 function renderPriority(C){
   var R=C.rank,h='<section class="panel"><div class="mhead"><h2>優先順位</h2></div>';
-  if(!R.list.length)return h+'<p class="empty">業者の搬出希望がまだ入力されていません。</p></section>';
-  h+='<p class="hint" style="margin:0 0 10px">基準日 '+fmtDP(R.ref)+' の評価です。評価点 = 逼迫度×'+C.cfg.wP+' + 待機日数×'+C.cfg.wW+' + 保有台数×'+C.cfg.wH+'(重みは設定で変更)。逼迫度は、保有台数に対する搬出希望台数の割合(%)です。逼迫度が'+C.cfg.crit+'%以上の階は「余力なし」として、評価点に関係なく最優先で回収します。業者が「先に出す」を付けた階は、その業者の分の中で先に回収します(業者どうしの順番は変わりません)。</p>';
+  if(!R.list.length)return h+'<p class="empty">'+(R.done?'確定した回収日で、搬出希望を全部回収します。':'業者の搬出希望がまだ入力されていません。')+'</p></section>';
+  h+='<p class="hint" style="margin:0 0 10px">基準日 '+fmtDP(R.ref)+'('+(C.sim.next?'まだ確定していない最初の回収日':'今日')+')の評価です。'+(R.fixed.length?'確定した回収日('+R.fixed.map(function(d){return fmtD(d)}).join('、')+')に出す台数は差し引いています(保有・希望はその残り)。':'')+'評価点 = 逼迫度×'+C.cfg.wP+' + 待機日数×'+C.cfg.wW+' + 保有台数×'+C.cfg.wH+'(重みは設定で変更)。逼迫度は、保有台数に対する搬出希望台数の割合(%)です。逼迫度が'+C.cfg.crit+'%以上の階は「余力なし」として、評価点に関係なく最優先で回収します。業者が「先に出す」を付けた階は、その業者の分の中で先に回収します(業者どうしの順番は変わりません)。</p>'
+   +'<p class="hint" style="margin:0 0 10px"><b>配分はこの順位で決めます。</b>曜日の担当がある日は、その曜日の担当業者を先に入れます(1社あたりの台数まで。決めていない曜日は均等割り)。担当業者どうしで積載が足りないときと、余った積載を入れるときに、この順位が上の業者から入れます。ある日に回収した分は残りの希望が減るので、その後の回収日では順位が下がることがあります。</p>';
   var best={};R.list.forEach(function(r){if(!best[r.vid])best[r.vid]={rank:r.rank,want:0,floors:0};var b=best[r.vid];b.want+=r.rem;b.floors++});
   var vs=Object.keys(best).sort(function(a,b){return best[a].rank-best[b].rank});
   h+='<h3>業者の優先順位</h3><div class="ranklist" style="margin-top:6px">';
@@ -1843,6 +1849,7 @@ function renderPriority(C){
     h+='<tr><td class="l"><b>'+r.rank+'</b>'+(r.sc.crit?' <span class="st bad">余力なし</span>':'')+(r.p?' <span class="st ok">業者の先行'+r.p+'番'+(r.pq&&r.pq<r.rem?'('+r.pq+'台)':'')+'</span>':'')+'</td><td class="l vn"><i class="chip" style="background:'+vcolor(r.vid)+'"></i>'+esc(vname(r.vid))+'</td><td>'+r.floor+'階</td><td>'+r.held+'</td><td>'+r.rem+'</td><td>'+r.sc.wait+'</td><td>'+r.sc.total.toFixed(0)+'</td><td class="l">'+retText(r.ret)+'</td><td class="l">'+when+'</td></tr>';
   });
   h+='</tbody></table></div>';
+  if(R.done)h+='<p class="hint" style="margin-top:8px">確定した回収日で全部回収する階('+R.done+'件)は、この一覧に入れていません。</p>';
   var left=C.sim.left.reduce(function(a,i){return a+i.rem},0);
   if(left)h+='<div class="note bad" style="margin-top:12px">登録済みの回収日では回収しきれない希望が'+left+'台あります。回収日を追加するか、エレベーターの設定を見直してください。</div>';
   var notes=Object.keys(C.am).filter(function(v){return C.am[v].note});
@@ -1857,7 +1864,7 @@ function vendorOpts(C,sel){
 }
 /* ---- 空きが出たときに、逼迫した業者へ回す ----
    確定した回収日に空きが出て、その日に回れる希望(まだ配分に入っていない分)があるとき、
-   「逼迫した業者に回しますか?」と尋ねる。はい=逼迫度の高い順に自動で割り当て、いいえ=管理者が業者と台数を選ぶ。
+   「逼迫した業者に回しますか?」と尋ねる。はい=優先順位の順に自動で割り当て、いいえ=管理者が業者と台数を選ぶ。
    どちらも、追加された業者にだけ「予定が変わりました」のお知らせが出る */
 function fillItems(C){
   if(C._fi)return C._fi;
@@ -1877,9 +1884,9 @@ function fillCands(C,k){
     var ev=null,to=null;
     if(elevs.length){ev=nrElevFor(it.floor,elevs,cfg);
       if(ev===null){var mv=moves[it.vid+"|"+it.floor];if(mv&&nrNum(mv.ev)>=1&&nrNum(mv.ev)<=cfg.evn){ev=nrNum(mv.ev);to=nrNum(mv.to)||null}else return}}
-    list.push({it:it,vid:it.vid,floor:it.floor,since:it.since,rem:it.rem,sc:nrScore(it,k,cfg),ev:ev,to:to})});
-  list.sort(nrUrgCmp);
-  return {free:free,list:list};
+    list.push({it:it,vid:it.vid,floor:it.floor,since:it.since,rem:it.rem,sc:nrScore(it,k,cfg),ev:ev,to:to,p:it.p})});
+  /* 優先順位の順(業者が「先に出す」を付けた階は、その業者の中で先) */
+  return {free:free,list:nrPrio(list.sort(nrCmp))};
 }
 function fillBox(C,k){
   if(!ENV.admin)return "";
@@ -1888,8 +1895,8 @@ function fillBox(C,k){
   if(ui.fillHide[k]===fc.free)return "";
   var h='<div class="note pv fillbox" data-d="'+k+'" style="margin:10px 0;display:block"><b>空きが'+fc.free+'台あります。逼迫した業者に回しますか?</b>';
   if(!ui.fillMan[k]){
-    h+='<div class="hint" style="margin:4px 0">候補(逼迫度の高い順): '+fc.list.slice(0,4).map(function(c){return esc(vname(c.vid))+' '+c.floor+'階 '+c.rem+'台'+(c.sc.crit?'(余力なし)':'')}).join('、')+(fc.list.length>4?' ほか'+(fc.list.length-4)+'件':'')+'</div>'
-     +'<div class="mvbox" style="flex-wrap:wrap"><button class="btn primary" data-act="fillauto" data-d="'+k+'">はい(逼迫度の高い順に自動で割り当てる)</button><button class="btn" data-act="fillman" data-d="'+k+'">いいえ(自分で選ぶ)</button><button class="btn sm" data-act="fillhide" data-d="'+k+'">閉じる</button></div>';
+    h+='<div class="hint" style="margin:4px 0">候補(優先順位の順): '+fc.list.slice(0,4).map(function(c){return esc(vname(c.vid))+' '+c.floor+'階 '+c.rem+'台'+(c.sc.crit?'(余力なし)':'')}).join('、')+(fc.list.length>4?' ほか'+(fc.list.length-4)+'件':'')+'</div>'
+     +'<div class="mvbox" style="flex-wrap:wrap"><button class="btn primary" data-act="fillauto" data-d="'+k+'">はい(優先順位の順に自動で割り当てる)</button><button class="btn" data-act="fillman" data-d="'+k+'">いいえ(自分で選ぶ)</button><button class="btn sm" data-act="fillhide" data-d="'+k+'">閉じる</button></div>';
   }else{
     h+='<p class="hint" style="margin:4px 0">追加する業者と階にチェックを付け、台数を入れて「選んだ業者に追加して通知」を押します。チェックした業者にだけ、「予定が変わりました」のお知らせが出ます(空きは'+fc.free+'台まで)。</p>'
      +'<div class="tablewrap"><table class="rtable"><thead><tr><th></th><th class="l">業者</th><th>階</th><th>残りの希望</th><th>逼迫度</th><th class="l">集積</th><th>追加する台数</th></tr></thead><tbody>';
@@ -1963,9 +1970,9 @@ function renderMailSet(C){
 }
 function renderWd(C){
   var ids=Object.keys(C.am).sort(function(a,b){return vname(a)<vname(b)?-1:1}),h='<section class="panel"><h2 style="margin-bottom:8px">業者ごとの回収曜日</h2>'
-   +'<div class="field"><label>曜日の振り分けを始める日 <input type="date" data-f="wdfrom" value="'+esc(C.cfg.wdFrom||'')+'" aria-label="曜日の振り分けを始める日"></label><span class="hint" style="margin:0">この日より前の回収日は、曜日に関係なく、これまでどおり全業者を逼迫度の順に割り当てます。空にすると、すべての日で曜日を使います。</span></div>'
-   +'<p class="hint" style="margin:0 0 8px">曜日の振り分けを始める日以降は、その曜日に割り当てた業者どうしで、積載を均等に割ります(積載÷担当業者数の台数ずつ。その日に搬出予定がない担当業者も数えます)。希望が少なくて余った分や、割り切れなかった分は、逼迫している業者(担当の業者もほかの業者も)から順(余力なし → 逼迫度が高い順)に入れます。担当の業者が1社もいない曜日は、全業者を逼迫している順に入れます。曜日を何も選ばない業者は、担当の業者ではなく、余った積載に逼迫している順で入ります。</p>'
-   +'<p class="hint" style="margin:0 0 8px"><b>1社あたりの台数</b>: 下の「1社あたりの台数」に曜日ごとの台数を入れると、その曜日の担当業者は1社あたりその台数まで回収します(均等割りの代わり。空のままなら均等割り)。担当業者の合計が回収できる台数に満たないときは、残りを逼迫している業者から順に割り振ります。</p>';
+   +'<div class="field"><label>曜日の振り分けを始める日 <input type="date" data-f="wdfrom" value="'+esc(C.cfg.wdFrom||'')+'" aria-label="曜日の振り分けを始める日"></label><span class="hint" style="margin:0">この日より前の回収日は、曜日に関係なく、これまでどおり全業者を優先順位の順に割り当てます。空にすると、すべての日で曜日を使います。</span></div>'
+   +'<p class="hint" style="margin:0 0 8px">曜日の振り分けを始める日以降は、その曜日に割り当てた業者どうしで、積載を均等に割ります(積載÷担当業者数の台数ずつ。その日に搬出予定がない担当業者も数えます)。担当業者どうしの順と、希望が少なくて余った分や割り切れなかった分を入れる順(担当の業者もほかの業者も)は、「優先順位」タブの順(余力なし → 評価点が高い順)です。担当の業者が1社もいない曜日は、全業者を優先順位の順に入れます。曜日を何も選ばない業者は、担当の業者ではなく、余った積載に優先順位の順で入ります。</p>'
+   +'<p class="hint" style="margin:0 0 8px"><b>1社あたりの台数</b>: 下の「1社あたりの台数」に曜日ごとの台数を入れると、その曜日の担当業者は1社あたりその台数まで回収します(均等割りの代わり。空のままなら均等割り)。担当業者の合計が回収できる台数に満たないときは、残りを優先順位の順に割り振ります。積載が全社分に足りないときは、優先順位が上の業者から1社ずつその台数まで入れます。</p>';
   if(!ids.length)return h+'<p class="empty">利用中の業者がまだありません。</p></section>';
   /* 曜日ごとの1社あたりの台数(表の外に、押しやすい大きさで並べる) */
   h+='<div class="wper"><b>1社あたりの台数</b> <span class="hint" style="margin:0">(空欄は均等割り)</span><div class="wpergrid">';
