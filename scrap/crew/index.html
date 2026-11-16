@@ -389,7 +389,7 @@ tr.mine td{background:var(--surface2)}
 /* 建物の設定の上限。階は1〜200階、エレベーターは1〜12台まで設定できる */
 var NR_MAXF=200,NR_MAXE=12;
 var NR_WD_FROM="2026-11-16";/* 業者ごとの曜日振り分けを始める日の初期値(来週の月曜)。設定タブで変えられる */
-var NR_DEF={fmin:1,fmax:62,evn:5,perTruck:20,wP:1,wW:15,wH:2,crit:100,auto:2};
+var NR_DEF={fmin:1,fmax:62,evn:5,perTruck:20,wP:1,wW:15,wH:2,wQ:5,crit:100,auto:2};
 function nrNum(v){v=parseInt(v,10);return isFinite(v)&&v>0?v:0}
 function nrW(v,d){var n=parseFloat(v);return isFinite(n)&&n>=0?n:d}
 function nrPd(s){var a=s.split("-").map(Number);return new Date(a[0],a[1]-1,a[2],12)}
@@ -469,7 +469,7 @@ function nrHolWeek(wk,cfg){
 }
 function nrCfg(c){
   c=c||{};
-  var o={perTruck:nrNum(c.perTruck)||NR_DEF.perTruck,wP:nrW(c.wP,NR_DEF.wP),wW:nrW(c.wW,NR_DEF.wW),wH:nrW(c.wH,NR_DEF.wH),crit:Math.min(100,Math.max(1,nrW(c.crit,NR_DEF.crit)||NR_DEF.crit)),auto:c.auto==null||c.auto===""?NR_DEF.auto:Math.min(14,nrNum(c.auto)),ev:{},ns:{},nsStr:{}};
+  var o={perTruck:nrNum(c.perTruck)||NR_DEF.perTruck,wP:nrW(c.wP,NR_DEF.wP),wW:nrW(c.wW,NR_DEF.wW),wH:nrW(c.wH,NR_DEF.wH),wQ:nrW(c.wQ,NR_DEF.wQ),critTop:c.critTop!==false,crit:Math.min(100,Math.max(1,nrW(c.crit,NR_DEF.crit)||NR_DEF.crit)),auto:c.auto==null||c.auto===""?NR_DEF.auto:Math.min(14,nrNum(c.auto)),ev:{},ns:{},nsStr:{}};
   o.fmax=Math.min(NR_MAXF,nrNum(c.fmax)||NR_DEF.fmax);o.fmin=Math.max(1,Math.min(o.fmax,nrNum(c.fmin)||NR_DEF.fmin));
   o.evn=Math.max(1,Math.min(NR_MAXE,nrNum(c.evn)||NR_DEF.evn));
   for(var e=1;e<=o.evn;e++){var r=c.ev&&c.ev[e];
@@ -560,14 +560,22 @@ function nrItems(vendors,startStr){
   });
   return items;
 }
-function nrScore(it,date,cfg){
-  var wait=Math.max(0,nrDiff(it.since,date)),pr=it.held>0?it.rem/it.held*100:0;
-  /* 余力なし: 保有台数のうち出したい台数の割合が基準(初期値100%=全部出したい)以上。評価点に関係なく最優先にする */
-  return {pr:pr,wait:wait,held:it.held,crit:it.held>0&&pr>=cfg.crit,total:cfg.wP*pr+cfg.wW*wait+cfg.wH*it.held};
+/* 業者ごとの公平さ: その時点の、業者の回収待ち台数(全部の階の合計)。
+   逼迫度は階ごとの割合なので、保有の多い階に分かれて待っている業者は低く出る。待ち台数を評価点に足して、たくさん待っている業者を後回しにしない */
+function nrVx(items){
+  var vx={};items.forEach(function(it){if(it.rem<=0)return;var o=vx[it.vid]=vx[it.vid]||{q:0};o.q+=it.rem});
+  return vx;
 }
-/* 優先順位(「優先順位」タブの順): 余力なし → 評価点が高い → 登録が早い → 階 → 業者。配分はすべてこの順で決める */
+function nrScore(it,date,cfg,vx){
+  var wait=Math.max(0,nrDiff(it.since,date)),pr=it.held>0?it.rem/it.held*100:0,v=vx&&vx[it.vid],q=v?v.q:it.rem;
+  /* 余力なし: 保有台数のうち出したい台数の割合が基準(初期値100%=全部出したい)以上。設定で「最優先」にしているときは評価点に関係なく先に回収する */
+  var crit=it.held>0&&pr>=cfg.crit;
+  return {pr:pr,wait:wait,held:it.held,q:q,crit:crit,top:crit&&cfg.critTop!==false,
+    total:cfg.wP*pr+cfg.wW*wait+cfg.wH*it.held+(cfg.wQ||0)*q};
+}
+/* 優先順位(「優先順位」タブの順): 余力なし(最優先にする設定のとき) → 評価点が高い → 登録が早い → 階 → 業者。配分はすべてこの順で決める */
 function nrCmp(a,b){
-  return (b.sc.crit?1:0)-(a.sc.crit?1:0)||b.sc.total-a.sc.total||(a.since<b.since?-1:a.since>b.since?1:0)||a.floor-b.floor||(a.vid<b.vid?-1:a.vid>b.vid?1:0);
+  return (b.sc.top?1:0)-(a.sc.top?1:0)||b.sc.total-a.sc.total||(a.since<b.since?-1:a.since>b.since?1:0)||a.floor-b.floor||(a.vid<b.vid?-1:a.vid>b.vid?1:0);
 }
 /* 業者が付けた先行の順位を反映する。業者どうしの順番(並びの中でその業者が占める位置)は変えず、
    同じ業者の中だけで、先行の階(順位の小さい順)を先に並べ替える */
@@ -581,6 +589,7 @@ function nrPrio(list){
    days[日付].moves: {"vid|階":{ev,to}} 指定EVが停まらない階を、前日までにto階のEV前へ集積させる管理者の指示 */
 function nrSimulate(vendors,days,cfg,startStr,confirmed){
   var items=nrItems(vendors,startStr),byDate={},first={},idx={},snap=null,next=null;
+  var vxSnap=null;
   confirmed=confirmed||{};
   items.forEach(function(it){idx[it.vid+"|"+it.floor]=it});
   var dates=Object.keys(days||{}).filter(function(d){return nrNum(days[d].cap)>0&&(d>=startStr||confirmed[d])}).sort();
@@ -600,7 +609,8 @@ function nrSimulate(vendors,days,cfg,startStr,confirmed){
       res.left=Math.max(0,cap-sum);byDate[d]=res;return;
     }
     /* まだ確定していない最初の回収日の、配分する前の残り(「優先順位」タブはこの残りで順位を出す) */
-    if(!snap){next=d;snap={};items.forEach(function(it){snap[it.vid+"|"+it.floor]={held:it.held,rem:it.rem}})}
+    var vx=nrVx(items);
+    if(!snap){next=d;snap={};vxSnap=vx;items.forEach(function(it){snap[it.vid+"|"+it.floor]={held:it.held,rem:it.rem}})}
     var left=cap,cand=[];
     items.forEach(function(it){
       if(it.rem<=0||it.since>d)return;
@@ -608,10 +618,10 @@ function nrSimulate(vendors,days,cfg,startStr,confirmed){
       if(elevs.length){ev=nrElevFor(it.floor,elevs,cfg);
         if(ev===null){var mv=moves[it.vid+"|"+it.floor];
           if(mv&&nrNum(mv.ev)>=1&&nrNum(mv.ev)<=cfg.evn){ev=nrNum(mv.ev);to=nrNum(mv.to)||null}
-          else{res.excluded++;res.excl.push({vid:it.vid,floor:it.floor,rem:it.rem,since:it.since,sc:nrScore(it,d,cfg)});return}}}
+          else{res.excluded++;res.excl.push({vid:it.vid,floor:it.floor,rem:it.rem,since:it.since,sc:nrScore(it,d,cfg,vx)});return}}}
       /* 先行の台数が出したい台数より少ないときは、先行分と残りに分けて並べる */
       if(it.pl===undefined)it.pl=it.p?(it.pq||1e9):0;
-      var sc=nrScore(it,d,cfg),pq=Math.min(it.pl,it.rem);
+      var sc=nrScore(it,d,cfg,vx),pq=Math.min(it.pl,it.rem);
       if(pq>0)cand.push({it:it,ev:ev,to:to,vid:it.vid,floor:it.floor,since:it.since,sc:sc,p:it.p,q:pq});
       if(it.rem>pq)cand.push({it:it,ev:ev,to:to,vid:it.vid,floor:it.floor,since:it.since,sc:sc,p:0,q:it.rem-pq});
     });
@@ -627,6 +637,21 @@ function nrSimulate(vendors,days,cfg,startStr,confirmed){
       else res.asg.push(rowOf[key]={vid:c.vid,floor:c.floor,units:take,ev:c.ev,to:c.to,ret:null,rets:null,rank:res.asg.length+1,sc:c.sc,extra:!eqWeek&&!nrOnDay(c.vid,d,cfg),p:c.p||0});
       var rr=nrRets(c.it.src,c.floor,rowOf[key].units,c.it.out||0);rowOf[key].ret=typeof rr==="number"?rr:null;rowOf[key].rets=Array.isArray(rr)?rr:null;
       if(!first[key])first[key]=d;
+    }
+    /* 優先順位の順に、1つの階ずつ入れる。1つ入れるたびに、その業者の待ち台数が減った評価点で並べ直す(1つの業者が積載を独り占めしないように)。
+       業者の中の順(「先に出す」)は変えない。lim(c): その業者にまだ入れられる台数 */
+    function fillDyn(list,lim){
+      var by={},vs=[];list.forEach(function(c){if(!by[c.vid]){by[c.vid]=[];vs.push(c.vid)}by[c.vid].push(c)});
+      while(left>0){
+        var vxN=nrVx(items),best=null,bc=null;
+        vs.forEach(function(v){var l=by[v];while(l.length&&(l[0].q<=0||l[0].it.rem<=0))l.shift();if(!l.length)return;
+          if(lim&&lim(l[0])<=0){by[v]=[];return}
+          var top=null;l.forEach(function(c){if(c.q<=0||c.it.rem<=0)return;var x={sc:nrScore(c.it,d,cfg,vxN),since:c.since,floor:c.floor,vid:c.vid};if(!top||nrCmp(x,top)<0)top=x});
+          if(top&&(!best||nrCmp(top,best)<0)){best=top;bc=l[0]}});
+        if(!bc)break;
+        var take=Math.min(bc.q,bc.it.rem,left);if(lim)take=Math.min(take,lim(bc));if(take<=0)break;
+        give(bc,take);
+      }
     }
     if(eqWeek){
       /* 祝日がある週で、曜日を1日ずつずらしても週に収まらないときは、曜日の指定をやめて、その週にこれまで回収した台数がいちばん少ない業者から1台ずつ割り当てる(全業者がほぼ同じ台数になる) */
@@ -675,16 +700,8 @@ function nrSimulate(vendors,days,cfg,startStr,confirmed){
       }else{rest.sort(nrCmp)}
       /* 最大搬出数を決めた業者は、余りを回すときも、その日の合計がその台数を超えないようにする */
       var dayTot=function(v){var n=0;Object.keys(rowOf).forEach(function(k){if(rowOf[k].vid===v)n+=rowOf[k].units});return n};
-      nrPrio(rest).forEach(function(c){
-        if(left<=0)return;
-        var take=Math.min(c.q,c.it.rem,left),mx=nrWmax(c.vid,d,cfg);if(mx)take=Math.min(take,mx-dayTot(c.vid));if(take<=0)return;
-        give(c,take);
-      });
-    }else nrPrio(mine).concat(nrPrio(other)).forEach(function(c){
-      if(left<=0)return;
-      var take=Math.min(c.q,c.it.rem,left);if(take<=0)return;
-      give(c,take);
-    });
+      fillDyn(nrPrio(rest),function(c){var mx=nrWmax(c.vid,d,cfg);return mx?mx-dayTot(c.vid):1e9});
+    }else{fillDyn(nrPrio(mine));fillDyn(nrPrio(other))}
     /* この日に出した台数を覚えておく(次の回収日の戻し先は、その続きから割り振る) */
     Object.keys(rowOf).forEach(function(k){var it=idx[k];if(it)it.out=(it.out||0)+rowOf[k].units});
     if(res.wdx)Object.keys(res.wdx).forEach(function(v){var n=0;Object.keys(rowOf).forEach(function(k){if(rowOf[k].vid===v)n+=rowOf[k].units});res.wdx[v].given=n});
@@ -692,7 +709,7 @@ function nrSimulate(vendors,days,cfg,startStr,confirmed){
   });
   /* 確定していない回収日がないときは、確定した日の分を全部差し引いた残り */
   if(!snap){snap={};items.forEach(function(it){snap[it.vid+"|"+it.floor]={held:it.held,rem:it.rem}})}
-  return {byDate:byDate,dates:dates,first:first,left:items.filter(function(i){return i.rem>0}),next:next,snap:snap};
+  return {byDate:byDate,dates:dates,first:first,left:items.filter(function(i){return i.rem>0}),next:next,snap:snap,vx:vxSnap};
 }
 /* 搬出予定の入力のお願い: 回収日の(自動確定の日数+2)営業日前に、その曜日の担当なのに出したい台数が0の業者へ「お願い」、
    (自動確定の日数+1)日前に「予定無しとして他の業者に配置します」の警告。曜日の担当がない業者は対象にしない。
@@ -717,10 +734,11 @@ function nrRemind(vendors,days,confirmed,cfg,today){
 /* 優先順位: 基準日は、まだ確定していない最初の回収日(その日の配分に使う順と同じになる)。
    確定した回収日に出す分は差し引いて評価する。確定した日で全部出す階は一覧に入れない(done に数だけ) */
 function nrRank(vendors,sim,cfg,startStr){
-  var ref=sim.next||startStr,snap=sim.snap||{},done=0,list=[];
-  nrItems(vendors,startStr).forEach(function(it){var s=snap[it.vid+"|"+it.floor];
-    if(s){if(s.rem<=0){done++;return}it.held=s.held;it.rem=s.rem}
-    list.push({vid:it.vid,floor:it.floor,held:it.held,want:it.want,rem:it.rem,since:it.since,ret:it.ret,p:it.p,pq:it.pq,sc:nrScore(it,ref,cfg),first:sim.first[it.vid+"|"+it.floor]||null,noEv:!nrAnyElev(it.floor,cfg)});
+  var ref=sim.next||startStr,snap=sim.snap||{},done=0,list=[],all=nrItems(vendors,startStr);
+  all.forEach(function(it){var s=snap[it.vid+"|"+it.floor];if(s){it.held=s.held;it.rem=s.rem}});
+  var vx=sim.vx||nrVx(all);
+  all.forEach(function(it){if(it.rem<=0){done++;return}
+    list.push({vid:it.vid,floor:it.floor,held:it.held,want:it.want,rem:it.rem,since:it.since,ret:it.ret,p:it.p,pq:it.pq,sc:nrScore(it,ref,cfg,vx),first:sim.first[it.vid+"|"+it.floor]||null,noEv:!nrAnyElev(it.floor,cfg)});
   });
   list.sort(nrCmp);
   list.forEach(function(r,i){r.rank=i+1});
@@ -1837,16 +1855,16 @@ function sAdminHome(C){
 function renderPriority(C){
   var R=C.rank,h='<section class="panel"><div class="mhead"><h2>優先順位</h2></div>';
   if(!R.list.length)return h+'<p class="empty">'+(R.done?'確定した回収日で、搬出希望を全部回収します。':'業者の搬出希望がまだ入力されていません。')+'</p></section>';
-  h+='<p class="hint" style="margin:0 0 10px">基準日 '+fmtDP(R.ref)+'('+(C.sim.next?'まだ確定していない最初の回収日':'今日')+')の評価です。'+(R.fixed.length?'確定した回収日('+R.fixed.map(function(d){return fmtD(d)}).join('、')+')に出す台数は差し引いています(保有・希望はその残り)。':'')+'評価点 = 逼迫度×'+C.cfg.wP+' + 待機日数×'+C.cfg.wW+' + 保有台数×'+C.cfg.wH+'(重みは設定で変更)。逼迫度は、保有台数に対する搬出希望台数の割合(%)です。逼迫度が'+C.cfg.crit+'%以上の階は「余力なし」として、評価点に関係なく最優先で回収します。業者が「先に出す」を付けた階は、その業者の分の中で先に回収します(業者どうしの順番は変わりません)。</p>'
+  h+='<p class="hint" style="margin:0 0 10px">基準日 '+fmtDP(R.ref)+'('+(C.sim.next?'まだ確定していない最初の回収日':'今日')+')の評価です。'+(R.fixed.length?'確定した回収日('+R.fixed.map(function(d){return fmtD(d)}).join('、')+')に出す台数は差し引いています(保有・希望はその残り)。':'')+'評価点 = 逼迫度×'+C.cfg.wP+' + 待機日数×'+C.cfg.wW+' + 保有台数×'+C.cfg.wH+' + 業者の待ち台数×'+C.cfg.wQ+'(重みは設定で変更)。業者の待ち台数は、その業者の全部の階の回収待ちの合計です(保有の多い階に分かれて待っている業者が、逼迫度が低いために後回しにならないように)。逼迫度は、保有台数に対する搬出希望台数の割合(%)です。逼迫度が'+C.cfg.crit+'%以上の階は「余力なし」として、'+(C.cfg.critTop?'評価点に関係なく最優先で回収します。':'印を付けます(設定で、最優先にはしていません)。')+'業者が「先に出す」を付けた階は、その業者の分の中で先に回収します(業者どうしの順番は変わりません)。</p>'
    +'<p class="hint" style="margin:0 0 10px"><b>配分はこの順位で決めます。</b>曜日の担当がある日は、その曜日の担当業者を先に入れます(1社あたりの台数まで。決めていない曜日は均等割り)。担当業者どうしで積載が足りないときと、余った積載を入れるときに、この順位が上の業者から入れます。ある日に回収した分は残りの希望が減るので、その後の回収日では順位が下がることがあります。</p>';
   var best={};R.list.forEach(function(r){if(!best[r.vid])best[r.vid]={rank:r.rank,want:0,floors:0};var b=best[r.vid];b.want+=r.rem;b.floors++});
   var vs=Object.keys(best).sort(function(a,b){return best[a].rank-best[b].rank});
   h+='<h3>業者の優先順位</h3><div class="ranklist" style="margin-top:6px">';
   vs.forEach(function(v,i){h+='<span class="rk"><b>'+(i+1)+'</b><i class="chip" style="background:'+vcolor(v)+';margin:0"></i>'+esc(vname(v))+' <span style="color:var(--muted)">'+best[v].want+'台/'+best[v].floors+'階</span></span>'});
-  h+='</div><h3>階ごとの優先順位</h3><div class="tablewrap"><table><thead><tr><th class="l">順位</th><th class="l">業者</th><th>階</th><th>保有</th><th>希望</th><th>待機日</th><th>評価点</th><th class="l">戻し階</th><th class="l">回収予定</th></tr></thead><tbody>';
+  h+='</div><h3>階ごとの優先順位</h3><div class="tablewrap"><table><thead><tr><th class="l">順位</th><th class="l">業者</th><th>階</th><th>保有</th><th>希望</th><th>待機日</th><th>業者の待ち</th><th>評価点</th><th class="l">戻し階</th><th class="l">回収予定</th></tr></thead><tbody>';
   R.list.forEach(function(r){
     var when=r.first?fmtD(r.first):(r.noEv?'<span class="st bad">対応EVなし</span>':'<span class="st bad">日程なし</span>');
-    h+='<tr><td class="l"><b>'+r.rank+'</b>'+(r.sc.crit?' <span class="st bad">余力なし</span>':'')+(r.p?' <span class="st ok">業者の先行'+r.p+'番'+(r.pq&&r.pq<r.rem?'('+r.pq+'台)':'')+'</span>':'')+'</td><td class="l vn"><i class="chip" style="background:'+vcolor(r.vid)+'"></i>'+esc(vname(r.vid))+'</td><td>'+r.floor+'階</td><td>'+r.held+'</td><td>'+r.rem+'</td><td>'+r.sc.wait+'</td><td>'+r.sc.total.toFixed(0)+'</td><td class="l">'+retText(r.ret)+'</td><td class="l">'+when+'</td></tr>';
+    h+='<tr><td class="l"><b>'+r.rank+'</b>'+(r.sc.crit?' <span class="st bad">余力なし</span>':'')+(r.p?' <span class="st ok">業者の先行'+r.p+'番'+(r.pq&&r.pq<r.rem?'('+r.pq+'台)':'')+'</span>':'')+'</td><td class="l vn"><i class="chip" style="background:'+vcolor(r.vid)+'"></i>'+esc(vname(r.vid))+'</td><td>'+r.floor+'階</td><td>'+r.held+'</td><td>'+r.rem+'</td><td>'+r.sc.wait+'</td><td>'+r.sc.q+'台</td><td>'+r.sc.total.toFixed(0)+'</td><td class="l">'+retText(r.ret)+'</td><td class="l">'+when+'</td></tr>';
   });
   h+='</tbody></table></div>';
   if(R.done)h+='<p class="hint" style="margin-top:8px">確定した回収日で全部回収する階('+R.done+'件)は、この一覧に入れていません。</p>';
@@ -1879,12 +1897,13 @@ function fillCands(C,k){
   var free=cap-rowsTotal(cf,-1);if(free<=0)return {free:free,list:[]};
   var elevs=(day.elev||[]).slice().sort(),moves=day.moves||{},cfg=C.cfg,list=[],skip=day.skip||{},has={};
   (cf.rows||[]).forEach(function(r){has[r.vid+"|"+r.floor]=1});
+  var fvx=nrVx(fillItems(C));
   fillItems(C).forEach(function(it){
     if(it.since>k||skip[it.vid+"|"+it.floor]||has[it.vid+"|"+it.floor])return;
     var ev=null,to=null;
     if(elevs.length){ev=nrElevFor(it.floor,elevs,cfg);
       if(ev===null){var mv=moves[it.vid+"|"+it.floor];if(mv&&nrNum(mv.ev)>=1&&nrNum(mv.ev)<=cfg.evn){ev=nrNum(mv.ev);to=nrNum(mv.to)||null}else return}}
-    list.push({it:it,vid:it.vid,floor:it.floor,since:it.since,rem:it.rem,sc:nrScore(it,k,cfg),ev:ev,to:to,p:it.p})});
+    list.push({it:it,vid:it.vid,floor:it.floor,since:it.since,rem:it.rem,sc:nrScore(it,k,cfg,fvx),ev:ev,to:to,p:it.p})});
   /* 優先順位の順(業者が「先に出す」を付けた階は、その業者の中で先) */
   return {free:free,list:nrPrio(list.sort(nrCmp))};
 }
@@ -2406,10 +2425,12 @@ function renderSet(C){
    +'<label>逼迫度の重み<input type="number" min="0" id="s-wp" data-f="wP" value="'+c.wP+'"></label>'
    +'<label>待機日数の重み<input type="number" min="0" id="s-ww" data-f="wW" value="'+c.wW+'"></label>'
    +'<label>保有台数の重み<input type="number" min="0" id="s-wh" data-f="wH" value="'+c.wH+'"></label>'
+   +'<label>業者の待ち台数の重み<input type="number" min="0" id="s-wq" data-f="wQ" value="'+c.wQ+'"></label>'
    +'<label>余力なしとみなす逼迫度(%)<input type="number" min="1" max="100" id="s-crit" data-f="crit" value="'+c.crit+'"></label>'
    +'<label>自動確定(搬出日の何営業日前。土日祝を除く・0で自動確定しない)<input type="number" min="0" max="14" id="s-auto" data-f="auto" value="'+c.auto+'"></label>'
    +'<label>1日の始まり(時。0〜6。この時刻の前は前の日として扱う)<input type="number" min="0" max="6" id="s-daystart" data-f="dayStart" value="'+c.dayStart+'"></label></div>'
-   +'<p class="hint">逼迫度が「余力なし」の基準以上の階(初期値100%=保有している台数を全部出したい階)を最優先で回収し、その中と残りは評価点が高い順に回収します。逼迫度は保有台数に対する搬出希望台数の割合、待機日数は希望を登録してからの日数です。</p>'
+   +'<label class="chk" style="margin:8px 0 0;white-space:normal"><input type="checkbox" id="s-crittop" data-f="critTop"'+(c.critTop?' checked':'')+'>「余力なし」の階を、評価点に関係なく最優先にする(外すと、余力なしの階も評価点の順に並びます)</label>'
+   +'<p class="hint">'+(c.critTop?'逼迫度が「余力なし」の基準以上の階(初期値100%=保有している台数を全部出したい階)を最優先で回収し、その中と残りは評価点が高い順に回収します。':'すべての階を評価点が高い順に回収します(余力なしの階も、評価点の順)。')+'逼迫度は保有台数に対する搬出希望台数の割合、待機日数は希望を登録してからの日数です。<b>業者の待ち台数</b>は、その業者の全部の階の回収待ちの合計で、その業者のどの階にも同じ点を足します。保有の多い階に分かれて待っている業者は逼迫度が低く出るので、たくさん待っている業者が後回しにならないようにします(初期値5。0で今までと同じ)。</p>'
    +'<h3 style="margin:16px 0 4px">建物の設定</h3><div class="set">'
    +'<label>最下階<input type="number" min="1" max="'+NR_MAXF+'" id="s-fmin" data-f="fmin" value="'+c.fmin+'"></label>'
    +'<label>最上階<input type="number" min="1" max="'+NR_MAXF+'" id="s-fmax" data-f="fmax" value="'+c.fmax+'"></label>'
@@ -2989,7 +3010,8 @@ function onChange(ev){
     if(!Object.keys(c.holx).length)delete c.holx;putCfg(c)}
   else if(f==="fmin"||f==="fmax"||f==="evn"){var lim=f==="evn"?NR_MAXE:NR_MAXF,nv=Math.max(1,Math.min(lim,nrNum(el.value)||1));c[f]=nv;
     if(f==="fmin"&&nv>nrCfg(c).fmax)c.fmin=nrCfg(c).fmax;putCfg(c)}
-  else if(f==="perTruck"||f==="wP"||f==="wW"||f==="wH"||f==="crit"){c[f]=f==="perTruck"?(nrNum(el.value)||NR_DEF.perTruck):f==="crit"?Math.min(100,Math.max(1,nrNum(el.value)||100)):nrW(el.value,NR_DEF[f]);putCfg(c)}
+  else if(f==="critTop"){c.critTop=el.checked;putCfg(c)}
+  else if(f==="perTruck"||f==="wP"||f==="wW"||f==="wH"||f==="wQ"||f==="crit"){c[f]=f==="perTruck"?(nrNum(el.value)||NR_DEF.perTruck):f==="crit"?Math.min(100,Math.max(1,nrNum(el.value)||100)):nrW(el.value,NR_DEF[f]);putCfg(c)}
   else if(f==="evr"){var e2=el.getAttribute("data-e"),i=Number(el.getAttribute("data-k"));c.ev=c.ev||{};var r2=(c.ev[e2]||[LIM.fmin,LIM.fmax]).slice();r2[i]=Math.min(LIM.fmax,nrNum(el.value)||(i?LIM.fmax:LIM.fmin));c.ev[e2]=r2;putCfg(c)}
   else if(f==="ns"){var e3=el.getAttribute("data-e");c.ns=c.ns||{};c.ns[e3]=el.value.trim();putCfg(c)}
   render();

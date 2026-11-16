@@ -10,11 +10,11 @@ const W="2026-11-18",T="2026-11-16";/* 水曜・月曜 */
 // 優先順位: A(待機が長い・逼迫度40%) > C > Dv > B(逼迫度80%だが登録したばかり)
 const am={A:fl({9:[20,8,"2026-11-01"]}),B:fl({10:[10,8,"2026-11-14"]}),C:fl({11:[10,6,"2026-11-10"]}),Dv:fl({12:[8,6,"2026-11-13"]})};
 const wd={A:[3],B:[3],C:[3],Dv:[3]};
-const cf1=c.nrCfg({evn:1,ev:{1:[1,40]},wd,wper:{3:4},eq:false,wdFrom:""});
+const cf1=c.nrCfg({evn:1,ev:{1:[1,40]},wd,wper:{3:4},eq:false,wdFrom:"",wQ:0});/* 業者の待ち台数の重みは0(fair.mjs で確かめる) */
 const r1=c.nrSimulate(am,{[W]:{cap:14,elev:[1]}},cf1,T,{});
 eq(vorder(c.nrRank(am,r1,cf1,T)),["A","C","Dv","B"],"優先順位タブの業者の順");
 eq(tot(r1,W),{A:4,C:4,Dv:4,B:2},"1社4台・積載14台: 優先順位が上の業者から4台ずつ(逼迫度の順ではない)");
-const r2=c.nrSimulate(am,{[W]:{cap:14,elev:[1]}},c.nrCfg({evn:1,ev:{1:[1,40]},wd,eq:false,wdFrom:""}),T,{});
+const r2=c.nrSimulate(am,{[W]:{cap:14,elev:[1]}},c.nrCfg({evn:1,ev:{1:[1,40]},wd,eq:false,wdFrom:"",wQ:0}),T,{});
 eq(tot(r2,W),{A:5,C:3,Dv:3,B:3},"均等割り(3台ずつ)の割り切れない2台は、優先順位1位の業者へ");
 // 曜日外の業者に余りを回すときも優先順位の順
 const am3={A:fl({9:[20,8,"2026-11-01"]}),B:fl({10:[10,8,"2026-11-14"]}),T:fl({5:[2,2,"2026-11-14"]})};
