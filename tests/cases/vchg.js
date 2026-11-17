@@ -33,12 +33,20 @@ await p.fill('#vcf-'+W+'-1','16');await p.locator('#vcf-'+W+'-1').blur();await p
 await p.fill('#vcu-'+W+'-1','9');await p.locator('#vcu-'+W+'-1').blur();await p.waitForTimeout(200);
 console.log(' 9台:',await txt(p,'.vchg .vng'));ok(await p.locator('[data-act=vchsave]').isDisabled(),'保有より多い台数もNG');
 await p.fill('#vcu-'+W+'-1','2');await p.locator('#vcu-'+W+'-1').blur();await p.waitForTimeout(200);
-// 戻し階: どのEVも停まらない45階はNG、台数より多いのもNG、「18:1」は18階に1台・残りは同じ階
-await p.fill('#vcr-'+W+'-0','45');await p.locator('#vcr-'+W+'-0').blur();await p.waitForTimeout(200);
+// 戻し階(−/＋の数字の欄): どのEVも停まらない45階はNG。「戻し先を分ける」で18階に1台・残りは20階(同じ階)
+ok((await p.locator('#vcrf-'+W+'-0-0').getAttribute('type'))==='number'&&(await p.locator('#vcrf-'+W+'-0-0').locator('xpath=..').locator('.stp').count())===2,'戻し階も −/＋ の数字の欄');
+await p.fill('#vcrf-'+W+'-0-0','45');await p.locator('#vcrf-'+W+'-0-0').blur();await p.waitForTimeout(200);
 const rng=await txt(p,'.vchg .vng');console.log(' 戻し45階:',rng);ok(/NG: 45階は、どのエレベーターも停まらない/.test(rng)&&await p.locator('[data-act=vchsave]').isDisabled(),'戻し階にどのEVも停まらない階はNG');
-await p.fill('#vcr-'+W+'-0','18:5');await p.locator('#vcr-'+W+'-0').blur();await p.waitForTimeout(200);
+await p.fill('#vcrf-'+W+'-0-0','20');await p.locator('#vcrf-'+W+'-0-0').blur();await p.waitForTimeout(200);
+await p.locator('[data-act=vchrsplit][data-i="0"]').click();await p.waitForTimeout(200);
+await p.fill('#vcru-'+W+'-0-0','5');await p.locator('#vcru-'+W+'-0-0').blur();await p.waitForTimeout(200);
 ok(/出す台数\(2台\)をこえています/.test(await txt(p,'.vchg .vng')),'戻す台数が出す台数より多いとNG');
-await p.fill('#vcr-'+W+'-0','18:1');await p.locator('#vcr-'+W+'-0').blur();await p.waitForTimeout(200);
+await p.fill('#vcrf-'+W+'-0-0','18');await p.locator('#vcrf-'+W+'-0-0').blur();await p.waitForTimeout(200);
+await p.fill('#vcru-'+W+'-0-0','1');await p.locator('#vcru-'+W+'-0-0').blur();await p.waitForTimeout(200);
+const b1=p.locator('#vcrf-'+W+'-1-0');await b1.locator('xpath=..').locator('.stp[data-step="1"]').click();await p.waitForTimeout(900);
+ok((await p.locator('#vcrf-'+W+'-1-0').inputValue())==='16','足した階(16階)の空の戻し階で＋を押すと16階から始まる');
+console.log(' はみ出し(戻し先を分けた後):',await p.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth));
+await p.screenshot({path:WORK+'/vchg-ret.png'});
 await p.click('[data-act=vchsave]');await p.waitForTimeout(500);
 let S=await st(p);const vr=((S.confirmed[W].vr||{}).v1||{}).rows||[];
 console.log(' 記録:',JSON.stringify(vr.map(r=>[r.floor,r.units,r.ev])),'履歴:',(S.confirmed[W].hist||[]).map(h=>h.t).join(' / '));

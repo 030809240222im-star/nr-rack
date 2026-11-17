@@ -1058,6 +1058,9 @@ function retInText(r){
   if(Array.isArray(r.rets))return nrRowRets(r).map(function(x){return x.f+":"+x.u}).join(",");
   return nrNum(r.ret)?String(nrNum(r.ret)):"同じ";
 }
+/* 業者の変更画面の戻し先 rl=[{f:階,u:台数}] を、parseRet の文字にする。1つで台数なし=全部その階。f が空は登録どおり */
+function rlText(rl){if(!rl||!rl.length||!nrNum(rl[0].f))return "";return rl.filter(function(e){return nrNum(e.f)}).map(function(e){return nrNum(e.u)?e.f+":"+nrNum(e.u):String(nrNum(e.f))}).join(",")}
+function rlOf(r){var l=nrRowRets(r);return l.length<=1?[{f:l.length?l[0].f:r.floor,u:""}]:l.map(function(x){return {f:x.f,u:x.u}})}
 function hasRet(r){return nrRowRets(r).some(function(x){return x.f!==r.floor})}
 /* 戻し階の入力を読む。「18」=全部18階 /「18:2,20:1」「18階2台、20階1台」=分けて戻す(残りは同じ階)/「同じ」=同じ階。
    空は {def:true}(業者の登録どおり)。どのEVも停まらない階は NG */
@@ -1971,7 +1974,7 @@ function renderConfirmed(C){
   var ds=Object.keys(D.confirmed).sort(),t=C.t;
   ds=ds.filter(function(d){return d>=t}).concat(ds.filter(function(d){return d<t}).reverse());
   var h='<section class="panel"><div class="mhead"><h2>確定した回収と再振り分け</h2></div>'
-   +'<p class="hint" style="margin:0 0 4px">確定済みの日ごとに、台数・戻し階の変更、削除、業者の追加ができます。戻し階は「18」(全部18階へ)、「18:2,20:1」(18階に2台・20階に1台、残りは同じ階)、「同じ」で入れ、空にすると業者の登録どおりに戻ります。NRボックスは業者ごとの持ち回りなので、ほかの業者には振り替えません。変更は業者の「回収予定」にすぐ反映されます。</p>';
+   +'<p class="hint" style="margin:0 0 4px">確定済みの日ごとに、台数・戻し階の変更、削除、業者の追加ができます。戻し階は −/＋ で選ぶと、その行の全部をその階へ戻します(出す階と同じなら同じ階)。空にすると業者の登録どおりに戻ります。NRボックスは業者ごとの持ち回りなので、ほかの業者には振り替えません。変更は業者の「回収予定」にすぐ反映されます。</p>';
   if(!ds.length)return h+'<p class="empty">確定した回収日はまだありません。カレンダーで日を選び、「この日の配分を確定」を押してください。</p></section>';
   var opts=vendorOpts(C,"");
   ds.forEach(function(d){
@@ -1981,7 +1984,7 @@ function renderConfirmed(C){
     (cf.rows||[]).forEach(function(r,i){
       h+='<tr><td class="l vn"><i class="chip" style="background:'+vcolor(r.vid)+'"></i>'+esc(vname(r.vid))+(r.vc?' <span class="st warn">業者が変更</span>':'')+'</td><td>'+r.floor+'階</td>'
        +'<td><input type="number" min="0" id="cu-'+d+'-'+i+'" data-f="cunits" data-d="'+d+'" data-i="'+i+'" value="'+nrNum(r.units)+'" aria-label="台数"></td>'
-       +'<td class="l">'+evCell(r)+'</td><td class="l"><input type="text" style="width:7.5em" id="cr-'+d+'-'+i+'" data-f="cret" data-d="'+d+'" data-i="'+i+'" value="'+esc(retInText(r))+'" placeholder="登録どおり" aria-label="戻し階"><div class="hint" style="margin:2px 0 0">'+esc(retLabel(r))+'</div></td>'
+       +'<td class="l">'+evCell(r)+'</td><td class="l"><input type="number" min="'+LIM.fmin+'" max="'+LIM.fmax+'" id="cr-'+d+'-'+i+'" data-f="cret" data-d="'+d+'" data-i="'+i+'" value="'+retMain(r)+'" aria-label="戻し階"><div class="hint" style="margin:2px 0 0">'+esc(retLabel(r))+'</div></td>'
        +'<td><button class="btn sm danger" data-act="cdel" data-d="'+d+'" data-i="'+i+'">削除</button></td></tr>';
     });
     h+='</tbody></table></div>'+fillBox(C,d)+'<div class="mvbox" data-d="'+d+'" style="margin-top:8px"><span style="font-size:12px;color:var(--muted)">業者を追加</span><select data-keep data-role="to" aria-label="追加する業者">'+opts+'</select><input type="number" min="'+LIM.fmin+'" max="'+LIM.fmax+'" data-keep data-role="fl" placeholder="階" aria-label="階"><input type="number" min="1" data-keep data-role="q" value="1" aria-label="台数"><button class="btn sm" data-act="cadd">追加</button></div></div>';
@@ -2153,7 +2156,7 @@ function vchgCheck(k,list){
     else if(seen[f])e="同じ階が2つあります。1つにまとめてください。";
     else if(!u)e="台数を1台以上で入れてください。";
     else if(u>nrNum((fl[f]||{}).h))e=f+"階の保有台数("+nrNum((fl[f]||{}).h)+"台)より多くは出せません。";
-    if(!e&&x.r){var pr=parseRet(x.r,f,u);if(pr.err)e=pr.err}
+    var rs=rlText(x.rl);if(!e&&rs){var pr=parseRet(rs,f,u);if(pr.err)e=pr.err}
     if(f)seen[f]=1;tot+=u;errs.push(e)});
   var all=tot>room?"この日に御社が出せるのは"+room+"台までです(今の入力は"+tot+"台)。":"";
   return {errs:errs,all:all,ok:!all&&errs.every(function(e){return !e}),room:room};
@@ -2165,12 +2168,15 @@ function vchgBox(C){
     h+='<div class="scard vchg" data-d="'+k+'"><div class="k">✏️ '+esc(fmtLong(k))+'の搬出を変える</div>';
     if(!open){h+='<p class="hint" style="margin:0 0 6px">'+esc(dl)+'まで、御社の階と台数を変えられます。今の予定: '+esc(mine.map(rowText).join("、")||"なし")+'</p><button class="btn" data-act="vchgopen" data-d="'+k+'">階・台数を変える</button></div>';return}
     var list=ui.vdr[k]||[],ck=vchgCheck(k,list);
-    h+='<p class="hint" style="margin:0 0 6px">'+esc(dl)+'まで変えられます。変えると、管理者と盛替え業者に通知されます。この日のエレベーターが停まらない階は選べません。戻し階は「18」(全部18階へ)、「18:2,20:1」(18階に2台・20階に1台、残りは同じ階)、「同じ」(同じ階)で入れます。空は登録どおりです。</p>';
+    h+='<p class="hint" style="margin:0 0 6px">'+esc(dl)+'まで変えられます。変えると、管理者と盛替え業者に通知されます。この日のエレベーターが停まらない階は選べません。戻し階は、空のNRボックスを戻す階です(出す階と同じなら同じ階へ)。2つ以上の階に分けるときは「戻し先を分ける」を押して、それぞれの台数を入れます(残りは同じ階へ)。空にすると登録どおりです。</p>';
     list.forEach(function(x,i){var e=ck.errs[i];
       h+='<div class="vrow" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:4px 0"><label style="display:flex;align-items:center;gap:4px">階<input type="number" style="width:5em" min="'+LIM.fmin+'" max="'+LIM.fmax+'" id="vcf-'+k+'-'+i+'" data-f="vchf" data-d="'+k+'" data-i="'+i+'" value="'+esc(String(x.f||""))+'" aria-label="階"></label>'
        +'<label style="display:flex;align-items:center;gap:4px">台数<input type="number" style="width:4.5em" min="1" id="vcu-'+k+'-'+i+'" data-f="vchu" data-d="'+k+'" data-i="'+i+'" value="'+esc(String(x.u||""))+'" aria-label="台数"></label>'
-       +'<label style="display:flex;align-items:center;gap:4px">戻し階<input type="text" style="width:7.5em" id="vcr-'+k+'-'+i+'" data-f="vchr" data-d="'+k+'" data-i="'+i+'" value="'+esc(x.r==null?"":x.r)+'" placeholder="登録どおり" aria-label="戻し階"></label>'
-       +'<button class="btn sm danger" data-act="vchdel" data-d="'+k+'" data-i="'+i+'">外す</button></div>'
+       +'</div>'+(x.rl||[{f:"",u:""}]).map(function(e,j){var many=(x.rl||[]).length>1;
+          return '<div class="vrow" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:4px 0 4px '+(j?'12px':'0')+'"><label style="display:flex;align-items:center;gap:4px">'+(j?'戻し階'+(j+1):'戻し階')+'<input type="number" style="width:5em" min="'+LIM.fmin+'" max="'+LIM.fmax+'" id="vcrf-'+k+'-'+i+'-'+j+'" data-f="vchrf" data-base="'+(nrNum(x.f)||"")+'" data-d="'+k+'" data-i="'+i+'" data-j="'+j+'" value=""'+esc(String(e.f||""))+'" placeholder="登録" aria-label="戻し階"></label>'
+           +(many?'<label style="display:flex;align-items:center;gap:4px">台数<input type="number" style="width:4.5em" min="1" id="vcru-'+k+'-'+i+'-'+j+'" data-f="vchru" data-d="'+k+'" data-i="'+i+'" data-j="'+j+'" value="'+esc(String(e.u||""))+'" aria-label="戻す台数"></label>':'')
+           +(j?'<button class="btn sm" data-act="vchrdel" data-d="'+k+'" data-i="'+i+'" data-j="'+j+'">外す</button>':'')+'</div>'}).join("")
+       +'<div style="display:flex;gap:6px;flex-wrap:wrap;margin:2px 0 6px"><button class="btn sm" data-act="vchrsplit" data-d="'+k+'" data-i="'+i+'">戻し先を分ける</button><button class="btn sm danger" data-act="vchdel" data-d="'+k+'" data-i="'+i+'">この階を外す</button></div>'
        +(e?'<div class="note bad vng" style="margin:2px 0 6px">'+esc(e)+'</div>':'')});
     if(ck.all)h+='<div class="note bad vng" style="margin:4px 0">'+esc(ck.all)+'</div>';
     if(!list.length)h+='<p class="hint" style="margin:4px 0">階が1つもありません。このまま変えると、この日は出さないことになります。</p>';
@@ -2746,9 +2752,13 @@ function onClick(ev){
     if(ui.confirm==="unconfirm"){notifyChanges(ui.sel,D.confirmed[ui.sel],null);remove("confirmed",ui.sel);if(inAuto(ui.sel,compute()))mutDay(ui.sel,function(d){d.hold=true});ui.confirm=""}
     else{ui.confirm="unconfirm";keepConfirm=true}
   }
-  else if(act==="vchgopen"){var vk=b.getAttribute("data-d");ui.vdr=ui.vdr||{};ui.vopen=vk;ui.vdr[vk]=vendorRows(D.confirmed[vk],ENV.vid).map(function(r){return {f:r.floor,u:nrNum(r.units),r:retInText(r)}})}
+  else if(act==="vchgopen"){var vk=b.getAttribute("data-d");ui.vdr=ui.vdr||{};ui.vopen=vk;ui.vdr[vk]=vendorRows(D.confirmed[vk],ENV.vid).map(function(r){return {f:r.floor,u:nrNum(r.units),rl:rlOf(r)}})}
   else if(act==="vchcancel"){var vk2=b.getAttribute("data-d");ui.vopen="";if(ui.vdr)delete ui.vdr[vk2]}
   else if(act==="vchadd"){var vk3=b.getAttribute("data-d");(ui.vdr[vk3]=ui.vdr[vk3]||[]).push({f:"",u:1})}
+  else if(act==="vchrsplit"){var xs=((ui.vdr||{})[b.getAttribute("data-d")]||[])[Number(b.getAttribute("data-i"))];
+    if(xs){xs.rl=xs.rl||[{f:"",u:""}];if(!nrNum(xs.rl[0].f))xs.rl[0].f=nrNum(xs.f)||"";if(!nrNum(xs.rl[0].u))xs.rl[0].u=Math.max(1,nrNum(xs.u)-1);xs.rl.push({f:nrNum(xs.f)||"",u:1})}}
+  else if(act==="vchrdel"){var xd=((ui.vdr||{})[b.getAttribute("data-d")]||[])[Number(b.getAttribute("data-i"))];
+    if(xd&&xd.rl){xd.rl.splice(Number(b.getAttribute("data-j")),1);if(xd.rl.length===1)xd.rl[0].u=""}}
   else if(act==="vchdel"){var vk4=b.getAttribute("data-d");(ui.vdr[vk4]||[]).splice(Number(b.getAttribute("data-i")),1)}
   else if(act==="vchsave"){
     var vk5=b.getAttribute("data-d"),vl=(ui.vdr||{})[vk5]||[],vck=vchgCheck(vk5,vl);
@@ -2758,7 +2768,7 @@ function onClick(ev){
       var vcfg=nrCfg(D.config),vday=D.days[vk5]||{},vel=(vday.elev||[]).slice().sort(),vmv=vday.moves||{},vbef=clone(D.confirmed[vk5]);
       var vrows=vl.map(function(x){var f=nrNum(x.f),u=nrNum(x.u),ev=vel.length?nrElevFor(f,vel,vcfg):null,to=null,m=vmv[ENV.vid+"|"+f];
         if(ev===null&&m&&nrNum(m.ev)){ev=nrNum(m.ev);to=nrNum(m.to)||null}
-        var o={vid:ENV.vid,floor:f,units:u,ev:ev,to:to,ret:null,n:vname(ENV.vid)},pr=parseRet(x.r,f,u);setRowRet(o,pr.def?retFor(ENV.vid,f,u):pr.rr);return o});
+        var o={vid:ENV.vid,floor:f,units:u,ev:ev,to:to,ret:null,n:vname(ENV.vid)},pr=parseRet(rlText(x.rl),f,u);setRowRet(o,pr.def?retFor(ENV.vid,f,u):pr.rr);return o});
       var vta=vendorRows(vbef,ENV.vid).map(rowText).join("、"),vtb=vrows.map(rowText).join("、");
       if(vta===vtb){ui.msg="変わったところはありません。";ui.msgKind="";ui.vopen=""}
       else{var vat=nowIso(),vp={vr:{},at:vat,hist:{$op:"union",v:[histEntry(vname(ENV.vid)+"が予定を変更: "+(vta||"なし")+" → "+(vtb||"なし"))]}};
@@ -3100,9 +3110,10 @@ function onChange(ev){
   }
   else if(f==="company"){var id2=el.getAttribute("data-id"),nm=el.value.trim();if(nm){companyMembers(id2).forEach(function(u){patch("approved",u,{company:nm})});var cc=(D.vendors[id2]||{}).code;if(cc)patch("codes",cc,{company:nm})}}
   else if(f==="vchf"||f==="vchu"){var vk6=el.getAttribute("data-d"),vi6=Number(el.getAttribute("data-i")),vx6=((ui.vdr||{})[vk6]||[])[vi6];if(vx6)vx6[f==="vchf"?"f":"u"]=nrNum(el.value)||""}
-  else if(f==="vchr"){var vk7=el.getAttribute("data-d"),vx7=((ui.vdr||{})[vk7]||[])[Number(el.getAttribute("data-i"))];if(vx7)vx7.r=el.value.trim()}
+  else if(f==="vchrf"||f==="vchru"){var vk7=el.getAttribute("data-d"),vx7=((ui.vdr||{})[vk7]||[])[Number(el.getAttribute("data-i"))],j7=Number(el.getAttribute("data-j"));
+    if(vx7){vx7.rl=vx7.rl||[{f:"",u:""}];if(vx7.rl[j7])vx7.rl[j7][f==="vchrf"?"f":"u"]=nrNum(el.value)||""}}
   else if(f==="cret"){var d8=el.getAttribute("data-d"),i8=Number(el.getAttribute("data-i")),r8=((D.confirmed[d8]||{}).rows||[])[i8];
-    if(r8){var p8=parseRet(el.value,r8.floor,nrNum(r8.units));
+    if(r8){var p8=parseRet(String(nrNum(el.value)||""),r8.floor,nrNum(r8.units));
       if(p8.err){ui.msg=p8.err;ui.msgKind="bad"}
       else mutConfirmed(d8,function(cf){var x=cf.rows[i8];if(x)setRowRet(x,p8.def?retFor(x.vid,x.floor,nrNum(x.units)):p8.rr)})}}
   else if(f==="cunits"){
@@ -3154,7 +3165,8 @@ function timeStep(inp,n){
 }
 function spinStep(inp,n){
   if(inp.classList.contains("tinput")){timeStep(inp,n);return}
-  var mn=inp.getAttribute("min"),mx=inp.getAttribute("max"),v=(Number(inp.value)||0)+n;
+  /* 空の欄に data-base があれば、最初の1回はその数(戻し階なら出す階)から始める */
+  var mn=inp.getAttribute("min"),mx=inp.getAttribute("max"),bs=inp.getAttribute("data-base"),v=inp.value===""&&nrNum(bs)?nrNum(bs):(Number(inp.value)||0)+n;
   if(mn!=null&&mn!==""&&v<Number(mn))v=Number(mn);if(mx!=null&&mx!==""&&v>Number(mx))v=Number(mx);
   inp.value=String(v);
 }
