@@ -3,7 +3,7 @@ const REPO=require('path').resolve(__dirname,'..','..')+'/';const WORK=process.c
 const {chromium,devices}=require('playwright');const fs=require('fs');const path=require('path');
 fs.writeFileSync('main-test.html',fs.readFileSync(REPO+'index.html','utf8'));
 fs.writeFileSync('crew-test.html',fs.readFileSync(REPO+'crew/index.html','utf8'));
-const D=n=>{const d=new Date(Date.now()+n*864e5);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
+const D=n=>{const d=new Date(Date.now()-6*36e5+n*864e5)/* 1日の始まり(6時)にそろえる */;return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
 const FS={crews:{c1:{company:'揚重社',name:'田中'}},approved:{v1:{company:'搬出業者A',vid:'v1',name:'山田'},v2:{company:'搬出業者B'}},vendors:{v1:{code:'AB12CD',note:'午前中は1台',floors:{38:{h:8,w:5},23:{h:3,w:2},12:{h:4,w:4,same:false,r:20},5:{h:6,w:4}}},v2:{floors:{8:{h:4,w:2}}}},
  orders:{v1:{items:{o1:{f:23,u:2,st:'plan',plan:{d:D(1)},n:'搬出業者A',at:new Date().toISOString()},o2:{f:5,u:1,st:'new',n:'搬出業者A',at:new Date().toISOString()}}}},
  days:{[D(0)]:{cap:8,elev:[1,2],tf:'09:00',tt:'11:00'},[D(1)]:{cap:8,elev:[1]}},confirmed:{[D(0)]:{rows:[{vid:'v1',floor:5,units:4,ev:1,n:'搬出業者A'},{vid:'v1',floor:12,units:4,ev:2,to:10,ret:20,n:'搬出業者A'},{vid:'v2',floor:8,units:2,ev:1,n:'搬出業者B'}]}}};

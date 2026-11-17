@@ -4,7 +4,7 @@ const fs=require('fs'),path=require('path'),{execFileSync}=require('child_proces
 const X=path.join(WORK,'srv');fs.rmSync(X,{recursive:true,force:true});fs.mkdirSync(X+'/server/node_modules',{recursive:true});
 fs.copyFileSync(REPO+'index.html',X+'/index.html');for(const f of fs.readdirSync(REPO+'server'))if(f.endsWith('.mjs'))fs.copyFileSync(REPO+'server/'+f,X+'/server/'+f);
 fs.cpSync(REPO+'tests/lib/server-stubs',X+'/server/node_modules',{recursive:true});
-const D=n=>{const d=new Date(Date.now()+n*864e5);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
+const D=n=>{const d=new Date(Date.now()-6*36e5+n*864e5)/* 1日の始まり(6時)にそろえる */;return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
 const wd=n=>new Date(D(n)+'T12:00').getDay(),now=new Date().toISOString();
 const app={config:{main:{evn:2,auto:2,wdFrom:'',wd:{v1:[wd(2)],v2:[wd(4)],v3:[wd(3)]},mailAdmins:['kowa0371@gmail.com']}},
  approved:{v1:{company:'サンユー',vid:'v1',email:'a@x.jp'},v2:{company:'日本建工',vid:'v2',email:'b@x.jp'},v3:{company:'鉱工産業',vid:'v3',email:'c@x.jp'}},

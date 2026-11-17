@@ -2,7 +2,7 @@
 const REPO=require('path').resolve(__dirname,'..','..')+'/';const WORK=process.cwd();
 const {chromium,devices}=require('playwright');const fs=require('fs');
 fs.writeFileSync('main-test.html',fs.readFileSync(REPO+'index.html','utf8'));
-const D=n=>{const d=new Date(Date.now()+n*864e5);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
+const D=n=>{const d=new Date(Date.now()-6*36e5+n*864e5)/* 1日の始まり(6時)にそろえる */;return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
 const FS={config:{main:{evn:2,ev:{1:[1,30],2:[1,30]},wd:{v1:[2]},wdFrom:""}},approved:{v1:{company:'サンユー',vid:'v1'},v2:{company:'日本建工',vid:'v2'}},
  vendors:{v1:{floors:{10:{h:5,w:3}}},v2:{floors:{11:{h:5,w:3}}}},days:{[D(2)]:{cap:8,elev:[]},[D(30)]:{cap:8,elev:[1]}}};
 (async()=>{const b=await chromium.launch();

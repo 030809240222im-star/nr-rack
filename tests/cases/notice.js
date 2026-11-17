@@ -2,7 +2,7 @@
 const REPO=require('path').resolve(__dirname,'..','..')+'/';const WORK=process.cwd();
 const {chromium}=require('playwright');const fs=require('fs');
 fs.writeFileSync('main-test.html',fs.readFileSync(REPO+'index.html','utf8'));
-const D=n=>{const d=new Date(Date.now()+n*864e5);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
+const D=n=>{const d=new Date(Date.now()-6*36e5+n*864e5)/* 1日の始まり(6時)にそろえる */;return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
 const k=D(2),t0=new Date(Date.now()-60000).toISOString(),t1=new Date(Date.now()-30000).toISOString();
 const msg='確定しました: 10階 2台(EV1前)';
 const FS={config:{main:{evn:2}},approved:{v1:{company:'A',vid:'v1'}},vendors:{v1:{floors:{10:{h:6,w:4},11:{h:4,w:2}}}},days:{[k]:{cap:8,elev:[1]}},

@@ -2,7 +2,7 @@
 const REPO=require('path').resolve(__dirname,'..','..')+'/';const WORK=process.cwd();
 const {chromium}=require('playwright');const fs=require('fs');
 fs.writeFileSync('main-test.html',fs.readFileSync(REPO+'index.html','utf8'));
-const D=n=>{const d=new Date(Date.now()+n*864e5);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
+const D=n=>{const d=new Date(Date.now()-6*36e5+n*864e5)/* 1日の始まり(6時)にそろえる */;return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
 /* 土日祝を除いた営業日で数える: d4 = 今日が「お願い」の期間(確定の2営業日前〜)に入る回収日、d3 = 今日が「警告」の期間(確定の前の営業日〜)に入る回収日 */
 const vm=require('vm'),ctx={};vm.createContext(ctx);vm.runInContext(fs.readFileSync(REPO+'index.html','utf8').match(/<script>([\s\S]*?)<\/script>/)[1],ctx);
 const cf0=ctx.nrCfg({auto:2}),T=D(0);let d4=null,d3=null;

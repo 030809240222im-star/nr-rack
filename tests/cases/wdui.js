@@ -2,7 +2,7 @@
 const REPO=require('path').resolve(__dirname,'..','..')+'/';const WORK=process.cwd();
 const {chromium,devices}=require('playwright');const fs=require('fs');
 fs.writeFileSync('main-test.html',fs.readFileSync(REPO+'index.html','utf8'));
-const D=n=>{const d=new Date(Date.now()+n*864e5);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
+const D=n=>{const d=new Date(Date.now()-6*36e5+n*864e5)/* 1日の始まり(6時)にそろえる */;return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
 const FS={config:{main:{evn:2,wd:{v1:[1],v2:[1,3],v3:[4]}}},approved:{v1:{company:'サンオキ',vid:'v1'},v2:{company:'日本建工',vid:'v2'},v3:{company:'萬',vid:'v3'},v4:{company:'自由',vid:'v4'}},
  vendors:{v1:{floors:{10:{h:6,w:6}}},v2:{floors:{12:{h:6,w:6}}},v3:{floors:{14:{h:6,w:6}}},v4:{floors:{15:{h:6,w:6}}}},days:{'2026-11-17':{cap:8,elev:[1]},'2026-11-12':{cap:8,elev:[1]}}};
 (async()=>{const b=await chromium.launch();

@@ -2,7 +2,7 @@
 const REPO=require('path').resolve(__dirname,'..','..')+'/';const WORK=process.cwd();
 const {chromium,devices}=require('playwright');const fs=require('fs');const path=require('path');
 fs.writeFileSync('main-test.html',fs.readFileSync(REPO+'index.html','utf8'));
-const D=n=>{const d=new Date(Date.now()+n*864e5);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
+const D=n=>{const d=new Date(Date.now()-6*36e5+n*864e5)/* 1日の始まり(6時)にそろえる */;return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
 const FS={approved:{v1:{company:'搬出業者A'}},vendors:{v1:{floors:{38:{h:8,w:5},23:{h:3,w:2},12:{h:4,w:4,same:false,r:20},5:{h:6,w:4}}}},
  orders:{v1:{items:{o1:{f:23,u:2,st:'plan',plan:{d:D(1)},at:new Date().toISOString()},o2:{f:5,u:1,st:'new'}}}},
  days:{[D(0)]:{cap:8,elev:[1,2]}},confirmed:{[D(0)]:{rows:[{vid:'v1',floor:5,units:4,ev:1,n:'搬出業者A'},{vid:'v1',floor:12,units:4,ev:2,to:10,ret:20,n:'搬出業者A'}]}}};

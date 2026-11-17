@@ -3,7 +3,7 @@ const REPO=require('path').resolve(__dirname,'..','..')+'/';const WORK=process.c
 const {chromium,devices}=require('playwright');const fs=require('fs');
 fs.writeFileSync('main-test.html',fs.readFileSync(REPO+'index.html','utf8'));
 fs.writeFileSync('crew-test.html',fs.readFileSync(REPO+'crew/index.html','utf8'));
-const D=n=>{const d=new Date(Date.now()+n*864e5);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
+const D=n=>{const d=new Date(Date.now()-6*36e5+n*864e5)/* 1日の始まり(6時)にそろえる */;return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
 const k=D(0),k2=D(2);
 const FS={config:{main:{evn:3}},approved:{v1:{company:'サンユー',vid:'v1'},v2:{company:'日本建工',vid:'v2'},v3:{company:'鉱工産業',vid:'v3'}},crews:{c1:{company:'盛替A',email:'c@x.jp'}},members:{m9:{company:'新しい会社',email:'n@x.jp',at:new Date().toISOString()}},
  vendors:{v1:{floors:{17:{h:14,w:10},21:{h:6,w:2}}},v2:{floors:{25:{h:2,w:0}}},v3:{floors:{24:{h:8,w:4}}}},days:{[k]:{cap:8,elev:[1],tf:'18:00',tt:'19:00'},[k2]:{cap:8,elev:[1]}},

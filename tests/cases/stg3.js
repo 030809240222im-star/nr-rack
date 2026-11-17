@@ -2,7 +2,7 @@
 const REPO=require('path').resolve(__dirname,'..','..')+'/';const WORK=process.cwd();
 const {chromium,devices}=require('playwright');const fs=require('fs');const path=require('path');
 fs.writeFileSync('main-test.html',fs.readFileSync(REPO+'index.html','utf8'));
-const D=n=>{const d=new Date(Date.now()+n*864e5);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
+const D=n=>{const d=new Date(Date.now()-6*36e5+n*864e5)/* 1日の始まり(6時)にそろえる */;return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
 const k1=D(6),k2=D(7);
 const FS={config:{main:{evn:2,ev:{1:[1,30],2:[31,60]},ns:{2:'44-46'}}},approved:{v1:{company:'サンオキ',vid:'v1',name:'山田'},v2:{company:'日本建工',vid:'v2'}},
  vendors:{v1:{floors:{45:{h:4,w:4,s:'2026-11-01'},10:{h:2,w:2,s:'2026-11-01'},62:{h:3,w:3,s:'2026-11-05'}}},v2:{floors:{44:{h:5,w:2,s:'2026-11-08'}}}},days:{[k1]:{cap:8,elev:[1,2]},[k2]:{cap:8,elev:[1]}}};
