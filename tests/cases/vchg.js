@@ -33,12 +33,19 @@ await p.fill('#vcf-'+W+'-1','16');await p.locator('#vcf-'+W+'-1').blur();await p
 await p.fill('#vcu-'+W+'-1','9');await p.locator('#vcu-'+W+'-1').blur();await p.waitForTimeout(200);
 console.log(' 9台:',await txt(p,'.vchg .vng'));ok(await p.locator('[data-act=vchsave]').isDisabled(),'保有より多い台数もNG');
 await p.fill('#vcu-'+W+'-1','2');await p.locator('#vcu-'+W+'-1').blur();await p.waitForTimeout(200);
+// 戻し階: どのEVも停まらない45階はNG、台数より多いのもNG、「18:1」は18階に1台・残りは同じ階
+await p.fill('#vcr-'+W+'-0','45');await p.locator('#vcr-'+W+'-0').blur();await p.waitForTimeout(200);
+const rng=await txt(p,'.vchg .vng');console.log(' 戻し45階:',rng);ok(/NG: 45階は、どのエレベーターも停まらない/.test(rng)&&await p.locator('[data-act=vchsave]').isDisabled(),'戻し階にどのEVも停まらない階はNG');
+await p.fill('#vcr-'+W+'-0','18:5');await p.locator('#vcr-'+W+'-0').blur();await p.waitForTimeout(200);
+ok(/出す台数\(2台\)をこえています/.test(await txt(p,'.vchg .vng')),'戻す台数が出す台数より多いとNG');
+await p.fill('#vcr-'+W+'-0','18:1');await p.locator('#vcr-'+W+'-0').blur();await p.waitForTimeout(200);
 await p.click('[data-act=vchsave]');await p.waitForTimeout(500);
 let S=await st(p);const vr=((S.confirmed[W].vr||{}).v1||{}).rows||[];
 console.log(' 記録:',JSON.stringify(vr.map(r=>[r.floor,r.units,r.ev])),'履歴:',(S.confirmed[W].hist||[]).map(h=>h.t).join(' / '));
 ok(JSON.stringify(vr.map(r=>[r.floor,r.units,r.ev]))==='[[20,2,1],[16,2,1]]','変えた行が自社の分(vr)として保存される');
+console.log(' 戻し:',JSON.stringify(vr.map(r=>r.rets||r.ret)));ok(JSON.stringify(vr[0].rets)==='[{"f":18,"u":1},{"f":20,"u":1}]','戻し階「18:1」は18階に1台・残り1台は同じ階で保存される');
 const ob=Object.values(S.outbox||{}).map(x=>x.to+': '+x.msg.replace(/\n/g,' '));console.log(' 送信待ち:',JSON.stringify(ob));
-ok(ob.some(x=>/^crew: .*搬出予定が変わりました.*サンオキ 20階 2台/.test(x))&&ob.some(x=>/^admin: サンオキが.*搬出を変更しました: 16階 4台\(EV1前\) → 20階 2台/.test(x)),'盛替え業者と管理者に通知が出る');
+ok(ob.some(x=>/^crew: .*搬出予定が変わりました.*サンオキ 20階 2台\(EV1前\) 戻し: 18階 1台・同じ階 1台/.test(x))&&ob.some(x=>/^admin: サンオキが.*搬出を変更しました: 16階 4台\(EV1前\) → 20階 2台/.test(x)),'盛替え業者と管理者に通知が出る');
 console.log(' 次に出す日:',(await txt(p,'.todo')).slice(0,120));
 ok(/20階.*2台/.test(await txt(p,'.todo')),'業者の「次に出す日」が変えた内容になる');
 await cx.close();
@@ -52,6 +59,11 @@ const tb=(await p.locator('.cday').first().innerText()).replace(/\s+/g,' ');cons
 ok(/サンオキ 業者が変更 20階/.test(tb)&&/6\/8台/.test(tb),'管理者の確定画面に「業者が変更」と変えた行が出る');
 const mb=p.locator('.cday').first().locator('.mvbox');await mb.locator('[data-role=to]').selectOption('v1');await mb.locator('[data-role=fl]').fill('6');await mb.locator('[data-role=q]').fill('1');await mb.locator('[data-act=cadd]').click();await p.waitForTimeout(300);
 const msg=await txt(p,'.note.bad');console.log(' 管理者が6階を追加:',msg.slice(0,90));ok(/NG: 6階は/.test(msg),'管理者も不停止階はNGで追加できない');
+// 管理者が戻し階を指定(19行目の日本建工 19階 → 21階)
+await p.fill('#cr-'+W+'-2','21');await p.locator('#cr-'+W+'-2').blur();await p.waitForTimeout(400);
+let S3=await st(p);const r3=S3.confirmed[W].rows.find(r=>r.vid==='v2');console.log(' 管理者が戻し階を指定:',JSON.stringify([r3.ret,r3.rets]),Object.values(S3.outbox||{}).filter(x=>x.to==='crew').map(x=>x.msg.replace(/\n/g,' ')).pop());
+ok(r3.ret===21&&Object.values(S3.outbox||{}).some(x=>x.to==='crew'&&/日本建工 19階 2台\(EV1前\) 戻し: 21階/.test(x.msg)),'管理者も戻し階を指定でき、盛替え業者に変更後の戻し階が届く');
+await p.fill('#cr-'+W+'-2','45');await p.locator('#cr-'+W+'-2').blur();await p.waitForTimeout(300);ok(/NG: 45階/.test(await txt(p,'.note.bad')),'管理者も、どのEVも停まらない戻し階はNG');
 await p.fill('#cu-'+W+'-0','3');await p.locator('#cu-'+W+'-0').blur();await p.waitForTimeout(400);
 S=await st(p);console.log(' 取り込み後:',JSON.stringify(S.confirmed[W].rows.map(r=>[r.vid,r.floor,r.units])),'vr:',JSON.stringify(S.confirmed[W].vr||{}));
 ok(!Object.keys(S.confirmed[W].vr||{}).length&&S.confirmed[W].rows.some(r=>r.vid==='v1'&&r.floor===20&&r.units===3),'管理者が変えると、業者の変更が行に取り込まれる');
