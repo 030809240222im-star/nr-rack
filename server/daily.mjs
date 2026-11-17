@@ -12,7 +12,7 @@ const root = new URL("..", import.meta.url).pathname;
 const html = fs.readFileSync(root + "index.html", "utf8");
 const core = html.match(/<script>\s*([\s\S]*?function nrRank[\s\S]*?)<\/script>/)[1];
 const ctx = {}; vm.createContext(ctx); vm.runInContext(core, ctx);
-const { nrCfg, nrSimulate, nrDs, nrPd, nrNum, nrRemind, nrBase, nrConfirmDay, nrPreDays } = ctx;
+const { nrCfg, nrSimulate, nrDs, nrPd, nrNum, nrRemind, nrBase, nrConfirmDay, nrPreDays, nrOverlay } = ctx;
 
 const sa = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT || "null");
 if (!sa) { console.log("FIREBASE_SERVICE_ACCOUNT がないので終了します"); process.exit(0); }
@@ -45,6 +45,7 @@ async function load(prefix) {
 }
 /* アプリの hydrate と同じ: 行ごとの確認・戻し(st)を rows に重ねる */
 function hydrate(cf) {
+  nrOverlay(cf); /* 業者が確定後に変えた行(vr)を、その業者の行の代わりに使う */
   const st = cf.st || {};
   (cf.rows || []).forEach(r => { const x = st[r.vid + "|" + r.floor + "|" + (r.ev || 0)]; if (!x) return;
     ["chk", "back"].forEach(f => { if (f in x) { if (x[f]) r[f] = x[f]; else delete r[f]; } }); });
@@ -73,7 +74,7 @@ for (const app of APPS) {
       if (day.edited && Date.now() - Date.parse(day.edited) < 10 * 60 * 1000) continue;
       const rows = s.asg.map(a => { const o = { vid: a.vid, floor: a.floor, units: a.units, ev: a.ev || null, to: a.to || null, ret: a.ret || null, n: vname(D, a.vid) }; if (a.rets) o.rets = JSON.parse(JSON.stringify(a.rets)); return o; });
       const at = new Date().toISOString();
-      await db.collection(app.prefix + "confirmed").doc(d).set({ rows, at, by: "毎朝の自動処理", auto: true, hist: [{ at, by: "毎朝の自動処理", t: "自動で確定" }] });
+      await db.collection(app.prefix + "confirmed").doc(d).set({ rows, vids: [...new Set(rows.map(r => r.vid))], at, by: "毎朝の自動処理", auto: true, hist: [{ at, by: "毎朝の自動処理", t: "自動で確定" }] });
       D.confirmed[d] = { rows };
       const seen = {};
       for (const r of rows) {

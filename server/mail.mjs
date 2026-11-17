@@ -11,7 +11,7 @@ const root = new URL("..", import.meta.url).pathname;
 const html = fs.readFileSync(root + "index.html", "utf8");
 const core = html.match(/<script>\s*([\s\S]*?function nrRank[\s\S]*?)<\/script>/)[1];
 const ctx = {}; vm.createContext(ctx); vm.runInContext(core, ctx);
-const { nrDs, nrPd, nrNum, nrRowRets, nrBase, nrSesNo, nrCfg, nrPreDays } = ctx;
+const { nrDs, nrPd, nrNum, nrRowRets, nrBase, nrSesNo, nrCfg, nrPreDays, nrOverlay } = ctx;
 
 const MODE = process.env.MAIL_MODE || "pre";
 const APP_URL = "https://030809240222im-star.github.io/nr-rack/";
@@ -88,6 +88,7 @@ async function mark(app, d, key) {
 
 for (const app of APPS) {
   const D = await load(app.prefix);
+  Object.values(D.confirmed).forEach(nrOverlay); /* 業者が確定後に変えた行(vr)を、その業者の行の代わりに使う */
   const log = D.maillog || {};
   /* 前日メール・当日メール。前日メールは営業日(土日祝を除く)に、次の営業日までの搬出日の分を送る(金曜なら土・日・月の分) */
   const cfg = nrCfg((D.config || {}).main);

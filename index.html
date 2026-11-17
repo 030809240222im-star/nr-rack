@@ -539,6 +539,16 @@ function nrRets(e,floor,units,skip){
   return list;
 }
 /* 確定した行の戻し先を [{f,u}] でそろえる(台数をあとで変えた行も、今の台数に合わせて上から埋め直す) */
+/* 確定後に業者が自分で変えた行(cf.vr = {業者:{rows,at,by}})を、その業者の行の代わりに使う。何度かけても同じになる。
+   vr の行には vc(変えた時刻)を付ける。管理者が確定の行を書き直すと vr は消える */
+function nrOverlay(cf){
+  if(!cf||!cf.vr||typeof cf.vr!=="object")return cf;
+  var vr=cf.vr,out=[],done={};
+  function add(v,n){var x=vr[v];(x.rows||[]).forEach(function(y){var o=JSON.parse(JSON.stringify(y));o.vid=v;o.vc=x.at||"1";if(!o.n&&n)o.n=n;out.push(o)})}
+  (cf.rows||[]).forEach(function(r){var x=vr[r.vid];if(!x||!Array.isArray(x.rows)){out.push(r);return}if(done[r.vid])return;done[r.vid]=1;add(r.vid,r.n)});
+  Object.keys(vr).forEach(function(v){if(!done[v]&&vr[v]&&Array.isArray(vr[v].rows))add(v,null)});
+  cf.rows=out;return cf;
+}
 function nrRowRets(r){
   var n=nrNum(r.units),list=[],left=n;
   if(Array.isArray(r.rets))r.rets.forEach(function(x){var f=nrNum(x.f),u=Math.min(nrNum(x.u),left);if(!f||u<=0)return;left-=u;list.push({f:f,u:u})});
@@ -1115,7 +1125,7 @@ function myRows(){
    読むときは hydrate で st を rows に重ねるので、画面側は r.chk / r.back をそのまま使える */
 function rowKey(r){return r.vid+"|"+r.floor+"|"+(r.ev||0)}
 function hydrate(cf){
-  if(!cf)return cf;var st=cf.st||{};
+  if(!cf)return cf;nrOverlay(cf);var st=cf.st||{};
   (cf.rows||[]).forEach(function(r){var x=st[rowKey(r)];if(!x)return;
     ["chk","back"].forEach(function(f){if(f in x){if(x[f])r[f]=x[f];else delete r[f]}})});
   return cf;
@@ -1142,11 +1152,14 @@ function mutConfirmed(k,fn){
   if(ENV.admin&&before&&!SILENT)notifyChanges(k,before,cf);
   if(!cf.rows.length){remove("confirmed",k);return}
   /* 行に入っている確認・戻しは st に移してから行を保存する(古いデータの引き継ぎも兼ねる) */
-  var st={},rows=cf.rows.map(function(r){var o=clone(r),x={};if(o.chk)x.chk=o.chk;if(o.back)x.back=o.back;delete o.chk;delete o.back;
+  var st={},rows=cf.rows.map(function(r){var o=clone(r),x={};if(o.chk)x.chk=o.chk;if(o.back)x.back=o.back;delete o.chk;delete o.back;delete o.vc;
     var cur=((before&&before.st)||{})[rowKey(r)]||{};if((x.chk&&!cur.chk)||(x.back&&!cur.back))st[rowKey(r)]=x;return o});
-  var p={rows:rows,at:nowIso()};if(Object.keys(st).length)p.st=st;
+  var p={rows:rows,at:nowIso(),vids:vidsOf(rows)};if(Object.keys(st).length)p.st=st;
+  /* 業者が変えた行(vr)は、行に取り込んだので消す */
+  if(before&&before.vr&&Object.keys(before.vr).length){p.vr={};Object.keys(before.vr).forEach(function(v){p.vr[v]={$op:"del"}})}
   if(ENV.admin&&before){var ch=[];notifyText(before,cf).forEach(function(x){ch.push(x)});if(ch.length)p.hist={$op:"union",v:[histEntry("予定を変更: "+ch.join(" / "))]}}  patch("confirmed",k,p);
 }
+function vidsOf(rows){var o=[];(rows||[]).forEach(function(r){if(o.indexOf(r.vid)<0)o.push(r.vid)});return o}
 function rowsTotal(cf,skip){var s=0;(cf.rows||[]).forEach(function(r,i){if(i!==skip)s+=nrNum(r.units)});return s}
 function retFor(vid,floor,units){var e=(D.vendors[vid]&&D.vendors[vid].floors||{})[floor];return nrRets(e,floor,nrNum(units)||1)}
 function setRowRet(r,rr){if(Array.isArray(rr)){r.rets=rr;r.ret=null}else{r.ret=rr||null;delete r.rets}}
@@ -1419,7 +1432,7 @@ function daysUntil(d,t){return Math.round((nrPd(d)-nrPd(t))/864e5)}
 function inAuto(d,C){return C.cfg.auto>0&&nrBase(d)>=C.t&&C.t>=nrConfirmDay(d,C.cfg)}
 function confirmDay(d,s,auto){
   var rows=s.asg.map(function(a){var o={vid:a.vid,floor:a.floor,units:a.units,ev:a.ev||null,to:a.to||null,ret:a.ret||null,n:vname(a.vid)};if(a.rets)o.rets=a.rets;return o});
-  var o={rows:rows,at:nowIso(),by:who(),hist:[histEntry(auto?"自動で確定":"確定")]};if(auto)o.auto=true;put("confirmed",d,o);notifyConfirm(d,o);
+  var o={rows:rows,vids:vidsOf(rows),at:nowIso(),by:who(),hist:[histEntry(auto?"自動で確定":"確定")]};if(auto)o.auto=true;put("confirmed",d,o);notifyConfirm(d,o);
 }
 /* 搬出日の設定日数前(初期値2日前)になった回収日を、配分どおりに確定する。書き込めるのは管理者だけなので、管理者が開いたときに行う */
 /* 入力のお願い・警告を出す(毎朝の自動処理と同じ id なので、二重には出ない) */
@@ -1735,7 +1748,7 @@ function sVendorTabs(){var n=noticeList(ENV.vid).filter(function(x){return !x.ac
 function sVendor(C){var t=ui.stab||"s-home";return t==="s-count"?sVendorCount(C):t==="s-news"?sVendorNews():sVendorHome(C)}
 function sVendorHome(C){
   var mr=myRows().filter(function(x){return nrBase(x.d)>=C.t}),h='<section class="panel simple">';
-  h+=stopAskBox(C)+problemBox();
+  h+=stopAskBox(C)+problemBox()+vchgBox(C);
   /* 入力のお願い・警告(まだ「見ました」を押していないもの)は、予定の画面の一番上にも出す */
   noticeList(ENV.vid).filter(function(x){return !x.ack&&(x.o.kind==="remind"||x.o.kind==="remind2"||x.o.kind==="msg")}).forEach(function(x){var mk=x.o.kind==="msg";
     h+='<div class="todo'+(x.o.kind==="remind2"?' warnb':'')+'"><div class="k">'+(mk?'✉ '+esc(nkName(x.o)):x.o.kind==="remind2"?'⚠ 重要':'⏰ 入力のお願い')+'</div><p style="margin:0">'+esc(x.o.msg.replace(/^【[^】]*】/,''))+'</p>'
@@ -1940,7 +1953,7 @@ function renderConfirmed(C){
     h+='<div class="cday"><h3>'+fmtLong(d)+' <span style="color:var(--muted);font-weight:400">'+esc(fmtTime(day))+' / '+(day.elev&&day.elev.length?day.elev.map(function(e){return "EV"+e}).join("・"):"EV未指定")+' / '+tot+'/'+cap+'台</span>'+(d<t?' <span class="st off">終了</span>':'')+'</h3>'
      +'<div class="tablewrap"><table class="rtable"><thead><tr><th class="l">業者</th><th>階</th><th>台数</th><th class="l">集積</th><th class="l">戻し階</th><th></th></tr></thead><tbody>';
     (cf.rows||[]).forEach(function(r,i){
-      h+='<tr><td class="l vn"><i class="chip" style="background:'+vcolor(r.vid)+'"></i>'+esc(vname(r.vid))+'</td><td>'+r.floor+'階</td>'
+      h+='<tr><td class="l vn"><i class="chip" style="background:'+vcolor(r.vid)+'"></i>'+esc(vname(r.vid))+(r.vc?' <span class="st warn">業者が変更</span>':'')+'</td><td>'+r.floor+'階</td>'
        +'<td><input type="number" min="0" id="cu-'+d+'-'+i+'" data-f="cunits" data-d="'+d+'" data-i="'+i+'" value="'+nrNum(r.units)+'" aria-label="台数"></td>'
        +'<td class="l">'+evCell(r)+'</td><td class="l">'+esc(retLabel(r))+'</td>'
        +'<td><button class="btn sm danger" data-act="cdel" data-d="'+d+'" data-i="'+i+'">削除</button></td></tr>';
@@ -2094,8 +2107,52 @@ function renderVin(C){
   return h+'</section>'+renderMyOrders(vid);
 }
 /* 業者: 自社の搬出予定(カレンダーの下に表示) */
+/* ---- 確定後の業者による変更 ----
+   確定した回収日の当日12:00まで、業者は自社の行(階・台数)を変えられる。変えた行は confirmed/{日}.vr[業者] に入れ、
+   読むときに nrOverlay でその業者の行の代わりに使う。エレベーターが停まらない階(不停止階)は NG で入れられない */
+function vchgDeadline(k){return nrPd(nrBase(k)).getTime()}/* 回収日の12:00 */
+function canVEdit(k){
+  if(ENV.admin||ENV.crew||!ENV.vid)return false;
+  var cf=D.confirmed[k];if(!cf||Date.now()>=vchgDeadline(k))return false;
+  if(cf.vids&&cf.vids.indexOf(ENV.vid)<0&&!(cf.vr&&cf.vr[ENV.vid]))return false;
+  return vendorRows(cf,ENV.vid).length>0||!!(cf.vr&&cf.vr[ENV.vid]);
+}
+function vchgCheck(k,list){
+  var cfg=nrCfg(D.config),day=D.days[k]||{},el=(day.elev||[]).slice().sort(),mv=day.moves||{},fl=(D.vendors[ENV.vid]||{}).floors||{},cf=D.confirmed[k]||{rows:[]},seen={},errs=[],tot=0,mine=0;
+  vendorRows(cf,ENV.vid).forEach(function(r){mine+=nrNum(r.units)});
+  var room=Math.max(0,nrNum(day.cap)-rowsTotal(cf,-1))+mine;
+  list.forEach(function(x){var f=nrNum(x.f),u=nrNum(x.u),m=mv[ENV.vid+"|"+f],e="";
+    if(!f||f<cfg.fmin||f>cfg.fmax)e="階は"+cfg.fmin+"〜"+cfg.fmax+"で入れてください。";
+    else if(el.length&&nrElevFor(f,el,cfg)===null&&!(m&&nrNum(m.ev)))e="NG: "+f+"階は、この日のエレベーター("+el.map(function(v){return "EV"+v}).join("・")+")が停まらない階(不停止階)です。この階は入力できません。";
+    else if(seen[f])e="同じ階が2つあります。1つにまとめてください。";
+    else if(!u)e="台数を1台以上で入れてください。";
+    else if(u>nrNum((fl[f]||{}).h))e=f+"階の保有台数("+nrNum((fl[f]||{}).h)+"台)より多くは出せません。";
+    if(f)seen[f]=1;tot+=u;errs.push(e)});
+  var all=tot>room?"この日に御社が出せるのは"+room+"台までです(今の入力は"+tot+"台)。":"";
+  return {errs:errs,all:all,ok:!all&&errs.every(function(e){return !e}),room:room};
+}
+function vchgBox(C){
+  var ks=Object.keys(D.confirmed).filter(canVEdit).sort();if(!ks.length)return "";
+  ui.vdr=ui.vdr||{};var h='';
+  ks.forEach(function(k){var open=ui.vopen===k,mine=vendorRows(D.confirmed[k],ENV.vid),dl=fmtD(nrBase(k))+" 12:00";
+    h+='<div class="scard vchg" data-d="'+k+'"><div class="k">✏️ '+esc(fmtLong(k))+'の搬出を変える</div>';
+    if(!open){h+='<p class="hint" style="margin:0 0 6px">'+esc(dl)+'まで、御社の階と台数を変えられます。今の予定: '+esc(mine.map(rowText).join("、")||"なし")+'</p><button class="btn" data-act="vchgopen" data-d="'+k+'">階・台数を変える</button></div>';return}
+    var list=ui.vdr[k]||[],ck=vchgCheck(k,list);
+    h+='<p class="hint" style="margin:0 0 6px">'+esc(dl)+'まで変えられます。変えると、管理者と盛替え業者に通知されます。この日のエレベーターが停まらない階は選べません。</p>';
+    list.forEach(function(x,i){var e=ck.errs[i];
+      h+='<div class="vrow" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:4px 0"><label style="display:flex;align-items:center;gap:4px">階<input type="number" style="width:5em" min="'+LIM.fmin+'" max="'+LIM.fmax+'" id="vcf-'+k+'-'+i+'" data-f="vchf" data-d="'+k+'" data-i="'+i+'" value="'+esc(String(x.f||""))+'" aria-label="階"></label>'
+       +'<label style="display:flex;align-items:center;gap:4px">台数<input type="number" style="width:4.5em" min="1" id="vcu-'+k+'-'+i+'" data-f="vchu" data-d="'+k+'" data-i="'+i+'" value="'+esc(String(x.u||""))+'" aria-label="台数"></label>'
+       +'<button class="btn sm danger" data-act="vchdel" data-d="'+k+'" data-i="'+i+'">外す</button></div>'
+       +(e?'<div class="note bad vng" style="margin:2px 0 6px">'+esc(e)+'</div>':'')});
+    if(ck.all)h+='<div class="note bad vng" style="margin:4px 0">'+esc(ck.all)+'</div>';
+    if(!list.length)h+='<p class="hint" style="margin:4px 0">階が1つもありません。このまま変えると、この日は出さないことになります。</p>';
+    h+='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px"><button class="btn sm" data-act="vchadd" data-d="'+k+'">階を足す</button>'
+     +'<button class="btn primary" data-act="vchsave" data-d="'+k+'"'+(ck.ok?'':' disabled')+'>変えて通知する</button><button class="btn" data-act="vchcancel" data-d="'+k+'">やめる</button></div></div>';
+  });
+  return h;
+}
 function renderMine(C){
-  var mr=myRows(),h='<section class="panel"><h2 style="margin-bottom:6px">自社の搬出予定</h2>';
+  var mr=myRows(),h='<section class="panel"><h2 style="margin-bottom:6px">自社の搬出予定</h2>'+vchgBox(C);
   if(!mr.length)h+='<p class="empty">管理者が回収を確定すると、ここに回収する日・時間・階・集積場所が表示されます。</p>';
   else{
     h+='<p class="hint" style="margin:0 0 8px">管理者が確定した回収予定です。NRボックスを集積場所のエレベーター前まで運んだら、置いたエレベーターを選んで「配置した」にチェックしてください。「前日までに移動」の行は、回収日の前日までに指定の階のEV前へ移しておきます。</p>'
@@ -2661,10 +2718,34 @@ function onClick(ev){
     if(ui.confirm==="unconfirm"){notifyChanges(ui.sel,D.confirmed[ui.sel],null);remove("confirmed",ui.sel);if(inAuto(ui.sel,compute()))mutDay(ui.sel,function(d){d.hold=true});ui.confirm=""}
     else{ui.confirm="unconfirm";keepConfirm=true}
   }
+  else if(act==="vchgopen"){var vk=b.getAttribute("data-d");ui.vdr=ui.vdr||{};ui.vopen=vk;ui.vdr[vk]=vendorRows(D.confirmed[vk],ENV.vid).map(function(r){return {f:r.floor,u:nrNum(r.units)}})}
+  else if(act==="vchcancel"){var vk2=b.getAttribute("data-d");ui.vopen="";if(ui.vdr)delete ui.vdr[vk2]}
+  else if(act==="vchadd"){var vk3=b.getAttribute("data-d");(ui.vdr[vk3]=ui.vdr[vk3]||[]).push({f:"",u:1})}
+  else if(act==="vchdel"){var vk4=b.getAttribute("data-d");(ui.vdr[vk4]||[]).splice(Number(b.getAttribute("data-i")),1)}
+  else if(act==="vchsave"){
+    var vk5=b.getAttribute("data-d"),vl=(ui.vdr||{})[vk5]||[],vck=vchgCheck(vk5,vl);
+    if(!canVEdit(vk5)){ui.msg="変えられるのは、回収日の12:00までです。管理者に連絡してください。";ui.msgKind="bad";ui.vopen=""}
+    else if(!vck.ok){ui.msg="NGの行があります。直してから押してください。";ui.msgKind="bad"}
+    else{
+      var vcfg=nrCfg(D.config),vday=D.days[vk5]||{},vel=(vday.elev||[]).slice().sort(),vmv=vday.moves||{},vbef=clone(D.confirmed[vk5]);
+      var vrows=vl.map(function(x){var f=nrNum(x.f),u=nrNum(x.u),ev=vel.length?nrElevFor(f,vel,vcfg):null,to=null,m=vmv[ENV.vid+"|"+f];
+        if(ev===null&&m&&nrNum(m.ev)){ev=nrNum(m.ev);to=nrNum(m.to)||null}
+        var o={vid:ENV.vid,floor:f,units:u,ev:ev,to:to,ret:null,n:vname(ENV.vid)};setRowRet(o,retFor(ENV.vid,f,u));return o});
+      var vta=vendorRows(vbef,ENV.vid).map(rowText).join("、"),vtb=vrows.map(rowText).join("、");
+      if(vta===vtb){ui.msg="変わったところはありません。";ui.msgKind="";ui.vopen=""}
+      else{var vat=nowIso(),vp={vr:{},at:vat,hist:{$op:"union",v:[histEntry(vname(ENV.vid)+"が予定を変更: "+(vta||"なし")+" → "+(vtb||"なし"))]}};
+        vp.vr[ENV.vid]={rows:vrows,at:vat,by:who()};patch("confirmed",vk5,vp);
+        var vaf=D.confirmed[vk5];crewMail(vk5,vaf,vaf&&vendorRowsAll(vaf)?"変わりました(変更後の予定)":"取りやめになりました");
+        mailOut("vc-"+ENV.vid+"-"+vk5,{to:"admin",d:nrBase(vk5),msg:vname(ENV.vid)+"が"+fmtD(vk5)+"の搬出を変更しました: "+(vta||"なし")+" → "+(vtb||"なし")});
+        ui.vopen="";delete ui.vdr[vk5];ui.msg=fmtD(vk5)+"の搬出を変えました("+(vtb||"出さない")+")。管理者と盛替え業者に通知しました。";ui.msgKind="ok"}
+    }
+  }
   else if(act==="cdel"){var dd=b.getAttribute("data-d"),ii=Number(b.getAttribute("data-i"));markFillSkip(dd,((D.confirmed[dd]||{}).rows||[])[ii]);mutConfirmed(dd,function(cf){cf.rows.splice(ii,1)})}
   else if(act==="cadd"){
     var bx2=b.closest(".mvbox"),da=bx2.getAttribute("data-d"),av=boxVals(bx2),added=0;
-    if(av.to&&av.fl&&av.q){mutConfirmed(da,function(cf){added=addRow(cf,da,av.to,av.fl,av.q,false)});
+    var dy=D.days[da]||{},del2=(dy.elev||[]).slice().sort(),dmv=(dy.moves||{})[av.to+"|"+av.fl],dcf=nrCfg(D.config);
+    if(av.to&&av.fl&&av.q&&del2.length&&nrElevFor(av.fl,del2,dcf)===null&&!(dmv&&nrNum(dmv.ev))){ui.msg="NG: "+av.fl+"階は、この日のエレベーター("+del2.map(function(v){return "EV"+v}).join("・")+")が停まらない階(不停止階)です。追加できません(「不停止階」タブで集積指示を出すと入れられます)。";ui.msgKind="bad"}
+    else if(av.to&&av.fl&&av.q){mutConfirmed(da,function(cf){added=addRow(cf,da,av.to,av.fl,av.q,false)});
       if(!added){ui.msg="追加できませんでした。回収可能台数がいっぱいです。";ui.msgKind="bad"}}
     else{ui.msg="業者・階・台数を入力してください。";ui.msgKind="bad"}
   }
@@ -2990,6 +3071,7 @@ function onChange(ev){
     if(fx){applyAdj(fx[0],fx[1],fx[2]);ui.msg=(ENV.admin?vname(fx[0]):"業者")+"の保有台数と回収希望を"+(fx[2]>0?"更新":"元に戻")+"しました。";ui.msgKind="ok"}
   }
   else if(f==="company"){var id2=el.getAttribute("data-id"),nm=el.value.trim();if(nm){companyMembers(id2).forEach(function(u){patch("approved",u,{company:nm})});var cc=(D.vendors[id2]||{}).code;if(cc)patch("codes",cc,{company:nm})}}
+  else if(f==="vchf"||f==="vchu"){var vk6=el.getAttribute("data-d"),vi6=Number(el.getAttribute("data-i")),vx6=((ui.vdr||{})[vk6]||[])[vi6];if(vx6)vx6[f==="vchf"?"f":"u"]=nrNum(el.value)||""}
   else if(f==="cunits"){
     var d3=el.getAttribute("data-d"),i3=Number(el.getAttribute("data-i"));
     var nv3=nrNum(el.value),r3=((D.confirmed[d3]||{}).rows||[])[i3];/* 先に値を読む(書き込みで画面が描き直されると、欄の値が元に戻る) */

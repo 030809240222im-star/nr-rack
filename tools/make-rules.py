@@ -31,11 +31,25 @@ BLOCK = """
       allow read: if isAdmin() || isApproved{S}() || isCrew{S}();
       allow write: if isAdmin();
     }}
-    // 確定した回収: 行(rows)は管理者だけ。盛替え業者は行ごとの搬出確認・戻し(st)と履歴(hist)だけ書き換えられる
+    // 業者による確定後の変更: 回収日の12:00(日本時間 = 3:00 UTC)まで、自社の行(vr の自社の分)だけ変えられる。履歴(hist)は足すだけ
+    function vEdit{S}(id) {{
+      let me = get(/databases/$(database)/documents/{P}approved/$(request.auth.uid)).data.get('vid', request.auth.uid);
+      let p = id.split('-');
+      let d = request.resource.data;
+      return isApproved{S}()
+        && d.diff(resource.data).affectedKeys().hasOnly(['vr', 'at', 'hist'])
+        && d.vr.diff(resource.data.get('vr', {{}})).affectedKeys().hasOnly([me])
+        && d.vr[me].rows is list && d.vr[me].rows.size() <= 20
+        && d.get('hist', []).hasAll(resource.data.get('hist', []))
+        && (!('vids' in resource.data) || me in resource.data.vids)
+        && request.time < timestamp.date(int(p[0]), int(p[1]), int(p[2])) + duration.value(3, 'h');
+    }}
+    // 確定した回収: 行(rows)は管理者だけ。盛替え業者は行ごとの搬出確認・戻し(st)と履歴(hist)だけ書き換えられる。業者は当日12:00まで自社の行を変えられる(vEdit)
     match /{P}confirmed/{{id}} {{
       allow read: if isAdmin() || isApproved{S}() || isCrew{S}();
       allow write: if isAdmin();
       allow update: if isCrew{S}() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['st', 'at', 'hist']);
+      allow update: if vEdit{S}(id);
     }}
 
     // 業者の入力: 本人(利用中)と管理者。盛替え業者は戻したときの台数(floors)だけ書き換えられる
