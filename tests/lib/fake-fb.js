@@ -39,8 +39,14 @@ export async function setDoc(r,d,o){const bad=badVal(d,r.c+'/'+r.id);if(bad){con
 export async function deleteDoc(r){if(S[r.c])delete S[r.c][r.id];save();setTimeout(emit,1)}
 export function onSnapshot(r,o,cb,err){if(typeof o==='function'){err=cb;cb=o;o={}}const meta=!!o.includeMetadataChanges;
   const f=()=>{ if(PEND&&!meta&&false)return; if(r.id!==undefined){const d=(S[r.c]||{})[r.id];cb({id:r.id,exists:()=>!!d,data:()=>d,metadata:{hasPendingWrites:PEND}})}
-    else cb({docs:Object.entries(S[r.c]||{}).map(([id,d])=>({id,data:()=>d}))})};
+    else{/* window.__FAKE_STALE = {コレクション:{文書}} があるあいだは、端末に残っていた古いデータ(fromCache)として返す。window.__releaseStale() で最新に */
+      const st=window.__FAKE_STALE&&window.__FAKE_STALE[r.c];
+      cb({docs:Object.entries(st||S[r.c]||{}).map(([id,d])=>({id,data:()=>d})),metadata:{fromCache:!!st}})}};
   L.push(f);setTimeout(f,0);return ()=>{}
 }
 
+window.__releaseStale=()=>{window.__FAKE_STALE=null;emit()};
+/* 取引: 読んでから書く(まだないときだけ作る、に使う) */
+export async function runTransaction(f,fn){const w=[];const t={get:async r=>{const d=(S[r.c]||{})[r.id];return {exists:()=>!!d,data:()=>d}},set:(r,d)=>{w.push([r,d])}};
+  await fn(t);for(const [r,d] of w)await setDoc(r,d)}
 export async function getDoc(r){const d=(S[r.c]||{})[r.id];return {exists:()=>!!d,data:()=>d}}
