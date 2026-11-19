@@ -1,4 +1,4 @@
-// 全画面・全ボタンを押して回る(管理者・業者・盛替え業者 × 簡単/詳しい表示 × スマホ/iPad/パソコン)。画面のエラーとはみ出しを数える
+// 全画面・全ボタンを押して回る(管理者・業者・盛替え業者 × 簡単/詳しい表示 × スマホ/iPad/パソコン)。画面のエラーとはみ出し、壊れた属性を数える
 const REPO=require('path').resolve(__dirname,'..','..')+'/';const WORK=process.cwd();
 const {chromium,devices}=require('playwright');const fs=require('fs');
 fs.writeFileSync('main-test.html',fs.readFileSync(REPO+'index.html','utf8'));
@@ -43,6 +43,8 @@ for(const [dn,dev] of [['スマホ',devices['iPhone 13']],['PC',{viewport:{width
       if((await btn.getAttribute('data-act'))!==a)continue;
       await btn.click({timeout:600}).catch(()=>{});clicks++;await p.waitForTimeout(30);
       const sw=await p.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth);if(sw>1)problems.push(label+' '+(tab||'')+' '+a+' はみ出し '+sw+'px');
+      /* 引用符の打ち間違いで壊れた属性(value=""'18'" のような)がないか */
+      const odd=await p.evaluate(()=>{const o=[];document.querySelectorAll('*').forEach(e=>{for(const x of e.attributes)if(!/^[a-z][a-z0-9-]*$/.test(x.name))o.push(e.tagName+' '+x.name)});return o});if(odd.length)problems.push(label+' '+(tab||'')+' '+a+' 壊れた属性 '+odd.slice(0,2).join(','));
       await go()}
   }
   console.log(label+': ボタン・日付を押した数 '+clicks+(errs.length?' エラー'+errs.length:''));
