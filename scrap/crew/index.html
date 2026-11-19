@@ -854,6 +854,14 @@ function patch(coll,id,p){
   if(ENV.mode==="local"){persist(coll,id,D[coll][id]);return}
   send(ENV.db.doc(coll+"/"+id).patch(p));
 }
+/* patch と同じだが、サーバーに保存できたかを Promise で返す(保存できてから通知するとき用)。失敗すると、届いた最新の内容で画面が元に戻る */
+function patchP(coll,id,p){
+  SESC=null;D[coll][id]=mergeDeep(clone(D[coll][id]||{}),p);if(coll==="confirmed")hydrate(D[coll][id]);
+  if(ENV.mode!=="db"){persist(coll,id,D[coll][id]);return Promise.resolve()}
+  var pr=ENV.db.doc(coll+"/"+id).patch(p);PEND.n++;if(!PEND.since)PEND.since=Date.now();
+  pr.then(function(){},function(){}).then(function(){PEND.n--;if(!PEND.n)PEND.since=0});
+  return pr;
+}
 /* 変更前と変更後を比べて、変わった項目だけの patch にする */
 function diff(a,b){
   var p={},n=0;a=isObj(a)?a:{};
@@ -1819,7 +1827,7 @@ function sVendorHome(C){
 }
 function sVendorCount(C){
   var fl=(D.vendors[ENV.vid]||{}).floors||{},ks=Object.keys(fl).map(Number);if(ui.sadd&&ks.indexOf(ui.sadd)<0)ks.push(ui.sadd);ks.sort(function(a,b){return b-a});
-  var h='<section class="panel simple"><p class="hint" style="margin:0">階ごとに、<b>今ある台数</b>と、そのうち<b>出したい台数</b>を入れます。入れた数字は自動で保存されます。</p>';
+  var h='<section class="panel simple">'+vchgNote(C)+'<p class="hint" style="margin:0">階ごとに、<b>今ある台数</b>と、そのうち<b>出したい台数</b>を入れます。入れた数字は自動で保存されます。</p>';
   /* 先に出す順番と、順番ごとの台数(次の搬出では、この順に先に回収する) */
   var pr=ks.filter(function(f){var e=fl[f]||{};return nrNum(e.p)&&nrNum(e.w)}).sort(function(a,b){return nrNum(fl[a].p)-nrNum(fl[b].p)});
   if(pr.length){var tot=0;h+='<div class="scard prio-sum"><div class="k">次の搬出で先に出す順番</div>'+pr.map(function(f){var e=fl[f],q=nrNum(e.pq)?Math.min(nrNum(e.pq),nrNum(e.w)):nrNum(e.w);tot+=q;return '<div><b>'+nrNum(e.p)+'番</b> '+f+'階 '+q+'台</div>'}).join("")+'<div>先に出す合計 <b>'+tot+'台</b></div></div>'}
@@ -2105,7 +2113,7 @@ function rsClip(e){
   var left=nrNum(e.w);e.rs=(e.rs||[]).map(function(x){var u=Math.min(nrNum(x.u),left);left-=u;return {f:Math.min(LIM.fmax,nrNum(x.f)),u:u}});delete e.r;
 }
 function renderVin(C){
-  var vid=ENV.admin?ui.vsel:ENV.vid,h='<section class="panel"><h2 style="margin-bottom:10px">搬出の入力</h2>';
+  var vid=ENV.admin?ui.vsel:ENV.vid,h='<section class="panel"><h2 style="margin-bottom:10px">搬出の入力</h2>'+vchgNote(C);
   if(ENV.admin){h+=vendorPicker(C);vid=ui.vsel}
   if(!vid){
     return h+'<p class="empty">利用中の業者がまだありません。業者にURLから登録してもらうか、「業者を追加」から作成してください。</p></section>';
@@ -2180,9 +2188,23 @@ function vchgCheck(k,list){
   var all=tot>room?"この日に御社が出せるのは"+room+"台までです(今の入力は"+tot+"台)。":"";
   return {errs:errs,all:all,ok:!all&&errs.every(function(e){return !e}),room:room};
 }
+/* 業者の「台数」(入力)画面の上に出す: 確定した回収日は、ここで台数を変えても予定は変わらないこと。変えるときは「搬出を変える」へ */
+function vchgNote(C){
+  if(ENV.admin||ENV.crew||!ENV.vid)return "";
+  var ks=Object.keys(D.confirmed).filter(function(k){return nrBase(k)>=C.t&&vendorRows(D.confirmed[k],ENV.vid).length}).sort();if(!ks.length)return "";
+  return '<div class="note warn vnote" style="display:block;margin:0 0 10px"><b>確定した回収日の予定は、この画面で台数を変えても変わりません。</b>'+ks.map(function(k){var can=canVEdit(k);
+    return '<div style="margin-top:6px">'+esc(fmtD(k))+': '+esc(vendorRows(D.confirmed[k],ENV.vid).map(rowText).join("、"))
+      +(can?' <button class="btn sm primary" data-act="vchgjump" data-d="'+k+'">この日の階・台数を変える</button><span class="hint" style="margin:0 0 0 4px">('+esc(fmtD(nrBase(k)))+' 12:00まで)</span>'
+        :' <span class="hint" style="margin:0">(当日12:00を過ぎたので、変えるときは管理者に連絡してください)</span>')+'</div>'}).join("")
+    +'<p class="hint" style="margin:6px 0 0">この画面の台数は、まだ確定していない回収日の配分に使われます。</p></div>';
+}
 function vchgBox(C){
-  var ks=Object.keys(D.confirmed).filter(canVEdit).sort();if(!ks.length)return "";
-  ui.vdr=ui.vdr||{};var h='';
+  var ks=Object.keys(D.confirmed).filter(canVEdit).sort();
+  /* 今日の回収で、12:00を過ぎて変えられなくなったもの */
+  var late=Object.keys(D.confirmed).filter(function(k){return nrBase(k)===C.t&&!canVEdit(k)&&vendorRows(D.confirmed[k],ENV.vid).length&&!ENV.admin&&!ENV.crew}).sort();
+  var h=late.map(function(k){return '<p class="hint" style="margin:0 0 8px">'+esc(fmtD(k))+'の搬出は、12:00を過ぎたので変えられません。変えるときは管理者に連絡してください。</p>'}).join("");
+  if(!ks.length)return h;
+  ui.vdr=ui.vdr||{};
   ks.forEach(function(k){var open=ui.vopen===k,mine=vendorRows(D.confirmed[k],ENV.vid),dl=fmtD(nrBase(k))+" 12:00";
     h+='<div class="scard vchg" data-d="'+k+'"><div class="k">✏️ '+esc(fmtLong(k))+'の搬出を変える</div>';
     if(!open){h+='<p class="hint" style="margin:0 0 6px">'+esc(dl)+'まで、御社の階と台数を変えられます。今の予定: '+esc(mine.map(rowText).join("、")||"なし")+'</p><button class="btn" data-act="vchgopen" data-d="'+k+'">階・台数を変える</button></div>';return}
@@ -2775,6 +2797,8 @@ function onClick(ev){
     if(ui.confirm==="unconfirm"){notifyChanges(ui.sel,D.confirmed[ui.sel],null);remove("confirmed",ui.sel);if(inAuto(ui.sel,compute()))mutDay(ui.sel,function(d){d.hold=true});ui.confirm=""}
     else{ui.confirm="unconfirm";keepConfirm=true}
   }
+  else if(act==="vchgjump"){var vj=b.getAttribute("data-d");ui.vdr=ui.vdr||{};ui.vopen=vj;ui.vdr[vj]=vendorRows(D.confirmed[vj],ENV.vid).map(function(r){return {f:r.floor,u:nrNum(r.units),rl:rlOf(r)}});
+    if(ui.simple)ui.stab="s-home";else ui.tab="cal";window.scrollTo(0,0)}
   else if(act==="vchgopen"){var vk=b.getAttribute("data-d");ui.vdr=ui.vdr||{};ui.vopen=vk;ui.vdr[vk]=vendorRows(D.confirmed[vk],ENV.vid).map(function(r){return {f:r.floor,u:nrNum(r.units),rl:rlOf(r)}})}
   else if(act==="vchcancel"){var vk2=b.getAttribute("data-d");ui.vopen="";if(ui.vdr)delete ui.vdr[vk2]}
   else if(act==="vchadd"){var vk3=b.getAttribute("data-d");(ui.vdr[vk3]=ui.vdr[vk3]||[]).push({f:"",u:1})}
@@ -2796,10 +2820,14 @@ function onClick(ev){
       var vta=vendorRows(vbef,ENV.vid).map(rowText).join("、"),vtb=vrows.map(rowText).join("、");
       if(vta===vtb){ui.msg="変わったところはありません。";ui.msgKind="";ui.vopen=""}
       else{var vat=nowIso(),vp={vr:{},at:vat,hist:{$op:"union",v:[histEntry(vname(ENV.vid)+"が予定を変更: "+(vta||"なし")+" → "+(vtb||"なし"))]}};
-        vp.vr[ENV.vid]={rows:vrows,at:vat,by:who()};patch("confirmed",vk5,vp);
-        var vaf=D.confirmed[vk5];crewMail(vk5,vaf,vaf&&vendorRowsAll(vaf)?"変わりました(変更後の予定)":"取りやめになりました");
-        mailOut("vc-"+ENV.vid+"-"+vk5,{to:"admin",d:nrBase(vk5),msg:vname(ENV.vid)+"が"+fmtD(vk5)+"の搬出を変更しました: "+(vta||"なし")+" → "+(vtb||"なし")});
-        ui.vopen="";delete ui.vdr[vk5];ui.msg=fmtD(vk5)+"の搬出を変えました("+(vtb||"出さない")+")。管理者と盛替え業者に通知しました。";ui.msgKind="ok"}
+        vp.vr[ENV.vid]={rows:vrows,at:vat,by:who()};
+        /* 通知は、サーバーに保存できてから送る(保存できなかったのに通知だけ届かないように) */
+        var vdone=function(){var vaf=D.confirmed[vk5];crewMail(vk5,vaf,vaf&&vendorRowsAll(vaf)?"変わりました(変更後の予定)":"取りやめになりました");
+          mailOut("vc-"+ENV.vid+"-"+vk5,{to:"admin",d:nrBase(vk5),msg:vname(ENV.vid)+"が"+fmtD(vk5)+"の搬出を変更しました: "+(vta||"なし")+" → "+(vtb||"なし")})};
+        var vmsg=fmtD(vk5)+"の搬出を変えました("+(vtb||"出さない")+")。";
+        patchP("confirmed",vk5,vp).then(function(){vdone();ui.msg=vmsg+"管理者と盛替え業者に通知しました。";ui.msgKind="ok";render(true)},function(e){
+          ui.msg=fmtD(vk5)+"の変更を保存できませんでした("+((e&&e.code)||"error")+")。"+(e&&e.code==="permission-denied"?"12:00を過ぎたか、アプリの設定の更新が必要です。管理者に連絡してください。":"電波を確かめて、もう一度押してください。");ui.msgKind="bad";render(true)});
+        ui.vopen="";delete ui.vdr[vk5];ui.msg=vmsg+"保存しています…";ui.msgKind="ok"}
     }
   }
   else if(act==="cdel"){var dd=b.getAttribute("data-d"),ii=rowIdx(dd,b);if(ii<0){ui.msg=GONE_MSG;ui.msgKind="bad"}else if(!isFresh(["confirmed"])){ui.msg=STALE_MSG;ui.msgKind="bad"}else markFillSkip(dd,((D.confirmed[dd]||{}).rows||[])[ii]);mutConfirmed(dd,function(cf){cf.rows.splice(ii,1)})}

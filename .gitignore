@@ -1,3 +1,6 @@
 backup-out/
 server/node_modules/
 tests/.work/
+tests/rules/node_modules/
+tests/rules/package*.json
+tests/rules/*.log
