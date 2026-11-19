@@ -35,7 +35,7 @@ const o0=await p.locator('#vcrf-'+W+'-0-0').inputValue(),o1=await p.locator('#vc
 ok(o0==='18'&&o1==='22','搬出を変える: 開いたときに、今の戻し階(16階→18階・20階→22階)が入っている');
 await p.fill('#vcrf-'+W+'-0-0','17');await p.locator('#vcrf-'+W+'-0-0').blur();await p.waitForTimeout(400);
 const a1=await p.locator('#vcrf-'+W+'-1-0').inputValue();console.log(' 16階を17にしたあと 20階の欄:',a1);ok(a1==='22','搬出を変える: 16階の戻し階を変えても、20階の欄は22のまま');
-const odd=await p.evaluate(()=>{const o=[];document.querySelectorAll('*').forEach(e=>{for(const a of e.attributes)if(!/^[a-z][a-z0-9-]*$/.test(a.name))o.push(e.tagName+' '+a.name)});return o});
+const odd=await p.evaluate(()=>{const o=[];document.querySelectorAll('*').forEach(e=>{for(const a of e.attributes)if(!/^[a-zA-Z][a-zA-Z0-9:-]*$/.test(a.name))o.push(e.tagName+' '+a.name)});return o});
 ok(odd.length===0,'画面に壊れた属性がない'+(odd.length?': '+odd.slice(0,3).join(', '):''));
 await p.click('[data-act=vchsave]');await p.waitForTimeout(1500);
 S=await st(p);const vr=S.confirmed[W].vr.v1.rows;console.log(' 保存:',JSON.stringify(vr.map(r=>[r.floor,r.ret,r.rets])));

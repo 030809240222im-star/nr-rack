@@ -44,7 +44,7 @@ for(const [dn,dev] of [['スマホ',devices['iPhone 13']],['PC',{viewport:{width
       await btn.click({timeout:600}).catch(()=>{});clicks++;await p.waitForTimeout(30);
       const sw=await p.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth);if(sw>1)problems.push(label+' '+(tab||'')+' '+a+' はみ出し '+sw+'px');
       /* 引用符の打ち間違いで壊れた属性(value=""'18'" のような)がないか */
-      const odd=await p.evaluate(()=>{const o=[];document.querySelectorAll('*').forEach(e=>{for(const x of e.attributes)if(!/^[a-z][a-z0-9-]*$/.test(x.name))o.push(e.tagName+' '+x.name)});return o});if(odd.length)problems.push(label+' '+(tab||'')+' '+a+' 壊れた属性 '+odd.slice(0,2).join(','));
+      const odd=await p.evaluate(()=>{const o=[];document.querySelectorAll('*').forEach(e=>{for(const x of e.attributes)if(!/^[a-zA-Z][a-zA-Z0-9:-]*$/.test(x.name))o.push(e.tagName+' '+x.name)});return o});if(odd.length)problems.push(label+' '+(tab||'')+' '+a+' 壊れた属性 '+odd.slice(0,2).join(','));
       await go()}
   }
   console.log(label+': ボタン・日付を押した数 '+clicks+(errs.length?' エラー'+errs.length:''));
