@@ -47,7 +47,7 @@ const b1=p.locator('#vcrf-'+W+'-1-0');await b1.locator('xpath=..').locator('.stp
 ok((await p.locator('#vcrf-'+W+'-1-0').inputValue())==='16','足した階(16階)の空の戻し階で＋を押すと16階から始まる');
 console.log(' はみ出し(戻し先を分けた後):',await p.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth));
 await p.screenshot({path:WORK+'/vchg-ret.png'});
-await p.click('[data-act=vchsave]');await p.waitForTimeout(500);
+await p.click('[data-act=vchsave]');await p.waitForTimeout(1500);
 let S=await st(p);const vr=((S.confirmed[W].vr||{}).v1||{}).rows||[];
 console.log(' 記録:',JSON.stringify(vr.map(r=>[r.floor,r.units,r.ev])),'履歴:',(S.confirmed[W].hist||[]).map(h=>h.t).join(' / '));
 ok(JSON.stringify(vr.map(r=>[r.floor,r.units,r.ev]))==='[[20,2,1],[16,2,1]]','変えた行が自社の分(vr)として保存される');
