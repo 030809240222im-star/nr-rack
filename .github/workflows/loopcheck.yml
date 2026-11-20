@@ -1,0 +1,39 @@
+# 書き込みの数の点検(手で動かす)。本番のデータをこの中のエミュレーターに写し、アプリを開いたまま置いて、どこに何回書き込むかを数える。
+# 本番には何も書かない。ログには集まりの名前と回数だけを出す。
+name: loopcheck
+on:
+  workflow_dispatch:
+    inputs:
+      seconds:
+        description: "開いたまま置く秒数"
+        default: "200"
+permissions:
+  contents: read
+jobs:
+  loopcheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - run: npm install --no-audit --no-fund
+        working-directory: server
+      - run: npm install --no-audit --no-fund firebase@10.12.2 esbuild firebase-tools playwright
+        working-directory: tests/e2e
+      - run: npx playwright install --with-deps chromium
+        working-directory: tests/e2e
+      - run: |
+          cp ../../firestore.rules .
+          npx esbuild entry.js --bundle --format=esm --platform=browser --outfile=fb.js
+          npx firebase emulators:exec --only firestore,auth --project nr-rack "node loop.js" 2>&1 | grep -vE "^i |emulator|Emulator|^\s*$|lsof|java" || true
+        working-directory: tests/e2e
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          ADMIN_SDK: ${{ github.workspace }}/server/node_modules/firebase-admin
+          IDLE_MS: ${{ format('{0}000', inputs.seconds) }}
