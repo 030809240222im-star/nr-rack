@@ -37,9 +37,11 @@ for (const P of ["", "scrap_"]) {
    ALREADY_EXISTS(6) なら書き込みの窓口は動いている。RESOURCE_EXHAUSTED(8) なら1日の上限に達している */
 for (const path of ["config/main", "scrap_config/main"]) {
   const t0 = Date.now();
-  try { await db.doc(path).create({ probe: true }); console.log("書き込みの試し " + path + ": 作れてしまった(想定外)"); }
+  try { const r = await Promise.race([db.doc(path).create({ probe: true }).then(() => "made"), new Promise(res => setTimeout(() => res("timeout"), 25000))]);
+    console.log("書き込みの試し " + path + ": " + (r === "made" ? "作れてしまった(想定外)" : "25秒たっても返事がない(サーバーが受け付けず、やり直しを続けている)")); }
   catch (e) { console.log("書き込みの試し " + path + ": 返事 " + e.code + " " + String(e.details || e.message || "").slice(0, 120) + " (" + (Date.now() - t0) + "ms)"); }
 }
+console.log("書き込みの試し: 終わり " + jst(new Date()));
 /* ===== 全文書の保存時刻(11/18 以降)。どの集まりか・保存時刻・中に書かれた最新の時刻(at など)だけを出す */
 {
   const since = Date.parse("2026-11-18T00:00:00+09:00"), all = [];
@@ -93,3 +95,4 @@ if (token) {
     }
   }
 }
+process.exit(0);
