@@ -968,6 +968,23 @@ function markSeen(){
   if(ENV.mode!=="db"||ENV.preview||!ENV.uid||Date.now()-SEEN_AT<300000)return;SEEN_AT=Date.now();
   try{var pr=ENV.db.doc("seen/"+ENV.uid).patch({at:nowIso(),email:String(ENV.email||"").slice(0,200),kind:ENV.admin?"admin":ENV.crew?"crew":"vendor"});if(pr&&pr.then)pr.then(function(){SEEN_ERR="";SEEN_OK=nowIso()},function(e){SEEN_ERR=(e&&e.code)||"error";SEEN_AT=0;render(true)})}catch(e){SEEN_ERR=String(e&&e.message||e).slice(0,60)}
 }
+/* 画面に戻ったとき: スマホ(特にホーム画面に追加した iPhone)は、裏で何日も止まったままになり、戻っても知らせ(visibilitychange)が来ないことがある。
+   そのため、戻る・表示し直す・前に出る・電波が戻る・時計が飛んだ(止まっていた)のどれでも最終ログインを残し、
+   1時間以上止まっていたときは開き直して最新のアプリとデータにする(電波があり、未送信がなく、入力中でないときだけ) */
+var WAKE={last:Date.now(),hidden:0,on:false};
+function wakeUp(){
+  markSeen();var gone=WAKE.hidden?Date.now()-WAKE.hidden:0;WAKE.hidden=0;
+  if(gone>3600000&&navigator.onLine&&!PEND.n&&!document.querySelector("input:focus,textarea:focus,select:focus")){try{sessionStorage.setItem("nr-woke","1")}catch(e){}location.reload()}
+}
+function wakeSetup(){
+  if(WAKE.on)return;WAKE.on=true;
+  document.addEventListener("visibilitychange",function(){if(document.visibilityState==="hidden")WAKE.hidden=Date.now();else wakeUp()});
+  window.addEventListener("pageshow",function(e){if(e.persisted)wakeUp()});
+  window.addEventListener("focus",function(){markSeen()});window.addEventListener("online",function(){markSeen()});
+  setInterval(function(){var n=Date.now(),gap=n-WAKE.last;WAKE.last=n;
+    if(gap>600000){if(!WAKE.hidden)WAKE.hidden=n-gap;wakeUp()}/* 1分ごとのはずが10分以上空いた = 裏で止まっていた */
+    else if(document.visibilityState==="visible"&&n-SEEN_AT>900000)markSeen()},60000);
+}
 function seenText(id){var s=D.seen[id];return '<span class="hint seen" style="margin:0">最終ログイン '+(s&&s.at?esc(fmtAt(s.at)):'記録なし')+'</span>'}
 function subscribe(){
   var err=function(e){ui.msg="データを読み込めませんでした("+((e&&e.code)||"error")+")"+(e&&e.code==="permission-denied"?"。Firebaseのセキュリティルールに、このアカウントのメールアドレスが管理者として入っているか確認してください。":"");ui.msgKind="bad";render(true)};
@@ -979,7 +996,7 @@ function subscribe(){
   /* 最終ログイン(seen/{本人})は管理者だけが読む。ルールを貼る前でも画面を止めないよう、読めなくても黙って続ける */
   if(ENV.admin)ENV.db.collection("seen").onSnapshot(function(snap){var m={};snap.docs.forEach(function(d){m[d.id]=d.data()});D.seen=m;render(true)},function(){});
   markSeen();
-  document.addEventListener("visibilitychange",function(){if(document.visibilityState==="visible")markSeen()});
+  wakeSetup();
   ENV.db.doc("config/main").onSnapshot(function(s){D.config=s.exists?s.data():{};LOADED.config=true;FRESH.config=s.fresh!==false;ui.synced=new Date();render(true)},err);
   /* 業者から届いた連絡: 管理者は inbox/admin、盛替え業者は inbox/crew。ルールを貼る前でも画面を止めない */
   if(ENV.admin||ENV.crew){var ibx=ENV.admin?"admin":"crew";ENV.db.doc("inbox/"+ibx).onSnapshot(function(s){var m={};if(s.exists)m[ibx]=s.data();D.inbox=m;LOADED.inbox=true;render(true)},function(){})}
