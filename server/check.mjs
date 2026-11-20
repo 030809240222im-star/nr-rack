@@ -33,6 +33,16 @@ for (const P of ["", "scrap_"]) {
   }
 }
 
+/* ===== 書き込みの窓口に直接たずねる(やり直しなし)。すでにある文書を「なければ作る」として送るので、データは変わらない。返事の種類と文面を出す */
+{
+  let tk = null; try { tk = (await admin.credential.cert(sa).getAccessToken()).access_token; } catch (e) {}
+  for (const path of ["config/main", "scrap_config/main"]) {
+    const name = "projects/" + sa.project_id + "/databases/" + (process.env.FIRESTORE_DB || "default") + "/documents/" + path;
+    const r = await fetch("https://firestore.googleapis.com/v1/projects/" + sa.project_id + "/databases/" + (process.env.FIRESTORE_DB || "default") + "/documents:commit", { method: "POST", headers: { Authorization: "Bearer " + tk, "Content-Type": "application/json" }, body: JSON.stringify({ writes: [{ update: { name, fields: { probe: { booleanValue: true } } }, currentDocument: { exists: false } }] }) });
+    const t = await r.text(); let j = null; try { j = JSON.parse(t); } catch (e) {}
+    console.log("書き込みの窓口(" + path + ") " + jst(new Date()) + ": HTTP " + r.status + " " + ((j && j.error && (j.error.status + " " + String(j.error.message || "").slice(0, 160))) || (r.ok ? "書けた(想定外)" : t.slice(0, 160))));
+  }
+}
 /* ===== 書き込みが通るかの試し(データは変わらない): すでにある文書を「新しく作る」と頼み、サーバーの返事の種類を見る。
    ALREADY_EXISTS(6) なら書き込みの窓口は動いている。RESOURCE_EXHAUSTED(8) なら1日の上限に達している */
 for (const path of ["config/main", "scrap_config/main"]) {
