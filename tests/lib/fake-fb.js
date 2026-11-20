@@ -2,6 +2,7 @@
 let PEND=false;const S=window.__FS=(sessionStorage.__FS?JSON.parse(sessionStorage.__FS):(window.__FS||{}));const save=()=>sessionStorage.__FS=JSON.stringify(S);const L=[];
 function emit(){L.forEach(f=>f())}
 export function initializeApp(c){return {c}}
+export function onLog(cb){(window.__FAKE_LOG=window.__FAKE_LOG||[]).push(cb)}
 // auth
 function wrap(u){if(u){u.getIdToken=async()=>'tok';u.reload=async()=>{if(sessionStorage.__VERIFIED){u.emailVerified=true;sessionStorage.__U=JSON.stringify(u)}}}return u}
 let cur=wrap(sessionStorage.__U?JSON.parse(sessionStorage.__U):null),authCbs=[];
@@ -38,7 +39,7 @@ export function doc(f,a,b){const [c,id]=b?[a,b]:a.split('/');return {c,id}}
 /* 本物の Firestore と同じく、undefined の値・関数・NaN を含む書き込みは拒否する(気づかずに保存できない不具合を試験で見つけるため) */
 function badVal(v,path){if(v===undefined)return path;if(typeof v==='function')return path;if(typeof v==='number'&&isNaN(v))return path;
   if(v&&typeof v==='object'&&!v.__fv){if(Array.isArray(v)){for(let i=0;i<v.length;i++){if(Array.isArray(v[i]))return path+'['+i+'](配列の中の配列)';const x=badVal(v[i],path+'['+i+']');if(x)return x}}else for(const k of Object.keys(v)){const x=badVal(v[k],path+'.'+k);if(x)return x}}return null}
-export async function setDoc(r,d,o){/* window.__FAKE_DENY = ['confirmed'] のコレクションへの書き込みは、ルールで拒否されたとして失敗させる */if((window.__FAKE_DENY||[]).includes(r.c)){await new Promise(z=>setTimeout(z,200));emit();const e=new Error('Missing or insufficient permissions.');e.code='permission-denied';throw e}const bad=badVal(d,r.c+'/'+r.id);if(bad){const e=new Error('Unsupported field value at '+bad);e.code='invalid-argument';console.error('FAKE-FB 書き込み拒否: '+bad);throw e}S[r.c]=S[r.c]||{};S[r.c][r.id]=(o&&o.merge)?mg(S[r.c][r.id],d):JSON.parse(JSON.stringify(d));PEND=true;emit();await new Promise(z=>setTimeout(z,300));save();PEND=false;emit()}
+export async function setDoc(r,d,o){/* 書き込みの回数(集まりごと)を数える。開き直しても残す */try{const w=JSON.parse(sessionStorage.__WC||'{}');w[r.c]=(w[r.c]||0)+1;sessionStorage.__WC=JSON.stringify(w)}catch(e){}/* window.__FAKE_DENY = ['confirmed'] のコレクションへの書き込みは、ルールで拒否されたとして失敗させる */if((window.__FAKE_DENY||[]).includes(r.c)){await new Promise(z=>setTimeout(z,200));emit();const e=new Error('Missing or insufficient permissions.');e.code='permission-denied';throw e}const bad=badVal(d,r.c+'/'+r.id);if(bad){const e=new Error('Unsupported field value at '+bad);e.code='invalid-argument';console.error('FAKE-FB 書き込み拒否: '+bad);throw e}S[r.c]=S[r.c]||{};S[r.c][r.id]=(o&&o.merge)?mg(S[r.c][r.id],d):JSON.parse(JSON.stringify(d));PEND=true;emit();await new Promise(z=>setTimeout(z,300));save();PEND=false;emit()}
 export async function deleteDoc(r){if(S[r.c])delete S[r.c][r.id];save();setTimeout(emit,1)}
 export function onSnapshot(r,o,cb,err){if(typeof o==='function'){err=cb;cb=o;o={}}const meta=!!o.includeMetadataChanges;
   const f=()=>{ if(PEND&&!meta&&false)return; if(r.id!==undefined){const d=(S[r.c]||{})[r.id];cb({id:r.id,exists:()=>!!d,data:()=>d,metadata:{hasPendingWrites:PEND,fromCache:!!(window.__FAKE_STALE&&window.__FAKE_STALE.__all)}})}
