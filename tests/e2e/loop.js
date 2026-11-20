@@ -4,7 +4,7 @@
 const {chromium}=require('playwright');const fs=require('fs'),http=require('http');
 const FB=fs.readFileSync(__dirname+'/fb.js','utf8');
 let html=fs.readFileSync(process.env.HTML||__dirname+'/../../index.html','utf8');
-html=html.replace('import {initializeApp} from','import {initializeApp,connectAuthEmulator,connectFirestoreEmulator} from');
+html=html.replace(/import \{initializeApp(,onLog)?\} from/,(m,a)=>'import {initializeApp'+(a||'')+',connectAuthEmulator,connectFirestoreEmulator} from');
 html=html.replace('var fb=initializeApp(CFG.firebase),auth=getAuth(fb),fs=openStore(fb);','var fb=initializeApp(CFG.firebase),auth=getAuth(fb),fs=openStore(fb);connectAuthEmulator(auth,"http://127.0.0.1:9099",{disableWarnings:true});connectFirestoreEmulator(fs,"127.0.0.1",8085);');
 /* 書き込みを数える */
 const W='(window.__W=window.__W||{},window.__W[k]=(window.__W[k]||0)+1)';

@@ -775,10 +775,12 @@ var LOADED={};
    確定や確定した予定の書き換えは、最新のデータのときだけ行う(古いデータのまま確定し直したり、行を書き戻したりしないように) */
 var FRESH={};
 /* サーバーとのつながり: last=最後にサーバーから最新が届いた時刻、stuck=送った入力がサーバーに届かないまま */
-var SYNC={last:0,stuck:false,checking:false,start:Date.now()};
+var SYNC={last:0,stuck:false,checking:false,start:Date.now(),quota:0};
+/* Firebase のエラーの記録が「1日の上限に達した(resource-exhausted / Quota exceeded)」なら、その時刻を覚えて true */
+function quotaHit(m){if(!/resource[-_ ]exhausted|quota (limit )?exceeded/i.test(String(m||"")))return false;var first=!SYNC.quota;SYNC.quota=Date.now();return first}
 function syncCheck(){
   if(ENV.mode!=="db"||!ENV.db||!ENV.db.pending||SYNC.checking)return;SYNC.checking=true;var done=false;
-  ENV.db.pending().then(function(){done=true;SYNC.checking=false;if(SYNC.stuck){SYNC.stuck=false;render(true)}},function(){done=true;SYNC.checking=false});
+  ENV.db.pending().then(function(){done=true;SYNC.checking=false;if(SYNC.stuck||SYNC.quota){SYNC.stuck=false;SYNC.quota=0;render(true)}},function(){done=true;SYNC.checking=false});
   setTimeout(function(){if(!done&&!SYNC.stuck){SYNC.stuck=true;render(true)}},20000);
 }
 function isFresh(cs){return ENV.mode!=="db"||cs.every(function(c){return FRESH[c]})}
@@ -969,11 +971,14 @@ function watchVid(){
   /* 自分の会社が送った連絡(sent/{会社})。ルールを貼る前は読めないので、黙って空にする */
   D.sent={};VSUB.off.push(ENV.db.doc("sent/"+ENV.vid).onSnapshot(function(s){var m={};if(s.exists)m[ENV.vid]=s.data();D.sent=m;render(true)},function(){}));
 }
-/* 開いたとき(と画面に戻ったとき)に、最終ログインの時刻を残す。5分以内の繰り返しは書かない。失敗しても画面には出さない */
-var SEEN_AT=0,SEEN_ERR="",SEEN_OK="";
+/* 開いたとき(と画面に戻ったとき)に、最終ログインの時刻を残す。10分以内の繰り返しは書かない(開き直したときも。前に書いた時刻を端末に覚えておく)。
+   サーバーの1日の書き込み回数には上限があるので、むだに書かない。失敗しても画面には出さない */
+var SEEN_AT=0,SEEN_ERR="",SEEN_OK="",SEEN_MS=600000;
 function markSeen(){
-  if(ENV.mode!=="db"||ENV.preview||!ENV.uid||Date.now()-SEEN_AT<300000)return;SEEN_AT=Date.now();
-  try{var pr=ENV.db.doc("seen/"+ENV.uid).patch({at:nowIso(),email:String(ENV.email||"").slice(0,200),kind:ENV.admin?"admin":ENV.crew?"crew":"vendor"});if(pr&&pr.then)pr.then(function(){SEEN_ERR="";SEEN_OK=nowIso()},function(e){SEEN_ERR=(e&&e.code)||"error";SEEN_AT=0;render(true)})}catch(e){SEEN_ERR=String(e&&e.message||e).slice(0,60)}
+  if(ENV.mode!=="db"||ENV.preview||!ENV.uid)return;
+  var sk="nr-seen-"+location.pathname+"-"+ENV.uid;try{SEEN_AT=Math.max(SEEN_AT,Number(localStorage.getItem(sk))||0)}catch(e){}
+  if(Date.now()-SEEN_AT<SEEN_MS)return;SEEN_AT=Date.now();try{localStorage.setItem(sk,String(SEEN_AT))}catch(e){}
+  try{var pr=ENV.db.doc("seen/"+ENV.uid).patch({at:nowIso(),email:String(ENV.email||"").slice(0,200),kind:ENV.admin?"admin":ENV.crew?"crew":"vendor"});if(pr&&pr.then)pr.then(function(){SEEN_ERR="";SEEN_OK=nowIso()},function(e){SEEN_ERR=(e&&e.code)||"error";SEEN_AT=0;try{localStorage.removeItem(sk)}catch(x){}render(true)})}catch(e){SEEN_ERR=String(e&&e.message||e).slice(0,60)}
 }
 /* 画面に戻ったとき: スマホ(特にホーム画面に追加した iPhone)は、裏で何日も止まったままになり、戻っても知らせ(visibilitychange)が来ないことがある。
    そのため、戻る・表示し直す・前に出る・電波が戻る・時計が飛んだ(止まっていた)のどれでも最終ログインを残し、
@@ -991,7 +996,7 @@ function wakeSetup(){
   setTimeout(syncCheck,3000);setTimeout(function(){if(!SYNC.last)render(true)},21000);/* 20秒たっても最新が届かなければ注意を出す */
   setInterval(function(){var n=Date.now(),gap=n-WAKE.last;WAKE.last=n;syncCheck();
     if(gap>600000){if(!WAKE.hidden)WAKE.hidden=n-gap;wakeUp()}/* 1分ごとのはずが10分以上空いた = 裏で止まっていた */
-    else if(document.visibilityState==="visible"&&n-SEEN_AT>900000)markSeen()},60000);
+    else if(document.visibilityState==="visible"&&n-SEEN_AT>1800000)markSeen()},60000);
 }
 function seenText(id){var s=D.seen[id];return '<span class="hint seen" style="margin:0">最終ログイン '+(s&&s.at?esc(fmtAt(s.at)):'記録なし')+'</span>'}
 function subscribe(){
@@ -2669,7 +2674,8 @@ function render(remote){
   }else tabs=vendorOk?(ui.simple&&!ENV.admin?sVendorTabs():[["cal","カレンダー"],["vin","業者入力"]]):[["reg","登録"]];
   if(!ENV.crew){if(!ENV.admin&&!vendorOk)ui.tab="reg";else if(!ENV.admin&&ui.tab!=="cal"&&ui.tab!=="vin")ui.tab="cal";}
   h='<div class="top"><div><h1>NRボックス ラック調整<span class="role">'+(ENV.admin?'管理者':ENV.crew?(D.crews[ENV.uid]?'盛替え業者':'未登録'):ENV.preview?'業者(プレビュー)':(vendorOk?'業者':'未登録'))+'</span></h1><p>業者が入力した階別の保有・搬出希望を、回収日ごとの台数・時間・エレベーター集積に合わせて自動で配分します</p>'+(window.NR_ACCOUNT?'<p class="acct">'+esc(window.NR_ACCOUNT.email||"")+' <button class="btn sm" data-act="logout">ログアウト</button> <button class="btn sm" data-act="reload">↻ 最新にする</button>'+(ENV.mode==="noid"?'':simpleToggle()+pushBtn())+(ui.synced?' <span class="muted" style="font-size:12px">'+p2(ui.synced.getHours())+':'+p2(ui.synced.getMinutes())+' 更新</span>':'')+'</p>':'')
-   +(ENV.mode==="db"&&(SYNC.stuck||(navigator.onLine&&!SYNC.last&&Date.now()-SYNC.start>20000))?'<div class="note bad syncbad" style="margin:8px 0 0;display:block"><b>⚠ '+(SYNC.stuck?'この端末の入力が、まだサーバーに届いていません。':'サーバーにつながっていません(表示は端末に残っていた内容です)。')+'</b> ほかの人には見えていません。電波を確かめ、同じアプリを開いているほかの画面(ブラウザのタブ・ホーム画面のアプリ)を閉じてから、「↻ 最新にする」を押してください。直らないときは管理者に連絡してください。</div>':'')
+   +(ENV.mode==="db"&&SYNC.quota?'<div class="note bad syncbad quota" style="margin:8px 0 0;display:block"><b>⚠ サーバーの1日の利用の上限(無料の範囲)に達したため、今は保存できません。</b> 入力した内容は、ほかの人には見えていません。毎日17時(日本時間)に上限が戻ります。<b>この画面を閉じずにおけば、17時すぎに自動で送ります</b>(閉じると消えるので、その場合は17時すぎにもう一度入れてください)。'+(ENV.admin?'<br>管理者の方へ: Firebase の料金プランを「Blaze(従量課金)」にすると、上限で止まらなくなります(取扱説明書を参照)。':'急ぎのときは管理者に電話などで連絡してください。')+'</div>'
+   :ENV.mode==="db"&&(SYNC.stuck||(navigator.onLine&&!SYNC.last&&Date.now()-SYNC.start>20000))?'<div class="note bad syncbad" style="margin:8px 0 0;display:block"><b>⚠ '+(SYNC.stuck?'この端末の入力が、まだサーバーに届いていません。':'サーバーにつながっていません(表示は端末に残っていた内容です)。')+'</b> ほかの人には見えていません。電波を確かめ、同じアプリを開いているほかの画面(ブラウザのタブ・ホーム画面のアプリ)を閉じてから、「↻ 最新にする」を押してください。直らないときは管理者に連絡してください。</div>':'')
    +(PEND.n&&(!navigator.onLine||Date.now()-PEND.since>3500)?'<div class="note warn" style="margin:8px 0 0"><span><b>未送信 '+PEND.n+'件</b> '+(navigator.onLine?'送信を待っています。':'電波がありません。')+'つながると自動で送ります。<b>送り終わるまで、アプリを閉じたり、ほかのアプリに切り替えたりしないでください</b>(閉じると、送っていない入力は消えます)。</span></div>':'')
    +(window.NR_DEMO?'<div class="note warn" style="margin:8px 0 0"><span><b>お試し版です。</b>データはこの端末のブラウザだけに保存され、本番のアプリとは関係ありません。業者・台数はすべて架空です。 <button class="btn sm" data-act="demoreset">最初からやり直す</button></span></div>':'')+'</div><div class="tabs'+(ENV.admin?'':' big')+'" role="tablist">';
   var simpleV=ui.simple&&!ENV.admin&&!ENV.crew&&vendorOk;
@@ -3277,13 +3283,23 @@ app.addEventListener("change",function(ev){
   if(ev.target.getAttribute&&ev.target.getAttribute("data-f")==="pv"){ui.pv=ev.target.value||null;render();return}
   asVendor(function(){onChange(ev)});
 });
-/* 3分ごとの自動リロード: 入力中・未送信・確認の途中・画面が裏のときは行わない(次の3分後に見直す)。見ていたタブと日は、リロード後も保つ */
-var AUTO_MS=3*60*1000,LAST_TOUCH=0;
+/* アプリの新しい版が出たら、自動で開き直す(3分ごとに、公開しているページだけを確かめる。データ(Firebase)は読まないので、1日の上限を使わない)。
+   データはサーバーから自動で届くので、版が変わらないかぎり開き直さない(開き直すたびに全部を読み直し、1日の読み取りの上限を使うため)。
+   入力中・未送信・確認の途中・画面が裏のときは行わない(次の3分後に見直す)。見ていたタブと日は、開き直したあとも保つ */
+var AUTO_MS=3*60*1000,LAST_TOUCH=0,APP_VER=null,APP_NEW=false;
+function appVer(t){var h=0;for(var i=0;i<t.length;i++){h=(h*31+t.charCodeAt(i))|0}return t.length+":"+h}
+function checkVer(){
+  if(APP_NEW||!window.fetch||!/^https?:$/.test(location.protocol))return;
+  fetch(location.pathname+"?v="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.text():null}).then(function(t){if(!t)return;var v=appVer(t);
+    if(APP_VER===null)APP_VER=v;else if(v!==APP_VER)APP_NEW=true}).catch(function(){});
+}
+setTimeout(checkVer,5000);
 ["pointerdown","keydown","input","change"].forEach(function(t){document.addEventListener(t,function(){LAST_TOUCH=Date.now()},true)});
 try{var sv=JSON.parse(sessionStorage.getItem("nr-auto")||"null");sessionStorage.removeItem("nr-auto");
   if(sv&&Date.now()-sv.t<60000){window.__AUTO=sv;if(sv.y)window.__AUTO_Y=sv.y}}catch(e){}
 setInterval(function(){
-  if(!window.NR_ACCOUNT||ENV.mode!=="db"||document.visibilityState!=="visible"||!navigator.onLine||PEND.n||ui.confirm||spin||spinSave)return;
+  checkVer();
+  if(!APP_NEW||!window.NR_ACCOUNT||ENV.mode!=="db"||document.visibilityState!=="visible"||!navigator.onLine||PEND.n||ui.confirm||spin||spinSave)return;
   var ae=document.activeElement;if(ae&&/^(INPUT|SELECT|TEXTAREA)$/.test(ae.tagName))return;
   /* 最後に画面をさわってから1分以内や、まだ保存していない選択(空きの振り分けのチェックなど)があるときは待つ */
   if(Date.now()-LAST_TOUCH<60000||document.querySelector('input[data-fc]:checked')||Object.keys(ui.odraft||{}).some(function(k){return Object.keys(ui.odraft[k]).length}))return;/* 注文する前の追加注文台数があるときも待つ */
@@ -3292,6 +3308,8 @@ setInterval(function(){
 },AUTO_MS);
 window.addEventListener("load",function(){if(window.__AUTO_Y)setTimeout(function(){window.scrollTo(0,window.__AUTO_Y)},900)});
 window.nrBoot=boot;
+/* Firebase の部品のエラーの記録を受け取る(1日の上限の注意)。試験用に、つながりの確認と「さわった時刻」を戻す口も出す */
+window.nrQuota=function(m){if(quotaHit(m))render(true)};window.nrSync=function(){syncCheck()};window.nrUntouch=function(){LAST_TOUCH=0};
 window.addEventListener("online",function(){render(true)});window.addEventListener("offline",function(){render(true)});
 })();
 </script>
@@ -3315,7 +3333,7 @@ window.NR_CONFIG={
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script>window.NR_CREW=true;</script>
 <script type="module">
-import {initializeApp} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import {initializeApp,onLog} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {getAuth,onAuthStateChanged,GoogleAuthProvider,signInWithPopup,getRedirectResult,signInWithEmailAndPassword,createUserWithEmailAndPassword,sendPasswordResetEmail,sendEmailVerification,signOut} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {initializeFirestore,collection,doc,onSnapshot,setDoc,deleteDoc,runTransaction,getDoc as getDocFs,increment,deleteField,arrayUnion,arrayRemove,waitForPendingWrites} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
@@ -3332,6 +3350,8 @@ if(/\bLine\//i.test(UA)&&!/[?&]openExternalBrowser=1/.test(location.search)){
   location.replace(location.pathname+(location.search?location.search+"&":"?")+"openExternalBrowser=1"+location.hash);
 }
 function start(){
+  /* サーバーの1日の上限(無料の範囲)に達すると、Firebase の部品はエラーを記録して、送るのを待ち続ける。それを見つけて画面に出す */
+  try{onLog(function(e){var m=String((e&&e.message)||"")+" "+String(((e&&e.args)||[]).join(" "));if(window.nrQuota)window.nrQuota(m)},{level:"error"})}catch(e){}
   var fb=initializeApp(CFG.firebase),auth=getAuth(fb),fs=openStore(fb);
   var booted=false;
   /* ページ移動式のGoogleログインから戻ってきたのにログインできていなければ(Safariの制限など)、黙って元の画面に戻さず理由を出す */
