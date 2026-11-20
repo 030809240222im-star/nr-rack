@@ -15,7 +15,8 @@ hook('patch:function(d){return setDoc(r,fsVal(d),{merge:true})}','patch:function
 hook('delete:function(){return deleteDoc(r)}','delete:function(){w("delete");return deleteDoc(r)}');
 hook('create:function(d){return runTransaction(','create:function(d){w("create");return runTransaction(');
 if(!html.includes('connectFirestoreEmulator(fs'))throw new Error('hook failed');
-const srv=http.createServer((q,r)=>{r.writeHead(200,{'Content-Type':'text/html; charset=utf-8'});r.end(html)}).listen(8099);
+const crewHtml=()=>html.replace('<script type="module">','<script>window.NR_CREW=true;</script>\n<script type="module">');
+const srv=http.createServer((q,r)=>{r.writeHead(200,{'Content-Type':'text/html; charset=utf-8'});r.end(q.url.indexOf('/crew')===0?crewHtml():html)}).listen(8099);
 const DB='http://127.0.0.1:8085/v1/projects/nr-rack/databases/default/documents/';
 const val=v=>v===null||v===undefined?{nullValue:null}:typeof v==='boolean'?{booleanValue:v}:typeof v==='number'?(Number.isInteger(v)?{integerValue:String(v)}:{doubleValue:v}):typeof v==='string'?{stringValue:v}:Array.isArray(v)?{arrayValue:{values:v.map(val)}}:(v&&typeof v.toDate==='function')?{timestampValue:v.toDate().toISOString()}:{mapValue:{fields:Object.fromEntries(Object.entries(v).map(([k,x])=>[k,val(x)]))}};
 const put=(p,d)=>fetch(DB+p,{method:'PATCH',headers:{Authorization:'Bearer owner','Content-Type':'application/json'},body:JSON.stringify({fields:val(d).mapValue.fields})}).then(r=>r.json());
@@ -34,7 +35,7 @@ const MS=Number(process.env.IDLE_MS||200000);
 (async()=>{
   let vendorUid=null;
   const sa=JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT||'null');
-  const a1=await user(ADMINS[0]),a2=await user(ADMINS[1]),vu=await user('v@example.jp');
+  const a1=await user(ADMINS[0]),a2=await user(ADMINS[1]),vu=await user('v@example.jp'),cu=await user('c@example.jp');
   if(sa){
     /* 本番から読む(emulators:exec が入れるエミュレーター向けの設定を外す。エミュレーターへは REST で書く) */
     const EH=process.env.FIRESTORE_EMULATOR_HOST;delete process.env.FIRESTORE_EMULATOR_HOST;delete process.env.FIREBASE_AUTH_EMULATOR_HOST;
@@ -44,6 +45,7 @@ const MS=Number(process.env.IDLE_MS||200000);
     for(const c of COLLS){const s=await db.collection(c).get();for(const d of s.docs){await put(c+'/'+d.id,d.data());n++}
       /* 業者1人: 承認された人の1人に、この試しの業者をなりすまさせる(同じ会社として) */
       if(c==='approved'&&s.docs.length){const x=s.docs.find(d=>(d.data()||{}).vid)||s.docs[0];const xd=x.data();await put('approved/'+vu,Object.assign({},xd,{email:'v@example.jp',vid:xd.vid||x.id}));await put('members/'+vu,{company:xd.company||'',email:'v@example.jp',at:'2026-11-01T00:00:00Z'})}}
+    const cs=await db.collection('crews').get();if(cs.docs.length){await put('crews/'+cu,Object.assign({},cs.docs[0].data(),{email:'c@example.jp'}))}
     console.log('本番のデータを写しました: '+n+'件');if(!n)throw new Error('本番のデータを読めませんでした');
   }else{
     await put('config/main',{evn:1,ev:{1:[1,40]},wdFrom:''});
@@ -53,12 +55,13 @@ const MS=Number(process.env.IDLE_MS||200000);
     console.log('試しのデータで動かします');
   }
   const b=await chromium.launch();
-  const open=async(email,simple)=>{const cx=await b.newContext({viewport:{width:1100,height:900}});await cx.addInitScript(s=>{try{localStorage.setItem('nr-uipref',JSON.stringify({simple:s}))}catch(e){}},simple);
+  const open=async(email,simple,path)=>{const cx=await b.newContext({viewport:{width:1100,height:900}});await cx.addInitScript(s=>{try{localStorage.setItem('nr-uipref',JSON.stringify({simple:s}))}catch(e){}},simple);
     await routes(cx);const p=await cx.newPage();const errs=[];p.on('pageerror',e=>errs.push(e.message.slice(0,120)));
     let total={};p.on('framenavigated',async()=>{});
-    await p.goto('http://localhost:8099/');await p.waitForSelector('#lg-email',{timeout:30000});await p.fill('#lg-email',email);await p.fill('#lg-pass','secret12');await p.click('#lg-go');
+    await p.goto('http://localhost:8099'+(path||'/'));await p.waitForSelector('#lg-email',{timeout:30000});await p.fill('#lg-email',email);await p.fill('#lg-pass','secret12');await p.click('#lg-go');
     return {p,errs,total}};
-  const pages={admin1:await open(ADMINS[0],false),admin2:await open(ADMINS[1],true),vendor:await open('v@example.jp',true)};
+  const pages={admin1:await open(ADMINS[0],false),admin2:await open(ADMINS[1],true),vendor:await open('v@example.jp',true),vendor2:await open('v@example.jp',false)};
+  if(sa)pages.crew=await open('c@example.jp',true,'/crew/');
   /* 画面を開き直す(3分ごとの自動リロード)と数がリセットされるので、こまめに集める */
   const acc={};const grab=async()=>{for(const [k,v] of Object.entries(pages)){const w=await v.p.evaluate(()=>{var x=window.__W||{};window.__W={};return x}).catch(()=>({}));acc[k]=acc[k]||{};for(const [t,n] of Object.entries(w))acc[k][t]=(acc[k][t]||0)+n}};
   const t0=Date.now();while(Date.now()-t0<MS){await new Promise(r=>setTimeout(r,2000));await grab()}
