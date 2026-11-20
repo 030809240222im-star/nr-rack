@@ -40,7 +40,7 @@ for (const P of ["", "scrap_"]) {
     const name = "projects/" + sa.project_id + "/databases/" + (process.env.FIRESTORE_DB || "default") + "/documents/" + path;
     const r = await fetch("https://firestore.googleapis.com/v1/projects/" + sa.project_id + "/databases/" + (process.env.FIRESTORE_DB || "default") + "/documents:commit", { method: "POST", headers: { Authorization: "Bearer " + tk, "Content-Type": "application/json" }, body: JSON.stringify({ writes: [{ update: { name, fields: { probe: { booleanValue: true } } }, currentDocument: { exists: false } }] }) });
     const t = await r.text(); let j = null; try { j = JSON.parse(t); } catch (e) {}
-    console.log("書き込みの窓口(" + path + ") " + jst(new Date()) + ": HTTP " + r.status + " " + ((j && j.error && (j.error.status + " " + String(j.error.message || "").slice(0, 160))) || (r.ok ? "書けた(想定外)" : t.slice(0, 160))));
+    console.log("書き込みの窓口(" + path + ") " + jst(new Date()) + ": HTTP " + r.status + " " + ((j && j.error && (j.error.status + " " + String(j.error.message || "").slice(0, 600) + " " + JSON.stringify(j.error.details || []).slice(0, 600))) || (r.ok ? "書けた(想定外)" : t.slice(0, 160))));
   }
 }
 /* ===== 書き込みが通るかの試し(データは変わらない): すでにある文書を「新しく作る」と頼み、サーバーの返事の種類を見る。
@@ -65,6 +65,13 @@ console.log("書き込みの試し: 終わり " + jst(new Date()));
   for (const r of all) console.log("  保存 " + jst(r[0]) + ":" + String(r[0].getUTCSeconds()).padStart(2, "0") + "  " + r[1].padEnd(16) + " 中の最新の時刻 " + (r[2] ? jst(new Date(r[2])) : "なし"));
 }
 
+/* ===== 文書の大きさ(集まりごとの件数・合計・一番大きいもの。単位は KB) */
+console.log("===== 文書の大きさ(KB)");
+for (const P of ["", "scrap_"]) for (const c of COLLS) {
+  const s = await db.collection(P + c).get(); if (!s.size) continue;
+  let tot = 0, mx = 0; s.forEach(d => { const n = Buffer.byteLength(JSON.stringify(d.data() || {})); tot += n; if (n > mx) mx = n; });
+  console.log("  " + (P + c).padEnd(16) + " " + String(s.size).padStart(3) + "件  合計 " + (tot / 1024).toFixed(1) + "  最大 " + (mx / 1024).toFixed(1));
+}
 /* ===== サーバー側の記録(Google Cloud の利用状況)。読むだけ。件数と結果の種類だけを出す ===== */
 const PROJECT = sa.project_id;
 let token = null;
@@ -77,6 +84,15 @@ if (token) {
   else console.log("  読めません(" + dbs.status + ")");
   const bill = await get("https://cloudbilling.googleapis.com/v1/projects/" + PROJECT + "/billingInfo");
   console.log("===== 請求(Blaze)の設定: " + (bill.ok ? (bill.j.billingEnabled ? "請求あり(Blaze)" : "請求なし(無料の Spark)") : "読めません(" + bill.status + ")"));
+
+  for (const u of ["https://serviceusage.googleapis.com/v1beta1/projects/" + PROJECT + "/services/firestore.googleapis.com/consumerQuotaMetrics",
+                   "https://cloudquotas.googleapis.com/v1/projects/" + PROJECT + "/locations/global/services/firestore.googleapis.com/quotaInfos"]) {
+    const r = await get(u);
+    if (!r.ok) { console.log("===== 上限の設定: 読めません(" + r.status + ")"); continue; }
+    const list = (r.j.metrics || r.j.quotaInfos || []);
+    console.log("===== 上限の設定 " + list.length + "件");
+    for (const m of list) console.log("  " + JSON.stringify(m).slice(0, 400));
+  }
   const end = new Date(), start = new Date(end.getTime() - 48 * 36e5);
   const ts = async (type, groupBy) => {
     const q = new URLSearchParams({ filter: 'metric.type="' + type + '"', "interval.startTime": start.toISOString(), "interval.endTime": end.toISOString(), "aggregation.alignmentPeriod": "3600s", "aggregation.perSeriesAligner": "ALIGN_SUM", "aggregation.crossSeriesReducer": "REDUCE_SUM" });
