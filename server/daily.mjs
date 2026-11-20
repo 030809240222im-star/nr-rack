@@ -132,7 +132,11 @@ for (const app of APPS) {
 
 /* LINE に送る。LINE_TO(グループ・ユーザーのID)があればそこへ、なければ公式アカウントの友だち全員へ */
 const token = process.env.LINE_CHANNEL_TOKEN;
-if (token && lines.length) {
+/* 同じ日に2回動いても(GitHub の時刻起動と cron-job.org の起動の両方など)、LINE は1日1回だけ送る。送った記録は maillog/{日付}.line */
+const lineLog = db.collection("maillog").doc(today);
+const lineSent = token && lines.length ? ((await lineLog.get()).data() || {}).line : null;
+if (lineSent) console.log("LINE: 今日はもう送っています(" + lineSent + ")");
+else if (token && lines.length) {
   const text = lines.join("\n").slice(0, 4900) + "\n\nアプリ: https://030809240222im-star.github.io/nr-rack/";
   const to = process.env.LINE_TO;
   const res = await fetch("https://api.line.me/v2/bot/message/" + (to ? "push" : "broadcast"), {
@@ -140,6 +144,7 @@ if (token && lines.length) {
     body: JSON.stringify(to ? { to, messages: [{ type: "text", text }] } : { messages: [{ type: "text", text }] })
   });
   console.log("LINE:", res.status, res.ok ? "送信しました" : await res.text());
+  if (res.ok) await lineLog.set({ line: new Date().toISOString() }, { merge: true });
 } else console.log(token ? "LINE: 今日送る予定はありません" : "LINE: 設定がないので送りません");
 
 /* 3. 暗号化バックアップ(AES-256-GCM)。戻すときは server/decrypt-backup.mjs */

@@ -17,7 +17,11 @@ const db={};for(const [c,v] of Object.entries(app)){db[c]=v;db['scrap_'+c]=c==='
 fs.writeFileSync(X+'/db.json',JSON.stringify(db));
 const env={...process.env,FAKE_DB:X+'/db.json',FIREBASE_SERVICE_ACCOUNT:'{"x":1}',WAIT_UNTIL_TIME:'0'};
 const run=(f,e)=>{const o=execFileSync(process.execPath,[X+'/server/'+f],{env:{...env,...(e||{})},encoding:'utf8'});console.log('== '+f+(e&&e.MAIL_MODE?' '+e.MAIL_MODE:'')+'\n'+o.trim())};
-run('daily.mjs');run('notify.mjs');
+/* LINE は1日1回だけ: 毎朝の自動処理が2回動いても(GitHub の時刻起動と cron-job.org の両方)、2回目は送らない。LINE への送信は偽物に置き換える */
+fs.writeFileSync(X+'/fetchstub.mjs',"globalThis.fetch=async(u)=>{console.log('偽LINE: '+u);return {ok:true,status:200,text:async()=>''}};");
+const line={LINE_CHANNEL_TOKEN:'t',NODE_OPTIONS:'--import '+X+'/fetchstub.mjs'};
+run('daily.mjs',line);run('daily.mjs',line);
+run('notify.mjs');
 const d=JSON.parse(fs.readFileSync(X+'/db.json'));d.outbox={a1:{to:'admin',msg:'追加注文: テスト',at:now,uid:'v1'},m1:{to:'vendor',vid:'v2',msg:'管理者から: テスト',at:now,uid:'g1'},x1:{to:'vendor',vid:'v2',msg:'なりすまし(送らない)',at:now,uid:'v1'},old:{to:'admin',msg:'古い(送らない)',at:'2020-01-01T00:00:00Z',uid:'v1'}};fs.writeFileSync(X+'/db.json',JSON.stringify(d));
 run('notify.mjs',{MAIL_USER:'me@x.jp',MAIL_PASS:'p'});
 run('mail.mjs',{MAIL_MODE:'pre',MAIL_USER:'me@x.jp',MAIL_PASS:'p'});run('mail.mjs',{MAIL_MODE:'pre',MAIL_USER:'me@x.jp',MAIL_PASS:'p'});
