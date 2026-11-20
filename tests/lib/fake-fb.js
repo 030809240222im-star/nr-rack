@@ -35,6 +35,10 @@ function mg(t,p){t=(t&&typeof t==='object'&&!Array.isArray(t))?t:{};for(const k 
     else if(v.__fv==='rm'){const j=v.v.map(x=>JSON.stringify(x));t[k]=(t[k]||[]).filter(y=>!j.includes(JSON.stringify(y)))}}
   else if(v&&typeof v==='object'&&!Array.isArray(v))t[k]=mg(t[k],v);else t[k]=JSON.parse(JSON.stringify(v))}return t}
 export function collection(f,c){return {c}}
+/* 範囲の読み取り: where(documentId(),'>=',x) だけ対応。読んだ回数を __READS に数える */
+export function documentId(){return '__id'}
+export function where(f,op,v){return {f,op,v}}
+export function query(r,w){return {c:r.c,from:w&&w.v}}
 export function doc(f,a,b){const [c,id]=b?[a,b]:a.split('/');return {c,id}}
 /* 本物の Firestore と同じく、undefined の値・関数・NaN を含む書き込みは拒否する(気づかずに保存できない不具合を試験で見つけるため) */
 function badVal(v,path){if(v===undefined)return path;if(typeof v==='function')return path;if(typeof v==='number'&&isNaN(v))return path;
@@ -45,7 +49,8 @@ export function onSnapshot(r,o,cb,err){if(typeof o==='function'){err=cb;cb=o;o={
   const f=()=>{ if(PEND&&!meta&&false)return; if(r.id!==undefined){const d=(S[r.c]||{})[r.id];cb({id:r.id,exists:()=>!!d,data:()=>d,metadata:{hasPendingWrites:PEND,fromCache:!!(window.__FAKE_STALE&&window.__FAKE_STALE.__all)}})}
     else{/* window.__FAKE_STALE = {コレクション:{文書}} があるあいだは、端末に残っていた古いデータ(fromCache)として返す。window.__releaseStale() で最新に */
       const st=window.__FAKE_STALE&&window.__FAKE_STALE[r.c];
-      cb({docs:Object.entries(st||S[r.c]||{}).map(([id,d])=>({id,data:()=>d})),metadata:{fromCache:!!st||!!(window.__FAKE_STALE&&window.__FAKE_STALE.__all)}})/* __all: 全部が端末に残っていた古いデータ(電波なしと同じ) */}};
+      const ents=Object.entries(st||S[r.c]||{}).filter(([id])=>!r.from||id>=r.from);(window.__LASTN=window.__LASTN||{})[r.c]=ents.length;(window.__FROM=window.__FROM||{})[r.c]=r.from||'';
+      cb({docs:ents.map(([id,d])=>({id,data:()=>d})),metadata:{fromCache:!!st||!!(window.__FAKE_STALE&&window.__FAKE_STALE.__all)}})/* __all: 全部が端末に残っていた古いデータ(電波なしと同じ) */}};
   L.push(f);setTimeout(f,0);return ()=>{}
 }
 

@@ -157,3 +157,45 @@ if (pass) {
   fs.writeFileSync(root + "backup-out/backup-" + today + ".enc", Buffer.concat([salt, iv, c.getAuthTag(), enc]));
   console.log("バックアップを作りました: backup-" + today + ".enc");
 }
+
+/* 4. 古いお知らせ・連絡を片づける(30日より前のもの)。お知らせは業者ごとに1つの文書にたまっていくので、
+   大きくなると、保存や画面への自動更新のたびに使う量(1日の上限)が増える。日付(d)が30日より後のものは残す */
+{
+  const cut = nrDs(new Date(Date.now() - 30 * 864e5)), cutAt = new Date(Date.now() - 30 * 864e5).toISOString();
+  let n = 0;
+  for (const app of APPS) for (const [c, sub] of [["notices", "ack"], ["inbox", "ack"], ["sent", "seen"]]) {
+    const snap = await db.collection(app.prefix + c).get();
+    for (const d of snap.docs) {
+      const x = d.data() || {}, items = x.items || {}, up = {};
+      for (const [id, it] of Object.entries(items)) {
+        const at = String((it && it.at) || ""), dd = String((it && it.d) || "");
+        if (at && at < cutAt && (!dd || dd < cut)) { up["items." + id] = FieldValue.delete(); if ((x[sub] || {})[id] !== undefined) up[sub + "." + id] = FieldValue.delete(); }
+      }
+      if (Object.keys(up).length) { await d.ref.update(up); n += Object.keys(up).length; }
+    }
+  }
+  console.log("古いお知らせ・連絡の片づけ: " + n + "項目");
+}
+
+/* 5. サーバーの1日の使用量を確かめ、無料の範囲の7割を超えたら管理者に知らせる(メール・通知。1日1回まで)。
+   使用量を読む権限(モニタリング閲覧者)がないときは、何もしない */
+{
+  const { usage, LIMITS, LABEL, quotaDayStart } = await import("./usage.mjs");
+  const now = new Date(), s0 = quotaDayStart(now), prev = new Date(s0.getTime() - 864e5);
+  const done = await usage(admin, sa, prev, s0), cur = await usage(admin, sa, s0, now);
+  if (!done || done.error) console.log("使用量: 読めません(" + ((done && done.error) || "鍵") + ")。サービスアカウントに「モニタリング閲覧者」の役割を足すと読めます");
+  else {
+    const pct = (u, k) => Math.round(100 * (u.by[k] || 0) / LIMITS[k]);
+    const line = (u, t) => t + " " + Object.keys(LIMITS).map(k => LABEL[k] + " " + (u.by[k] || 0) + "(" + pct(u, k) + "%)").join("・");
+    console.log("使用量: " + line(done, "前日(17時まで)") + " / " + line(cur, "今日(17時から今まで)"));
+    const over = Object.keys(LIMITS).filter(k => pct(done, k) >= 70 || pct(cur, k) >= 70);
+    const logRef = db.collection("maillog").doc(today), lg = (await logRef.get()).data() || {};
+    await logRef.set({ usage: { prev: done.by, cur: cur.by, at: now.toISOString() } }, { merge: true });
+    if (over.length && !lg.usageAlert) {
+      const msg = "【使用量の注意】サーバーの1日の無料の範囲の7割を超えています(" + over.map(k => LABEL[k] + " 前日" + pct(done, k) + "%・今日" + pct(cur, k) + "%").join("、") + ")。上限に達すると、その日の17時まで入力が保存できなくなります。取扱説明書の「Firebase の1日の上限と料金プラン」を見てください。";
+      await db.collection("outbox").doc("usage-" + today).set({ to: "admin", msg, at: now.toISOString(), uid: "server" });
+      await logRef.set({ usageAlert: now.toISOString() }, { merge: true });
+      console.log("使用量: 管理者に知らせました");
+    }
+  }
+}

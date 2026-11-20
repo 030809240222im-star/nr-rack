@@ -35,6 +35,10 @@ const APP_URL = "https://030809240222im-star.github.io/nr-rack/";
 const APPS = [{ prefix: "", name: "NRボックス", url: APP_URL, crewUrl: APP_URL + "crew/" }, { prefix: "scrap_", name: "スクラップ搬出", url: APP_URL + "scrap/", crewUrl: APP_URL + "scrap/crew/" }];
 
 /* 通知の鍵: なければ作る。公開鍵は両方のアプリの設定に書く(同じ端末の登録を2つのアプリで共有するため、鍵は1組) */
+/* 送信待ちがなければ、ほかは何も読まずに終わる(5分ごとに動くので、サーバーの1日の読み取りの上限をなるべく使わない) */
+const OUT = {};
+for (const app of APPS) OUT[app.prefix] = await db.collection(app.prefix + "outbox").get();
+if (APPS.every(app => OUT[app.prefix].empty)) { console.log("お知らせ: 送信待ちなし"); process.exit(0); }
 const keyRef = db.doc("pushkeys/main");
 let keys = (await keyRef.get()).data();
 if (!keys || !keys.pub || !keys.priv) { const k = webpush.generateVAPIDKeys(); keys = { pub: k.publicKey, priv: k.privateKey, at: new Date().toISOString() }; await keyRef.set(keys); console.log("通知の鍵を作りました"); }
@@ -57,10 +61,8 @@ let mails = 0, pushes = 0, failed = 0, dropped = 0, gone = 0;
 const dayAgo = new Date(Date.now() - 864e5).toISOString();
 for (const app of APPS) {
   const P = app.prefix;
-  const snap = await db.collection(P + "outbox").get();
-  /* 確認用: 通知を許可した端末の数と、送信待ちの数をログに出す */
-  const pc = await db.collection(P + "push").get(); let devs = 0; pc.forEach(d => { devs += Object.keys((d.data() || {}).subs || {}).length; });
-  console.log(app.name + ": 通知を許可した端末 " + devs + "台(" + pc.size + "人)・送信待ち " + snap.size + "件");
+  const snap = OUT[P];
+  console.log(app.name + ": 送信待ち " + snap.size + "件");
   if (snap.empty) continue;
   const items = []; snap.forEach(d => items.push({ id: d.id, ref: d.ref, ...d.data() }));
   const [approved, crews, vendors, members, push] = await Promise.all(["approved", "crews", "vendors", "members", "push"].map(c => load(P, c)));

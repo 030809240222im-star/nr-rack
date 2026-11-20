@@ -126,4 +126,15 @@ if (token) {
     }
   }
 }
+/* ===== 1日の使用量(無料の範囲に対して)。モニタリング閲覧者の役割があるときだけ */
+{
+  const { usage, LIMITS, LABEL, quotaDayStart } = await import("./usage.mjs");
+  const now = new Date(), s0 = quotaDayStart(now);
+  for (const [t, a, b] of [["前日(17時〜17時)", new Date(s0.getTime() - 864e5), s0], ["今日(17時から今まで)", s0, now]]) {
+    const u = await usage(admin, sa, a, b);
+    if (!u || u.error) { console.log("===== 使用量 " + t + ": 読めません(" + ((u && u.error) || "鍵") + ")"); continue; }
+    console.log("===== 使用量 " + t + ": " + Object.keys(LIMITS).map(k => LABEL[k] + " " + (u.by[k] || 0) + "/" + LIMITS[k]).join("・"));
+    for (const [m, v] of Object.entries(u.metrics)) if (v) console.log("  " + m.replace("firestore.googleapis.com/", "") + " 計 " + v + "  " + Object.entries(u.hours[m]).sort().filter(x => x[1]).map(x => jst(new Date(x[0])).slice(11) + "=" + Math.round(x[1])).join(" "));
+  }
+}
 process.exit(0);

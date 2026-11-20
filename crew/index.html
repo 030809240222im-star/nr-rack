@@ -999,11 +999,30 @@ function wakeSetup(){
     else if(document.visibilityState==="visible"&&n-SEEN_AT>1800000)markSeen()},60000);
 }
 function seenText(id){var s=D.seen[id];return '<span class="hint seen" style="margin:0">最終ログイン '+(s&&s.at?esc(fmtAt(s.at)):'記録なし')+'</span>'}
+/* 回収日(days)と確定(confirmed)は、毎日1件ずつ増えていく。開くたびに全部を読むと、サーバーの1日の読み取りの上限を
+   だんだん使い切るので、ふだんは「今日の35日前から先」だけを読む(今週の実績・戻し一覧・確定と再振り分けには足りる)。
+   それより前の月のカレンダー・月の集計・記録・会社の統合では、needFrom で読む範囲を広げる(その画面を開いたときだけ) */
+var RANGED=["days","confirmed"],LOADFROM=nrDs(new Date(Date.now()-35*864e5)),RSUB={},SUBERR=null;
+function subRanged(c){
+  if(RSUB[c])try{RSUB[c]()}catch(e){}
+  var from=LOADFROM;
+  RSUB[c]=ENV.db.collection(c).onSnapshot(function(snap){var m={};snap.docs.forEach(function(d){m[d.id]=c==="confirmed"?hydrate(d.data()):d.data()});
+    /* 範囲を広げて読み直している途中は、前に読んだ古い分を消さない */
+    if(from!==LOADFROM)return;
+    D[c]=m;LOADED[c]=true;FRESH[c]=snap.fresh!==false;if(FRESH[c])SYNC.last=Date.now();ui.synced=new Date();render(true)},SUBERR,from?{from:from}:null);
+}
+/* d より前のデータも要る画面: 読む範囲を d まで広げる(""=全部)。広げるのは1回だけで、そのあとは開いているあいだ保つ */
+function needFrom(d){
+  if(ENV.mode!=="db"||!ENV.db||LOADFROM===""||(d&&d>=LOADFROM))return;
+  LOADFROM=d||"";RANGED.forEach(function(c){if(RSUB[c]||LOADED[c])subRanged(c)});
+}
 function subscribe(){
   var err=function(e){ui.msg="データを読み込めませんでした("+((e&&e.code)||"error")+")"+(e&&e.code==="permission-denied"?"。Firebaseのセキュリティルールに、このアカウントのメールアドレスが管理者として入っているか確認してください。":"");ui.msgKind="bad";render(true)};
   var colls=["days","vendors","plans","members","approved","blocked","confirmed","crews","crewreq","crewblocked","orders","notices"];
+  SUBERR=err;
   colls.forEach(function(c){
     if(!ENV.admin&&!ENV.crew&&VCOLLS.indexOf(c)>=0)return;
+    if(RANGED.indexOf(c)>=0)return subRanged(c);
     ENV.db.collection(c).onSnapshot(function(snap){var m={};snap.docs.forEach(function(d){m[d.id]=c==="confirmed"?hydrate(d.data()):d.data()});D[c]=m;LOADED[c]=true;FRESH[c]=snap.fresh!==false;if(FRESH[c])SYNC.last=Date.now();ui.synced=new Date();render(true)},err);
   });
   /* 最終ログイン(seen/{本人})は管理者だけが読む。ルールを貼る前でも画面を止めないよう、読めなくても黙って続ける */
@@ -1368,6 +1387,7 @@ function dayRowsTable(d){
   return h+'</tbody></table></div>';
 }
 function renderCal(C){
+  if(ui.month)needFrom(nrDs(new Date(ui.month.getFullYear(),ui.month.getMonth(),1-7,12)));/* 前の月を見るときは、その月から読む */
   var y=ui.month.getFullYear(),m=ui.month.getMonth();
   var first=new Date(y,m,1,12).getDay(),n=new Date(y,m+1,0).getDate();
   var h='<div class="main"><section class="panel">'+todayBox(C)+(ENV.crew?moveBox(C):'')+(ENV.admin?wdBoard(C):'')+'<div class="mhead"><h2>'+y+'年'+(m+1)+'月</h2><div class="nav">'
@@ -2281,6 +2301,7 @@ function renderLogs(){
 }
 /* 管理者: NRボックスの追加と、回収後の戻しの記録 */
 function renderRec(C){
+  needFrom("");/* 記録(戻しの履歴を含む)は全部の確定を使う */
   var h='<section class="panel"><h2 style="margin-bottom:6px">NRボックスの追加</h2><p class="hint" style="margin:0 0 10px">NRボックスを増やしたときに、どの業者のどの階へ何台上げたかを記録します。記録すると、その業者のその階の保有台数(総数)が自動で増え、業者の「業者入力」にも表示されます。</p>'
    +'<div class="set"><label>日付<input type="date" id="rec-d" data-keep value="'+C.t+'"></label>'
    +'<label>業者<select id="rec-v" data-keep>'+(Object.keys(C.am).length?vendorOpts(C,""):'<option value="">(業者なし)</option>')+'</select></label>'
@@ -2385,6 +2406,7 @@ function orderBox(C){
 }
 /* ---- 集計と棚卸し(管理者) ---- */
 function monthData(m){
+  needFrom(m+"-01");/* その月の確定を読む(古い月は、ここで初めて読む) */
   var by={},det=[];
   function V(vid){return by[vid]=by[vid]||{out:0,times:0,back:0,none:0,short:0,add:0,stock:0,ord:0}}
   Object.keys(D.confirmed).sort().forEach(function(d){if(d.slice(0,7)!==m)return;var day=D.days[d]||{};
@@ -2532,6 +2554,7 @@ function msgSent(){
    +rows.slice(0,30).map(function(x){return '<tr><td class="l vn">'+(x.crew?'盛替え業者全員':esc(vname(x.vid)))+'</td><td class="l" style="white-space:normal">'+esc(x.o.msg)+'<div class="hint" style="margin:0">'+esc(fmtAt(x.o.at))+'</div></td><td class="l">'+(x.crew?'<span class="hint" style="margin:0">—</span>':x.ack?'<span class="st ok">見ました</span>':'<span class="st off">まだ</span>')+'</td><td class="l"><button class="btn sm" data-act="amdel" data-vid="'+esc(x.vid)+'" data-id="'+esc(x.id)+'">削除</button></td></tr>'}).join("")+'</tbody></table></div>';
 }
 function renderMem(C){
+  needFrom("");/* 会社の統合は、過去の確定の会社IDも書き換えるので全部読む */
   var pend=Object.keys(D.members).filter(function(id){return !D.approved[id]}),ap=Object.keys(D.approved);
   var h=inboxView()+msgForm()+'<section class="panel"><h2 style="margin-bottom:6px">業者の登録</h2><p class="hint" style="margin:0 0 10px">業者はURLから会社名とメールアドレスを登録すると、すぐに使えるようになります。心当たりのない登録は「利用を停止」してください。</p><h3>利用停止中・未完了('+pend.length+')</h3>';
   if(!pend.length)h+='<p class="empty">ありません。</p>';
@@ -2674,9 +2697,9 @@ function render(remote){
   }else tabs=vendorOk?(ui.simple&&!ENV.admin?sVendorTabs():[["cal","カレンダー"],["vin","業者入力"]]):[["reg","登録"]];
   if(!ENV.crew){if(!ENV.admin&&!vendorOk)ui.tab="reg";else if(!ENV.admin&&ui.tab!=="cal"&&ui.tab!=="vin")ui.tab="cal";}
   h='<div class="top"><div><h1>NRボックス ラック調整<span class="role">'+(ENV.admin?'管理者':ENV.crew?(D.crews[ENV.uid]?'盛替え業者':'未登録'):ENV.preview?'業者(プレビュー)':(vendorOk?'業者':'未登録'))+'</span></h1><p>業者が入力した階別の保有・搬出希望を、回収日ごとの台数・時間・エレベーター集積に合わせて自動で配分します</p>'+(window.NR_ACCOUNT?'<p class="acct">'+esc(window.NR_ACCOUNT.email||"")+' <button class="btn sm" data-act="logout">ログアウト</button> <button class="btn sm" data-act="reload">↻ 最新にする</button>'+(ENV.mode==="noid"?'':simpleToggle()+pushBtn())+(ui.synced?' <span class="muted" style="font-size:12px">'+p2(ui.synced.getHours())+':'+p2(ui.synced.getMinutes())+' 更新</span>':'')+'</p>':'')
-   +(ENV.mode==="db"&&SYNC.quota?'<div class="note bad syncbad quota" style="margin:8px 0 0;display:block"><b>⚠ サーバーの1日の利用の上限(無料の範囲)に達したため、今は保存できません。</b> 入力した内容は、ほかの人には見えていません。毎日17時(日本時間)に上限が戻ります。<b>この画面を閉じずにおけば、17時すぎに自動で送ります</b>(閉じると消えるので、その場合は17時すぎにもう一度入れてください)。'+(ENV.admin?'<br>管理者の方へ: Firebase の料金プランを「Blaze(従量課金)」にすると、上限で止まらなくなります(取扱説明書を参照)。':'急ぎのときは管理者に電話などで連絡してください。')+'</div>'
+   +(ENV.mode==="db"&&SYNC.quota?'<div class="note bad syncbad quota" style="margin:8px 0 0;display:block"><b>⚠ サーバーの1日の利用の上限(無料の範囲)に達したため、今は保存できません。</b> 入力した内容は、ほかの人には見えていません。毎日17時(日本時間)に上限が戻ります。<b>入力はこの端末に残り、17時すぎにアプリを開いていれば自動で送ります</b>(入れ直す必要はありません)。'+(ENV.admin?'<br>管理者の方へ: Firebase の料金プランを「Blaze(従量課金)」にすると、上限で止まらなくなります(取扱説明書を参照)。':'急ぎのときは管理者に電話などで連絡してください。')+'</div>'
    :ENV.mode==="db"&&(SYNC.stuck||(navigator.onLine&&!SYNC.last&&Date.now()-SYNC.start>20000))?'<div class="note bad syncbad" style="margin:8px 0 0;display:block"><b>⚠ '+(SYNC.stuck?'この端末の入力が、まだサーバーに届いていません。':'サーバーにつながっていません(表示は端末に残っていた内容です)。')+'</b> ほかの人には見えていません。電波を確かめ、同じアプリを開いているほかの画面(ブラウザのタブ・ホーム画面のアプリ)を閉じてから、「↻ 最新にする」を押してください。直らないときは管理者に連絡してください。</div>':'')
-   +(PEND.n&&(!navigator.onLine||Date.now()-PEND.since>3500)?'<div class="note warn" style="margin:8px 0 0"><span><b>未送信 '+PEND.n+'件</b> '+(navigator.onLine?'送信を待っています。':'電波がありません。')+'つながると自動で送ります。<b>送り終わるまで、アプリを閉じたり、ほかのアプリに切り替えたりしないでください</b>(閉じると、送っていない入力は消えます)。</span></div>':'')
+   +(PEND.n&&(!navigator.onLine||Date.now()-PEND.since>3500)?'<div class="note warn" style="margin:8px 0 0"><span><b>未送信 '+PEND.n+'件</b> '+(navigator.onLine?'送信を待っています。':'電波がありません。')+'つながると自動で送ります(アプリを閉じても、この端末に残り、次に開いたときに送ります)。</span></div>':'')
    +(window.NR_DEMO?'<div class="note warn" style="margin:8px 0 0"><span><b>お試し版です。</b>データはこの端末のブラウザだけに保存され、本番のアプリとは関係ありません。業者・台数はすべて架空です。 <button class="btn sm" data-act="demoreset">最初からやり直す</button></span></div>':'')+'</div><div class="tabs'+(ENV.admin?'':' big')+'" role="tablist">';
   var simpleV=ui.simple&&!ENV.admin&&!ENV.crew&&vendorOk;
   tabs.forEach(function(t){var cur=simpleV?(ui.stab||"s-home")===t[0]:ui.tab===t[0];h+='<button role="tab" aria-selected="'+cur+'" data-act="'+(simpleV?'stab':'tab')+'" data-tab="'+t[0]+'">'+t[1]+'</button>'});
@@ -3335,7 +3358,7 @@ window.NR_CONFIG={
 <script type="module">
 import {initializeApp,onLog} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {getAuth,onAuthStateChanged,GoogleAuthProvider,signInWithPopup,getRedirectResult,signInWithEmailAndPassword,createUserWithEmailAndPassword,sendPasswordResetEmail,sendEmailVerification,signOut} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import {initializeFirestore,collection,doc,onSnapshot,setDoc,deleteDoc,runTransaction,getDoc as getDocFs,increment,deleteField,arrayUnion,arrayRemove,waitForPendingWrites} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import {initializeFirestore,collection,doc,onSnapshot,setDoc,deleteDoc,runTransaction,getDoc as getDocFs,increment,deleteField,arrayUnion,arrayRemove,waitForPendingWrites,query,where,documentId,persistentLocalCache,persistentSingleTabManager} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 var CFG=window.NR_CONFIG,app=document.getElementById("app");
 function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
@@ -3453,11 +3476,12 @@ var CREW_OWN=["members","approved","blocked","crews","crewreq","crewblocked"];
 var PFX=CFG.prefix||"";
 function openStore(fb){
   var id=CFG.databaseId||"(default)";
-  /* 端末(スマホ)の保存場所(IndexedDB)にはデータを残さない。iPhone などでは、裏に回したあと保存場所が壊れて、
-     入力がサーバーへ送られないまま端末にたまることがあった(本人の画面では保存できたように見える)。
-     電波が切れている間の入力は、画面を開いている間はメモリーに残り、つながると送られる(未送信の件数が画面上部に出る)。
-     通信は、回線を選ばない方式(ロングポーリング)に固定する */
-  return initializeFirestore(fb,{ignoreUndefinedProperties:true,experimentalForceLongPolling:true},id);
+  /* 読んだデータを端末(IndexedDB)に残す。開き直したときやアプリに戻ったときは、変わった分だけを読むので、
+     サーバーの1日の読み取りの上限を使いにくい。未送信の入力も残り、次に開いたときに送られる。
+     端末のデータは、最後に開いた画面(タブ)だけが持つ(forceOwnership。裏で止まった古い画面が送り役のまま残らないように)。
+     通信は、回線を選ばない方式(ロングポーリング)に固定する。端末に残せないブラウザでは、メモリーだけで動く */
+  try{return initializeFirestore(fb,{ignoreUndefinedProperties:true,experimentalForceLongPolling:true,localCache:persistentLocalCache({tabManager:persistentSingleTabManager({forceOwnership:true})})},id)}
+  catch(e){return initializeFirestore(fb,{ignoreUndefinedProperties:true,experimentalForceLongPolling:true},id)}
 }
 /* アプリの patch の特別な値を Firestore の値に変える */
 function fsVal(v){
@@ -3474,11 +3498,12 @@ function makeDb(fs,u,admin){
   return {
     /* この端末から送った書き込みが、全部サーバーに届いたら終わる Promise */
     pending:function(){return waitForPendingWrites(fs)},
-    collection:function(c){return {onSnapshot:function(cb,err){
+    collection:function(c){return {onSnapshot:function(cb,err,opt){
       if(!admin&&(window.NR_CREW?CREW_OWN:OWN).indexOf(c)>=0)
         return onSnapshot(doc(fs,PFX+c,u.uid),{includeMetadataChanges:true},function(s){cb({fresh:!(s.metadata&&s.metadata.fromCache),docs:s.exists()?[{id:s.id,data:function(){return s.data()}}]:[]})},quiet(cb,{docs:[]},err));
       /* fresh: サーバーから届いた最新のデータか(端末に残っていたデータなら false)。届いたときにもう一度知らせる(includeMetadataChanges) */
-      return onSnapshot(collection(fs,PFX+c),{includeMetadataChanges:true},function(q){cb({fresh:!(q.metadata&&q.metadata.fromCache),docs:q.docs.map(function(d){return {id:d.id,data:function(){return d.data()}}})})},quiet(cb,{docs:[]},err));
+      /* opt.from: 文書の名前(日付)がそれ以降のものだけ読む */
+      return onSnapshot(opt&&opt.from?query(collection(fs,PFX+c),where(documentId(),">=",opt.from)):collection(fs,PFX+c),{includeMetadataChanges:true},function(q){cb({fresh:!(q.metadata&&q.metadata.fromCache),docs:q.docs.map(function(d){return {id:d.id,data:function(){return d.data()}}})})},quiet(cb,{docs:[]},err));
     }}},
     doc:function(p){var r=doc(fs,PFX+p);return {
       set:function(d){return setDoc(r,d)},
