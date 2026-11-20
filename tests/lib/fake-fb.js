@@ -21,6 +21,9 @@ export async function signOut(){setUser(null)}
 export function initializeFirestore(){return {}}
 export function persistentLocalCache(){return {}}
 export function persistentMultipleTabManager(){return {}}
+export function persistentSingleTabManager(){return {}}
+/* window.__FAKE_STUCK があると、送った入力がサーバーに届かないまま(いつまでも終わらない) */
+export function waitForPendingWrites(){return window.__FAKE_STUCK?new Promise(()=>{}):Promise.resolve()}
 export function increment(n){return {__fv:'inc',n}}
 export function deleteField(){return {__fv:'del'}}
 export function arrayUnion(...v){return {__fv:'union',v}}
@@ -38,10 +41,10 @@ function badVal(v,path){if(v===undefined)return path;if(typeof v==='function')re
 export async function setDoc(r,d,o){/* window.__FAKE_DENY = ['confirmed'] のコレクションへの書き込みは、ルールで拒否されたとして失敗させる */if((window.__FAKE_DENY||[]).includes(r.c)){await new Promise(z=>setTimeout(z,200));emit();const e=new Error('Missing or insufficient permissions.');e.code='permission-denied';throw e}const bad=badVal(d,r.c+'/'+r.id);if(bad){const e=new Error('Unsupported field value at '+bad);e.code='invalid-argument';console.error('FAKE-FB 書き込み拒否: '+bad);throw e}S[r.c]=S[r.c]||{};S[r.c][r.id]=(o&&o.merge)?mg(S[r.c][r.id],d):JSON.parse(JSON.stringify(d));PEND=true;emit();await new Promise(z=>setTimeout(z,300));save();PEND=false;emit()}
 export async function deleteDoc(r){if(S[r.c])delete S[r.c][r.id];save();setTimeout(emit,1)}
 export function onSnapshot(r,o,cb,err){if(typeof o==='function'){err=cb;cb=o;o={}}const meta=!!o.includeMetadataChanges;
-  const f=()=>{ if(PEND&&!meta&&false)return; if(r.id!==undefined){const d=(S[r.c]||{})[r.id];cb({id:r.id,exists:()=>!!d,data:()=>d,metadata:{hasPendingWrites:PEND}})}
+  const f=()=>{ if(PEND&&!meta&&false)return; if(r.id!==undefined){const d=(S[r.c]||{})[r.id];cb({id:r.id,exists:()=>!!d,data:()=>d,metadata:{hasPendingWrites:PEND,fromCache:!!(window.__FAKE_STALE&&window.__FAKE_STALE.__all)}})}
     else{/* window.__FAKE_STALE = {コレクション:{文書}} があるあいだは、端末に残っていた古いデータ(fromCache)として返す。window.__releaseStale() で最新に */
       const st=window.__FAKE_STALE&&window.__FAKE_STALE[r.c];
-      cb({docs:Object.entries(st||S[r.c]||{}).map(([id,d])=>({id,data:()=>d})),metadata:{fromCache:!!st}})}};
+      cb({docs:Object.entries(st||S[r.c]||{}).map(([id,d])=>({id,data:()=>d})),metadata:{fromCache:!!st||!!(window.__FAKE_STALE&&window.__FAKE_STALE.__all)}})/* __all: 全部が端末に残っていた古いデータ(電波なしと同じ) */}};
   L.push(f);setTimeout(f,0);return ()=>{}
 }
 

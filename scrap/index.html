@@ -774,6 +774,13 @@ var LOADED={};
 /* FRESH[c]: そのデータがサーバーから届いた最新のものか(端末に残っていた古いデータ(キャッシュ)なら false)。
    確定や確定した予定の書き換えは、最新のデータのときだけ行う(古いデータのまま確定し直したり、行を書き戻したりしないように) */
 var FRESH={};
+/* サーバーとのつながり: last=最後にサーバーから最新が届いた時刻、stuck=送った入力がサーバーに届かないまま */
+var SYNC={last:0,stuck:false,checking:false,start:Date.now()};
+function syncCheck(){
+  if(ENV.mode!=="db"||!ENV.db||!ENV.db.pending||SYNC.checking)return;SYNC.checking=true;var done=false;
+  ENV.db.pending().then(function(){done=true;SYNC.checking=false;if(SYNC.stuck){SYNC.stuck=false;render(true)}},function(){done=true;SYNC.checking=false});
+  setTimeout(function(){if(!done&&!SYNC.stuck){SYNC.stuck=true;render(true)}},20000);
+}
 function isFresh(cs){return ENV.mode!=="db"||cs.every(function(c){return FRESH[c]})}
 var STALE_MSG="サーバーの最新の内容をまだ読み込めていないため、確定した予定は変えられません。電波を確かめて、少し待ってからもう一度押してください。";
 /* 全データのリセットで消す入れ物。設定(config)は残す */
@@ -981,7 +988,8 @@ function wakeSetup(){
   document.addEventListener("visibilitychange",function(){if(document.visibilityState==="hidden")WAKE.hidden=Date.now();else wakeUp()});
   window.addEventListener("pageshow",function(e){if(e.persisted)wakeUp()});
   window.addEventListener("focus",function(){markSeen()});window.addEventListener("online",function(){markSeen()});
-  setInterval(function(){var n=Date.now(),gap=n-WAKE.last;WAKE.last=n;
+  setTimeout(syncCheck,3000);setTimeout(function(){if(!SYNC.last)render(true)},21000);/* 20秒たっても最新が届かなければ注意を出す */
+  setInterval(function(){var n=Date.now(),gap=n-WAKE.last;WAKE.last=n;syncCheck();
     if(gap>600000){if(!WAKE.hidden)WAKE.hidden=n-gap;wakeUp()}/* 1分ごとのはずが10分以上空いた = 裏で止まっていた */
     else if(document.visibilityState==="visible"&&n-SEEN_AT>900000)markSeen()},60000);
 }
@@ -991,7 +999,7 @@ function subscribe(){
   var colls=["days","vendors","plans","members","approved","blocked","confirmed","crews","crewreq","crewblocked","orders","notices"];
   colls.forEach(function(c){
     if(!ENV.admin&&!ENV.crew&&VCOLLS.indexOf(c)>=0)return;
-    ENV.db.collection(c).onSnapshot(function(snap){var m={};snap.docs.forEach(function(d){m[d.id]=c==="confirmed"?hydrate(d.data()):d.data()});D[c]=m;LOADED[c]=true;FRESH[c]=snap.fresh!==false;ui.synced=new Date();render(true)},err);
+    ENV.db.collection(c).onSnapshot(function(snap){var m={};snap.docs.forEach(function(d){m[d.id]=c==="confirmed"?hydrate(d.data()):d.data()});D[c]=m;LOADED[c]=true;FRESH[c]=snap.fresh!==false;if(FRESH[c])SYNC.last=Date.now();ui.synced=new Date();render(true)},err);
   });
   /* 最終ログイン(seen/{本人})は管理者だけが読む。ルールを貼る前でも画面を止めないよう、読めなくても黙って続ける */
   if(ENV.admin)ENV.db.collection("seen").onSnapshot(function(snap){var m={};snap.docs.forEach(function(d){m[d.id]=d.data()});D.seen=m;render(true)},function(){});
@@ -2661,6 +2669,7 @@ function render(remote){
   }else tabs=vendorOk?(ui.simple&&!ENV.admin?sVendorTabs():[["cal","カレンダー"],["vin","業者入力"]]):[["reg","登録"]];
   if(!ENV.crew){if(!ENV.admin&&!vendorOk)ui.tab="reg";else if(!ENV.admin&&ui.tab!=="cal"&&ui.tab!=="vin")ui.tab="cal";}
   h='<div class="top"><div><h1>スクラップ搬出 調整<span class="role">'+(ENV.admin?'管理者':ENV.crew?(D.crews[ENV.uid]?'盛替え業者':'未登録'):ENV.preview?'業者(プレビュー)':(vendorOk?'業者':'未登録'))+'</span></h1><p>業者が入力した階別の保有・搬出希望を、回収日ごとの台数・時間・エレベーター集積に合わせて自動で配分します</p>'+(window.NR_ACCOUNT?'<p class="acct">'+esc(window.NR_ACCOUNT.email||"")+' <button class="btn sm" data-act="logout">ログアウト</button> <button class="btn sm" data-act="reload">↻ 最新にする</button>'+(ENV.mode==="noid"?'':simpleToggle()+pushBtn())+(ui.synced?' <span class="muted" style="font-size:12px">'+p2(ui.synced.getHours())+':'+p2(ui.synced.getMinutes())+' 更新</span>':'')+'</p>':'')
+   +(ENV.mode==="db"&&(SYNC.stuck||(navigator.onLine&&!SYNC.last&&Date.now()-SYNC.start>20000))?'<div class="note bad syncbad" style="margin:8px 0 0;display:block"><b>⚠ '+(SYNC.stuck?'この端末の入力が、まだサーバーに届いていません。':'サーバーにつながっていません(表示は端末に残っていた内容です)。')+'</b> ほかの人には見えていません。電波を確かめ、同じアプリを開いているほかの画面(ブラウザのタブ・ホーム画面のアプリ)を閉じてから、「↻ 最新にする」を押してください。直らないときは管理者に連絡してください。</div>':'')
    +(PEND.n&&(!navigator.onLine||Date.now()-PEND.since>3500)?'<div class="note warn" style="margin:8px 0 0"><span><b>未送信 '+PEND.n+'件</b> '+(navigator.onLine?'送信を待っています。':'電波がありません。')+'入力は端末に残っていて、つながると自動で送ります。画面は閉じても大丈夫です。</span></div>':'')
    +(window.NR_DEMO?'<div class="note warn" style="margin:8px 0 0"><span><b>お試し版です。</b>データはこの端末のブラウザだけに保存され、本番のアプリとは関係ありません。業者・台数はすべて架空です。 <button class="btn sm" data-act="demoreset">最初からやり直す</button></span></div>':'')+'</div><div class="tabs'+(ENV.admin?'':' big')+'" role="tablist">';
   var simpleV=ui.simple&&!ENV.admin&&!ENV.crew&&vendorOk;
@@ -3308,7 +3317,7 @@ window.NR_CONFIG={
 <script type="module">
 import {initializeApp} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {getAuth,onAuthStateChanged,GoogleAuthProvider,signInWithPopup,getRedirectResult,signInWithEmailAndPassword,createUserWithEmailAndPassword,sendPasswordResetEmail,sendEmailVerification,signOut} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import {initializeFirestore,collection,doc,onSnapshot,setDoc,deleteDoc,runTransaction,getDoc as getDocFs,increment,deleteField,arrayUnion,arrayRemove,persistentLocalCache,persistentMultipleTabManager} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import {initializeFirestore,collection,doc,onSnapshot,setDoc,deleteDoc,runTransaction,getDoc as getDocFs,increment,deleteField,arrayUnion,arrayRemove,persistentLocalCache,persistentSingleTabManager,waitForPendingWrites} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 var CFG=window.NR_CONFIG,app=document.getElementById("app");
 function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
@@ -3425,8 +3434,11 @@ var PFX=CFG.prefix||"";
 /* 端末にデータを残しておき、電波がないときの入力もつながったときに送る。使えないブラウザ(プライベートブラウズなど)では普通に開く */
 function openStore(fb){
   var id=CFG.databaseId||"(default)";
-  try{return initializeFirestore(fb,{ignoreUndefinedProperties:true,localCache:persistentLocalCache({tabManager:persistentMultipleTabManager()})},id)}
-  catch(e){return initializeFirestore(fb,{ignoreUndefinedProperties:true},id)}
+  /* 端末のデータは、最後に開いた画面(タブ)だけが持つ(forceOwnership)。前は複数の画面で分け合っていたため、
+     裏で止まった別の画面(古いタブ・ホーム画面のアプリ)が送り役のまま残ると、ほかの画面の入力がサーバーへ送られなかった。
+     つながりにくい回線では、自動で別の通信方式(ロングポーリング)に切り替える */
+  try{return initializeFirestore(fb,{ignoreUndefinedProperties:true,experimentalAutoDetectLongPolling:true,localCache:persistentLocalCache({tabManager:persistentSingleTabManager({forceOwnership:true})})},id)}
+  catch(e){return initializeFirestore(fb,{ignoreUndefinedProperties:true,experimentalAutoDetectLongPolling:true},id)}
 }
 /* アプリの patch の特別な値を Firestore の値に変える */
 function fsVal(v){
@@ -3441,6 +3453,8 @@ function makeDb(fs,u,admin){
   /* 承認前の業者は回収日などを読めないので、その拒否だけは空として扱う。管理者の拒否はルールの設定漏れなので画面に出す */
   function quiet(cb,empty,err){return function(e){if(!admin&&e&&e.code==="permission-denied")cb(empty);else if(err)err(e)}}
   return {
+    /* この端末から送った書き込みが、全部サーバーに届いたら終わる Promise */
+    pending:function(){return waitForPendingWrites(fs)},
     collection:function(c){return {onSnapshot:function(cb,err){
       if(!admin&&(window.NR_CREW?CREW_OWN:OWN).indexOf(c)>=0)
         return onSnapshot(doc(fs,PFX+c,u.uid),{includeMetadataChanges:true},function(s){cb({fresh:!(s.metadata&&s.metadata.fromCache),docs:s.exists()?[{id:s.id,data:function(){return s.data()}}]:[]})},quiet(cb,{docs:[]},err));
