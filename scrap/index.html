@@ -2670,7 +2670,7 @@ function render(remote){
   if(!ENV.crew){if(!ENV.admin&&!vendorOk)ui.tab="reg";else if(!ENV.admin&&ui.tab!=="cal"&&ui.tab!=="vin")ui.tab="cal";}
   h='<div class="top"><div><h1>スクラップ搬出 調整<span class="role">'+(ENV.admin?'管理者':ENV.crew?(D.crews[ENV.uid]?'盛替え業者':'未登録'):ENV.preview?'業者(プレビュー)':(vendorOk?'業者':'未登録'))+'</span></h1><p>業者が入力した階別の保有・搬出希望を、回収日ごとの台数・時間・エレベーター集積に合わせて自動で配分します</p>'+(window.NR_ACCOUNT?'<p class="acct">'+esc(window.NR_ACCOUNT.email||"")+' <button class="btn sm" data-act="logout">ログアウト</button> <button class="btn sm" data-act="reload">↻ 最新にする</button>'+(ENV.mode==="noid"?'':simpleToggle()+pushBtn())+(ui.synced?' <span class="muted" style="font-size:12px">'+p2(ui.synced.getHours())+':'+p2(ui.synced.getMinutes())+' 更新</span>':'')+'</p>':'')
    +(ENV.mode==="db"&&(SYNC.stuck||(navigator.onLine&&!SYNC.last&&Date.now()-SYNC.start>20000))?'<div class="note bad syncbad" style="margin:8px 0 0;display:block"><b>⚠ '+(SYNC.stuck?'この端末の入力が、まだサーバーに届いていません。':'サーバーにつながっていません(表示は端末に残っていた内容です)。')+'</b> ほかの人には見えていません。電波を確かめ、同じアプリを開いているほかの画面(ブラウザのタブ・ホーム画面のアプリ)を閉じてから、「↻ 最新にする」を押してください。直らないときは管理者に連絡してください。</div>':'')
-   +(PEND.n&&(!navigator.onLine||Date.now()-PEND.since>3500)?'<div class="note warn" style="margin:8px 0 0"><span><b>未送信 '+PEND.n+'件</b> '+(navigator.onLine?'送信を待っています。':'電波がありません。')+'入力は端末に残っていて、つながると自動で送ります。画面は閉じても大丈夫です。</span></div>':'')
+   +(PEND.n&&(!navigator.onLine||Date.now()-PEND.since>3500)?'<div class="note warn" style="margin:8px 0 0"><span><b>未送信 '+PEND.n+'件</b> '+(navigator.onLine?'送信を待っています。':'電波がありません。')+'つながると自動で送ります。<b>送り終わるまで、アプリを閉じたり、ほかのアプリに切り替えたりしないでください</b>(閉じると、送っていない入力は消えます)。</span></div>':'')
    +(window.NR_DEMO?'<div class="note warn" style="margin:8px 0 0"><span><b>お試し版です。</b>データはこの端末のブラウザだけに保存され、本番のアプリとは関係ありません。業者・台数はすべて架空です。 <button class="btn sm" data-act="demoreset">最初からやり直す</button></span></div>':'')+'</div><div class="tabs'+(ENV.admin?'':' big')+'" role="tablist">';
   var simpleV=ui.simple&&!ENV.admin&&!ENV.crew&&vendorOk;
   tabs.forEach(function(t){var cur=simpleV?(ui.stab||"s-home")===t[0]:ui.tab===t[0];h+='<button role="tab" aria-selected="'+cur+'" data-act="'+(simpleV?'stab':'tab')+'" data-tab="'+t[0]+'">'+t[1]+'</button>'});
@@ -3317,7 +3317,7 @@ window.NR_CONFIG={
 <script type="module">
 import {initializeApp} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {getAuth,onAuthStateChanged,GoogleAuthProvider,signInWithPopup,getRedirectResult,signInWithEmailAndPassword,createUserWithEmailAndPassword,sendPasswordResetEmail,sendEmailVerification,signOut} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import {initializeFirestore,collection,doc,onSnapshot,setDoc,deleteDoc,runTransaction,getDoc as getDocFs,increment,deleteField,arrayUnion,arrayRemove,persistentLocalCache,persistentSingleTabManager,waitForPendingWrites} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import {initializeFirestore,collection,doc,onSnapshot,setDoc,deleteDoc,runTransaction,getDoc as getDocFs,increment,deleteField,arrayUnion,arrayRemove,waitForPendingWrites} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 var CFG=window.NR_CONFIG,app=document.getElementById("app");
 function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
@@ -3431,14 +3431,13 @@ var OWN=["vendors","members","approved","blocked","plans","crews","crewreq","cre
 var CREW_OWN=["members","approved","blocked","crews","crewreq","crewblocked"];
 /* 同じFirebaseで別アプリ(スクラップ搬出など)を動かすときは、コレクション名の頭に付ける文字(NR_CONFIG.prefix)でデータを分ける */
 var PFX=CFG.prefix||"";
-/* 端末にデータを残しておき、電波がないときの入力もつながったときに送る。使えないブラウザ(プライベートブラウズなど)では普通に開く */
 function openStore(fb){
   var id=CFG.databaseId||"(default)";
-  /* 端末のデータは、最後に開いた画面(タブ)だけが持つ(forceOwnership)。前は複数の画面で分け合っていたため、
-     裏で止まった別の画面(古いタブ・ホーム画面のアプリ)が送り役のまま残ると、ほかの画面の入力がサーバーへ送られなかった。
-     つながりにくい回線では、自動で別の通信方式(ロングポーリング)に切り替える */
-  try{return initializeFirestore(fb,{ignoreUndefinedProperties:true,experimentalAutoDetectLongPolling:true,localCache:persistentLocalCache({tabManager:persistentSingleTabManager({forceOwnership:true})})},id)}
-  catch(e){return initializeFirestore(fb,{ignoreUndefinedProperties:true,experimentalAutoDetectLongPolling:true},id)}
+  /* 端末(スマホ)の保存場所(IndexedDB)にはデータを残さない。iPhone などでは、裏に回したあと保存場所が壊れて、
+     入力がサーバーへ送られないまま端末にたまることがあった(本人の画面では保存できたように見える)。
+     電波が切れている間の入力は、画面を開いている間はメモリーに残り、つながると送られる(未送信の件数が画面上部に出る)。
+     通信は、回線を選ばない方式(ロングポーリング)に固定する */
+  return initializeFirestore(fb,{ignoreUndefinedProperties:true,experimentalForceLongPolling:true},id);
 }
 /* アプリの patch の特別な値を Firestore の値に変える */
 function fsVal(v){

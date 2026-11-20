@@ -4,3 +4,9 @@ tests/.work/
 tests/rules/node_modules/
 tests/rules/package*.json
 tests/rules/*.log
+tests/e2e/node_modules/
+tests/e2e/fb.js
+tests/e2e/package*.json
+tests/e2e/*.log
+tests/e2e/firestore.rules
+tests/rules/firestore.rules

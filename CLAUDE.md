@@ -33,3 +33,5 @@
     node tests/run.js fill   # 名前に fill を含むものだけ
 
 直したら、関係する試験と `ipad`(画面の幅)を動かしてから push する。新しい機能には `tests/cases/` に試験を足す。
+
+保存や通信のしかた(index.html の openStore など Firebase とのやりとり)を変えたときは、`tests/e2e/`(本物の Firebase の部品とエミュレーターでの確認)も動かす。ルールを変えたときは `tests/rules/` も動かす。どちらも手順は各フォルダの README.md。
