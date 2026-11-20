@@ -20,6 +20,10 @@ for (const P of ["", "scrap_"]) {
       const k = {}; let lastAt = "";
       s.forEach(d => { const x = d.data() || {}; k[x.kind || "?"] = (k[x.kind || "?"] || 0) + 1; if ((x.at || "") > lastAt) lastAt = x.at || ""; });
       extra = " / 種類別 " + JSON.stringify(k) + " / 記録の中の最新 " + (lastAt ? jst(new Date(lastAt)) : "なし");
+      /* 1件ずつ: 保存された時刻・記録の中の時刻(at)・種類。誰の記録かは出さない */
+      const rows = []; s.forEach(d => { const x = d.data() || {}; rows.push([d.updateTime ? d.updateTime.toDate() : null, x.at, x.kind, typeof x.at]); });
+      rows.sort((a, b) => (b[0] || 0) - (a[0] || 0));
+      extra += "\n" + rows.map(r => "    保存 " + jst(r[0]) + " / 記録の時刻 " + (r[1] ? (r[3] === "string" ? jst(new Date(r[1])) + " (" + String(r[1]).slice(0, 24) + ")" : "文字でない(" + r[3] + ")") : "なし") + " / " + (r[2] || "?")).join("\n");
     }
     if (c === "confirmed") {
       let vr = 0; s.forEach(d => { if (Object.keys((d.data() || {}).vr || {}).length) vr++; });
