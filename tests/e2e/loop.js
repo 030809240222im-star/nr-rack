@@ -36,13 +36,15 @@ const MS=Number(process.env.IDLE_MS||200000);
   const sa=JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT||'null');
   const a1=await user(ADMINS[0]),a2=await user(ADMINS[1]),vu=await user('v@example.jp');
   if(sa){
+    /* 本番から読む(emulators:exec が入れるエミュレーター向けの設定を外す。エミュレーターへは REST で書く) */
+    const EH=process.env.FIRESTORE_EMULATOR_HOST;delete process.env.FIRESTORE_EMULATOR_HOST;delete process.env.FIREBASE_AUTH_EMULATOR_HOST;
     const admin=require(process.env.ADMIN_SDK||'firebase-admin');admin.initializeApp({credential:admin.credential.cert(sa)});
     const {getFirestore}=require((process.env.ADMIN_SDK||'firebase-admin')+'/lib/firestore/index.js');const db=getFirestore(admin.app(),'default');
     let n=0;
     for(const c of COLLS){const s=await db.collection(c).get();for(const d of s.docs){await put(c+'/'+d.id,d.data());n++}
       /* 業者1人: 承認された人の1人に、この試しの業者をなりすまさせる(同じ会社として) */
       if(c==='approved'&&s.docs.length){const x=s.docs.find(d=>(d.data()||{}).vid)||s.docs[0];const xd=x.data();await put('approved/'+vu,Object.assign({},xd,{email:'v@example.jp',vid:xd.vid||x.id}));await put('members/'+vu,{company:xd.company||'',email:'v@example.jp',at:'2026-11-01T00:00:00Z'})}}
-    console.log('本番のデータを写しました: '+n+'件');
+    console.log('本番のデータを写しました: '+n+'件');if(!n)throw new Error('本番のデータを読めませんでした');
   }else{
     await put('config/main',{evn:1,ev:{1:[1,40]},wdFrom:''});
     await put('approved/'+vu,{company:'A社',email:'v@example.jp',vid:vu,at:'2026-11-01T00:00:00Z'});
