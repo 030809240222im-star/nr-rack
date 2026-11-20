@@ -8,12 +8,15 @@ html=html.replace(/import \{initializeApp(,onLog)?\} from/,(m,a)=>'import {initi
 html=html.replace('var fb=initializeApp(CFG.firebase),auth=getAuth(fb),fs=openStore(fb);','var fb=initializeApp(CFG.firebase),auth=getAuth(fb),fs=openStore(fb);connectAuthEmulator(auth,"http://127.0.0.1:9099",{disableWarnings:true});connectFirestoreEmulator(fs,"127.0.0.1",8085);');
 /* 書き込みを数える */
 const W='(window.__W=window.__W||{},window.__W[k]=(window.__W[k]||0)+1)';
-const hook=(a,b)=>{if(!html.includes(a))throw new Error('hook failed: '+a.slice(0,40));html=html.split(a).join(b)};
-hook('doc:function(p){var r=doc(fs,PFX+p);return {','doc:function(p){var r=doc(fs,PFX+p),w=function(t){var k=t+" "+String(p).split("/")[0];'+W+'};return {');
-hook('set:function(d){return setDoc(r,d)}','set:function(d){w("set");return setDoc(r,d)}');
-hook('patch:function(d){return setDoc(r,fsVal(d),{merge:true})}','patch:function(d){w("patch");return setDoc(r,fsVal(d),{merge:true}).catch(function(e){w("拒否 "+(e&&e.code));throw e})}');
-hook('delete:function(){return deleteDoc(r)}','delete:function(){w("delete");return deleteDoc(r)}');
-hook('create:function(d){return runTransaction(','create:function(d){w("create");return runTransaction(');
+/* 古い版(書き込みを数える前)にも使えるよう、M(…) のない書き方も試す */
+const hook=(a,b)=>{if(!html.includes(a)){const a2=a.replace(/M\((d|null)\);/g,'').replace(',M=','),M0=function(){};return {'),b2=b.replace(/M\((d|null)\);/g,'');
+  if(a2.endsWith('return {')){const o='doc:function(p){var r=doc(fs,PFX+p);return {';if(html.includes(o)){html=html.split(o).join(b.replace(/,M=$/,';return {'));return}}
+  if(!html.includes(a2))throw new Error('hook failed: '+a.slice(0,40));html=html.split(a2).join(b2);return}html=html.split(a).join(b)};
+hook('doc:function(p){var r=doc(fs,PFX+p),M=','doc:function(p){var r=doc(fs,PFX+p),w=function(t){var k=t+" "+String(p).split("/")[0];'+W+'},M=');
+hook('set:function(d){M(d);return setDoc(r,d)}','set:function(d){w("set");M(d);return setDoc(r,d)}');
+hook('patch:function(d){M(d);return setDoc(r,fsVal(d),{merge:true})}','patch:function(d){w("patch");M(d);return setDoc(r,fsVal(d),{merge:true}).catch(function(e){w("拒否 "+(e&&e.code));throw e})}');
+hook('delete:function(){M(null);return deleteDoc(r)}','delete:function(){w("delete");M(null);return deleteDoc(r)}');
+hook('create:function(d){M(d);return runTransaction(','create:function(d){w("create");M(d);return runTransaction(');
 if(!html.includes('connectFirestoreEmulator(fs'))throw new Error('hook failed');
 const crewHtml=()=>html.replace('<script type="module">','<script>window.NR_CREW=true;</script>\n<script type="module">');
 const srv=http.createServer((q,r)=>{r.writeHead(200,{'Content-Type':'text/html; charset=utf-8'});r.end(q.url.indexOf('/crew')===0?crewHtml():html)}).listen(8099);

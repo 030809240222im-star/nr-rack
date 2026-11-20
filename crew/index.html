@@ -974,11 +974,30 @@ function watchVid(){
 /* 開いたとき(と画面に戻ったとき)に、最終ログインの時刻を残す。10分以内の繰り返しは書かない(開き直したときも。前に書いた時刻を端末に覚えておく)。
    サーバーの1日の書き込み回数には上限があるので、むだに書かない。失敗しても画面には出さない */
 var SEEN_AT=0,SEEN_ERR="",SEEN_OK="",SEEN_MS=600000;
+/* 書き込みの量を数える: この端末が、1日の上限の区切り(毎日17時)から何回・どれだけ(1KB=1単位の見込み)サーバーに書いたか。
+   集まりごと(c)・時間ごと(h)にも数え、端末に覚えておく(開き直しても続きから)。最終ログインの記録(seen)に一緒に載せ、管理者の点検で見る */
+var METER_KEY="nr-meter-"+location.pathname,METER_OFF=false;
+function qDay(){return new Date(Date.now()+9*36e5-17*36e5).toISOString().slice(0,10)}
+function meterGet(){var m=null;try{m=JSON.parse(localStorage.getItem(METER_KEY)||"null")}catch(e){}if(!m||m.d!==qDay())m={d:qDay(),n:0,u:0,c:{},h:{}};return m}
+function bytesOf(o){try{return unescape(encodeURIComponent(JSON.stringify(o===undefined?null:o))).length}catch(e){return 1024}}
+window.nrMeter=function(p,data){
+  var m=meterGet(),ps=String(p).split("/"),c=ps[0],cur=(D[c]||{})[ps[1]],b=Math.max(bytesOf(data),cur?bytesOf(cur):0),hh=String(new Date(Date.now()+9*36e5).getUTCHours());
+  m.n++;m.u+=Math.max(1,Math.ceil(b/1024));m.c[c]=(m.c[c]||0)+1;m.h[hh]=(m.h[hh]||0)+1;
+  try{localStorage.setItem(METER_KEY,JSON.stringify(m))}catch(e){}
+};
+function devName(){var u=navigator.userAgent||"",st=false;try{st=navigator.standalone||matchMedia("(display-mode: standalone)").matches}catch(e){}
+  return (/iPhone/.test(u)?"iPhone":/iPad/.test(u)||(/Macintosh/.test(u)&&navigator.maxTouchPoints>1)?"iPad":/Android/.test(u)?"Android":/Windows/.test(u)?"Windows":/Mac/.test(u)?"Mac":"その他")
+    +(/Line\//.test(u)?" LINE":/CriOS|Chrome/.test(u)?" Chrome":/Safari/.test(u)?" Safari":"")+(st?" ホーム画面":"")}
+function meterRec(){var m=meterGet();return {d:m.d,n:m.n,u:m.u,c:m.c,h:m.h,dev:devName(),ver:String(document.lastModified||"").slice(0,40)}}
 function markSeen(){
   if(ENV.mode!=="db"||ENV.preview||!ENV.uid)return;
   var sk="nr-seen-"+location.pathname+"-"+ENV.uid;try{SEEN_AT=Math.max(SEEN_AT,Number(localStorage.getItem(sk))||0)}catch(e){}
   if(Date.now()-SEEN_AT<SEEN_MS)return;SEEN_AT=Date.now();try{localStorage.setItem(sk,String(SEEN_AT))}catch(e){}
-  try{var pr=ENV.db.doc("seen/"+ENV.uid).patch({at:nowIso(),email:String(ENV.email||"").slice(0,200),kind:ENV.admin?"admin":ENV.crew?"crew":"vendor"});if(pr&&pr.then)pr.then(function(){SEEN_ERR="";SEEN_OK=nowIso()},function(e){SEEN_ERR=(e&&e.code)||"error";SEEN_AT=0;try{localStorage.removeItem(sk)}catch(x){}render(true)})}catch(e){SEEN_ERR=String(e&&e.message||e).slice(0,60)}
+  var rec={at:nowIso(),email:String(ENV.email||"").slice(0,200),kind:ENV.admin?"admin":ENV.crew?"crew":"vendor"};if(!METER_OFF)rec.w=meterRec();
+  try{var pr=ENV.db.doc("seen/"+ENV.uid).patch(rec);if(pr&&pr.then)pr.then(function(){SEEN_ERR="";SEEN_OK=nowIso()},function(e){
+    /* ルールを貼り直す前は、書き込みの量(w)を載せると断られる。そのときは量を載せずに、最終ログインだけ残す */
+    if(rec.w&&e&&e.code==="permission-denied"){METER_OFF=true;SEEN_AT=0;markSeen();return}
+    SEEN_ERR=(e&&e.code)||"error";SEEN_AT=0;try{localStorage.removeItem(sk)}catch(x){}render(true)})}catch(e){SEEN_ERR=String(e&&e.message||e).slice(0,60)}
 }
 /* 画面に戻ったとき: スマホ(特にホーム画面に追加した iPhone)は、裏で何日も止まったままになり、戻っても知らせ(visibilitychange)が来ないことがある。
    そのため、戻る・表示し直す・前に出る・電波が戻る・時計が飛んだ(止まっていた)のどれでも最終ログインを残し、
@@ -998,7 +1017,9 @@ function wakeSetup(){
     if(gap>600000){if(!WAKE.hidden)WAKE.hidden=n-gap;wakeUp()}/* 1分ごとのはずが10分以上空いた = 裏で止まっていた */
     else if(document.visibilityState==="visible"&&n-SEEN_AT>1800000)markSeen()},60000);
 }
-function seenText(id){var s=D.seen[id];return '<span class="hint seen" style="margin:0">最終ログイン '+(s&&s.at?esc(fmtAt(s.at)):'記録なし')+'</span>'}
+function seenText(id){var s=D.seen[id],w=s&&s.w&&s.w.d===qDay()?s.w:null,many=w&&nrNum(w.u)>=2000;
+  return '<span class="hint seen" style="margin:0">最終ログイン '+(s&&s.at?esc(fmtAt(s.at)):'記録なし')
+    +(w?' ・今日(17時から)の書き込み <span'+(many?' style="color:var(--bad);font-weight:700"':'')+'>'+nrNum(w.n)+'回('+nrNum(w.u)+'単位)</span>'+(many?' ⚠多い':''):'')+'</span>'}
 /* 回収日(days)と確定(confirmed)は、毎日1件ずつ増えていく。開くたびに全部を読むと、サーバーの1日の読み取りの上限を
    だんだん使い切るので、ふだんは「今日の35日前から先」だけを読む(今週の実績・戻し一覧・確定と再振り分けには足りる)。
    それより前の月のカレンダー・月の集計・記録・会社の統合では、needFrom で読む範囲を広げる(その画面を開いたときだけ) */
@@ -3505,13 +3526,13 @@ function makeDb(fs,u,admin){
       /* opt.from: 文書の名前(日付)がそれ以降のものだけ読む */
       return onSnapshot(opt&&opt.from?query(collection(fs,PFX+c),where(documentId(),">=",opt.from)):collection(fs,PFX+c),{includeMetadataChanges:true},function(q){cb({fresh:!(q.metadata&&q.metadata.fromCache),docs:q.docs.map(function(d){return {id:d.id,data:function(){return d.data()}}})})},quiet(cb,{docs:[]},err));
     }}},
-    doc:function(p){var r=doc(fs,PFX+p);return {
-      set:function(d){return setDoc(r,d)},
-      patch:function(d){return setDoc(r,fsVal(d),{merge:true})},
+    doc:function(p){var r=doc(fs,PFX+p),M=function(d){try{if(window.nrMeter)window.nrMeter(p,d)}catch(e){}};return {
+      set:function(d){M(d);return setDoc(r,d)},
+      patch:function(d){M(d);return setDoc(r,fsVal(d),{merge:true})},
       get:function(){return getDocFs(r).then(function(s){return s.exists()?s.data():null})},
-      delete:function(){return deleteDoc(r)},
+      delete:function(){M(null);return deleteDoc(r)},
       /* まだないときだけ作る(サーバーで確かめる。電波がないと失敗する)。すでにあれば code "exists" で失敗 */
-      create:function(d){return runTransaction(fs,function(t){return t.get(r).then(function(s){if(s.exists()){var e=new Error("exists");e.code="exists";throw e}t.set(r,d)})})},
+      create:function(d){M(d);return runTransaction(fs,function(t){return t.get(r).then(function(s){if(s.exists()){var e=new Error("exists");e.code="exists";throw e}t.set(r,d)})})},
       onSnapshot:function(cb,err){return onSnapshot(r,{includeMetadataChanges:true},function(s){cb({fresh:!(s.metadata&&s.metadata.fromCache),metadata:s.metadata,exists:s.exists(),data:function(){return s.data()}})},quiet(cb,{exists:false,data:function(){}},err))}
     }}
   };

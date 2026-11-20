@@ -34,6 +34,11 @@ for(const P of ["","scrap_"]){
   await t("登録前の人も自分の最終ログインは記録できる",m(x,"seen/zz",{at:now,email:"z@x.jp",kind:"vendor"}),true);
   await t("管理者は最終ログインを読める",getDoc(doc(admin,P+"seen/u1")),true);
   await t("業者はほかの人の最終ログインを読めない",getDoc(doc(v,P+"seen/c1")),false);
+  const W={d:"2026-11-20",n:12,u:15,c:{vendors:10,seen:2},h:{"9":12},dev:"iPhone Safari",ver:"11/21/2026 08:00:00"};
+  await t("最終ログインに書き込みの量(w)を載せられる",m(v,"seen/u1",{at:now,email:"a@x.jp",kind:"vendor",w:W}),true);
+  await t("書き込みの量が地図でないと断る",m(v,"seen/u1",{at:now,email:"a@x.jp",kind:"vendor",w:"x"}),false);
+  await t("書き込みの量の項目が多すぎると断る",m(v,"seen/u1",{at:now,email:"a@x.jp",kind:"vendor",w:Object.fromEntries([...Array(13)].map((_,i)=>["k"+i,i]))}),false);
+  await t("最終ログインにほかの項目は載せられない",m(v,"seen/u1",{at:now,email:"a@x.jp",kind:"vendor",x:1}),false);
   await t("ほかの人の最終ログインは書けない",m(v,"seen/c1",{at:now,email:"a@x.jp",kind:"vendor"}),false);
   // 業者
   await t("業者: 自社の台数を入れる",m(v,"vendors/v1",{floors:{16:{w:increment(1)}},updated:now}),true);

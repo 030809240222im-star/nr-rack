@@ -183,10 +183,12 @@ BLOCK = """
     match /{P}seen/{{id}} {{
       allow read, delete: if isAdmin();
       allow create, update: if isSelf(id)
-        && request.resource.data.keys().hasOnly(['at', 'email', 'kind'])
+        && request.resource.data.keys().hasOnly(['at', 'email', 'kind', 'w'])
         && request.resource.data.at is string && request.resource.data.at.size() <= 40
         && request.resource.data.email is string && request.resource.data.email.size() <= 200
-        && request.resource.data.kind in ['admin', 'vendor', 'crew'];
+        && request.resource.data.kind in ['admin', 'vendor', 'crew']
+        // w: この端末が今日(17時から)サーバーに書いた回数と量(1日の上限を何が使っているかを調べるため)
+        && (!('w' in request.resource.data) || (request.resource.data.w is map && request.resource.data.w.size() <= 12));
     }}
     // プッシュ通知の登録: 本人が自分の端末を登録・削除する。送るのは GitHub Actions(サーバー)
     match /{P}push/{{id}} {{
