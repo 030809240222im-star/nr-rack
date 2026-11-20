@@ -33,6 +33,26 @@ for (const P of ["", "scrap_"]) {
   }
 }
 
+/* ===== 書き込みが通るかの試し(データは変わらない): すでにある文書を「新しく作る」と頼み、サーバーの返事の種類を見る。
+   ALREADY_EXISTS(6) なら書き込みの窓口は動いている。RESOURCE_EXHAUSTED(8) なら1日の上限に達している */
+for (const path of ["config/main", "scrap_config/main"]) {
+  const t0 = Date.now();
+  try { await db.doc(path).create({ probe: true }); console.log("書き込みの試し " + path + ": 作れてしまった(想定外)"); }
+  catch (e) { console.log("書き込みの試し " + path + ": 返事 " + e.code + " " + String(e.details || e.message || "").slice(0, 120) + " (" + (Date.now() - t0) + "ms)"); }
+}
+/* ===== 全文書の保存時刻(11/18 以降)。どの集まりか・保存時刻・中に書かれた最新の時刻(at など)だけを出す */
+{
+  const since = Date.parse("2026-11-18T00:00:00+09:00"), all = [];
+  const scan = (o, acc) => { if (!o || typeof o !== "object") return; for (const [k, v] of Object.entries(o)) { if (typeof v === "string" && /^20\d\d-\d\d-\d\dT\d\d:\d\d/.test(v)) { if (v > acc.v) acc.v = v; } else if (v && typeof v === "object") scan(v, acc); } };
+  for (const P of ["", "scrap_"]) for (const c of COLLS) {
+    const s = await db.collection(P + c).get();
+    s.forEach(d => { const t = d.updateTime && d.updateTime.toDate(); if (!t || t.getTime() < since) return; const acc = { v: "" }; scan(d.data(), acc); all.push([t, P + c, acc.v]); });
+  }
+  all.sort((a, b) => a[0] - b[0]);
+  console.log("===== 11/18 以降にサーバーに保存された文書(古い順) " + all.length + "件");
+  for (const r of all) console.log("  保存 " + jst(r[0]) + ":" + String(r[0].getUTCSeconds()).padStart(2, "0") + "  " + r[1].padEnd(16) + " 中の最新の時刻 " + (r[2] ? jst(new Date(r[2])) : "なし"));
+}
+
 /* ===== サーバー側の記録(Google Cloud の利用状況)。読むだけ。件数と結果の種類だけを出す ===== */
 const PROJECT = sa.project_id;
 let token = null;
