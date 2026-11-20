@@ -963,10 +963,10 @@ function watchVid(){
   D.sent={};VSUB.off.push(ENV.db.doc("sent/"+ENV.vid).onSnapshot(function(s){var m={};if(s.exists)m[ENV.vid]=s.data();D.sent=m;render(true)},function(){}));
 }
 /* 開いたとき(と画面に戻ったとき)に、最終ログインの時刻を残す。5分以内の繰り返しは書かない。失敗しても画面には出さない */
-var SEEN_AT=0;
+var SEEN_AT=0,SEEN_ERR="",SEEN_OK="";
 function markSeen(){
   if(ENV.mode!=="db"||ENV.preview||!ENV.uid||Date.now()-SEEN_AT<300000)return;SEEN_AT=Date.now();
-  try{var pr=ENV.db.doc("seen/"+ENV.uid).patch({at:nowIso(),email:String(ENV.email||"").slice(0,200),kind:ENV.admin?"admin":ENV.crew?"crew":"vendor"});if(pr&&pr.catch)pr.catch(function(){})}catch(e){}
+  try{var pr=ENV.db.doc("seen/"+ENV.uid).patch({at:nowIso(),email:String(ENV.email||"").slice(0,200),kind:ENV.admin?"admin":ENV.crew?"crew":"vendor"});if(pr&&pr.then)pr.then(function(){SEEN_ERR="";SEEN_OK=nowIso()},function(e){SEEN_ERR=(e&&e.code)||"error";SEEN_AT=0;render(true)})}catch(e){SEEN_ERR=String(e&&e.message||e).slice(0,60)}
 }
 function seenText(id){var s=D.seen[id];return '<span class="hint seen" style="margin:0">最終ログイン '+(s&&s.at?esc(fmtAt(s.at)):'記録なし')+'</span>'}
 function subscribe(){
@@ -2548,6 +2548,7 @@ function renderMem(C){
   Object.keys(D.seen).forEach(function(k){var s=D.seen[k];if(s&&s.kind==="admin"&&s.email){var e=s.email.toLowerCase();if(!seenBy[e]||seenBy[e]<s.at)seenBy[e]=s.at}});
   h+='<h2 style="margin:22px 0 6px">管理者</h2><div class="tablewrap"><table><thead><tr><th class="l">メールアドレス</th><th class="l">最終ログイン</th></tr></thead><tbody>'
     +adm.map(function(e){var at=seenBy[String(e).toLowerCase()];return '<tr><td class="l">'+esc(e)+'</td><td class="l">'+(at?esc(fmtAt(at)):'記録なし')+'</td></tr>'}).join("")+'</tbody></table></div>'
+    +(SEEN_ERR?'<div class="note bad" style="margin:8px 0 0;display:block"><b>この端末の最終ログインを保存できませんでした('+esc(SEEN_ERR)+')。</b>'+(SEEN_ERR==="permission-denied"?'Firebase のルールに最終ログイン(seen)の許可が入っていません。最新のルール(firestore.rules)を貼り直してください。':'電波を確かめてください。')+'</div>':SEEN_OK?'<p class="hint" style="margin:6px 0 0">この端末の最終ログインは '+esc(fmtAt(SEEN_OK))+' に保存できました。</p>':'')
     +'<p class="hint" style="margin:6px 0 0">最終ログインは、アプリを開いた(または画面に戻った)時刻です。この機能を入れる前のログインは「記録なし」になります。</p>';
   return h+'<p class="hint" style="margin-top:12px">管理者を増やすときは、Firebaseのセキュリティルールと設定(NR_CONFIG.adminEmails)の両方にメールアドレスを追加します。</p></section>';
 }
