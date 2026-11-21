@@ -4,6 +4,7 @@ const {chromium}=require('playwright');const fs=require('fs');
 let h=fs.readFileSync(REPO+'index.html','utf8');if(!h.includes('SEEN_MS=600000'))throw new Error('SEEN_MS');
 h=h.replace('SEEN_MS=600000','SEEN_MS=0');fs.writeFileSync('main-test.html',h);/* 試験では10分待たずに書く */
 const FS={config:{main:{evn:1,ev:{1:[1,40]},wdFrom:''}},approved:{a:{company:'A社',vid:'a',email:'a@x.jp'}},members:{a:{company:'A社',email:'a@x.jp'}},vendors:{a:{floors:{10:{h:9,w:3,s:'2026-11-01'}}}}};
+const WREC="(()=>{const x=window.__FS.seen.a||{};const id=localStorage.getItem('nr-devid');return (x.wd||{})[id]})()";
 let bad=0;const ok=(c,m)=>{if(!c)bad++;console.log((c?'OK ':'NG ')+m)};
 (async()=>{const b=await chromium.launch();
 const open=async(uid,email,deny)=>{const cx=await b.newContext({viewport:{width:1200,height:900}});await cx.addInitScript(()=>{try{localStorage.setItem('nr-uipref','{"simple":false}')}catch(e){}});
@@ -15,16 +16,25 @@ const v=await open('a','a@x.jp');
 await v.click('button[data-tab=vin]').catch(()=>{});await v.waitForTimeout(400);
 for(const n of ['4','5','6']){await v.fill('#w-10',n);await v.locator('#w-10').blur();await v.waitForTimeout(400)}
 await v.evaluate(()=>window.dispatchEvent(new Event('focus')));await v.waitForTimeout(600);
-const w=await v.evaluate(()=>(window.__FS.seen.a||{}).w);console.log('業者の記録:',JSON.stringify(w));
+const w=await v.evaluate(WREC);console.log('業者の記録:',JSON.stringify(w));
 ok(w&&w.n>=4&&w.c.vendors===3&&w.u>=w.n&&w.dev&&w.d,'業者の端末の書き込み(台数3回+最終ログイン)が数えられ、最終ログインの記録に載る');
 await v.reload();await v.waitForTimeout(1200);await v.evaluate(()=>window.dispatchEvent(new Event('focus')));await v.waitForTimeout(600);
-let w2=null;for(let i=0;i<10;i++){w2=await v.evaluate(()=>(window.__FS.seen.a||{}).w);if(w2&&w2.n>w.n)break;await v.evaluate(()=>window.dispatchEvent(new Event('focus')));await v.waitForTimeout(500)}ok(w2&&w2.n>w.n,'開き直しても続きから数える('+w.n+'→'+w2.n+')');
+let w2=null;for(let i=0;i<10;i++){w2=await v.evaluate(WREC);if(w2&&w2.n>w.n)break;await v.evaluate(()=>window.dispatchEvent(new Event('focus')));await v.waitForTimeout(500)}ok(w2&&w2.n>w.n,'開き直しても続きから数える('+w.n+'→'+w2.n+')');
 /* 管理者の「登録」に出る */
 /* 偽の Firebase のデータは画面ごとなので、業者の画面で書いた内容を管理者の画面に渡す */
 const cur=await v.evaluate(()=>window.__FS);const a=await v.context().newPage();await a.addInitScript(w=>{window.__FAKE_UID='g1';window.__FAKE_EMAIL='kowa0371@gmail.com';sessionStorage.__FS=JSON.stringify(w)},cur);
 await a.goto('file://'+WORK+'/main-test.html');await a.click('#lg-google');await a.waitForTimeout(1000);
 await a.click('button[data-tab=mem]').catch(()=>{});await a.waitForTimeout(600);
-const t=(await a.locator('body').innerText()).match(/今日\(17時から\)の書き込み \d+回\(\d+単位\)/);console.log('管理者の画面:',t&&t[0]);ok(!!t,'管理者の「登録」に、その人の今日の書き込みが出る');
+const t=(await a.locator('body').innerText()).match(/今日\(17時から\)の書き込み: [^\n]*\d+回\(\d+単位\)/);console.log('管理者の画面:',t&&t[0]);ok(!!t,'管理者の「登録」に、その人の今日の書き込みが出る');
+/* 同じアカウントの2台目の端末: 端末ごとに分けて残る */
+const cur2=await v.evaluate(()=>window.__FS);const v2c=await b.newContext({viewport:{width:1200,height:900}});
+await v2c.route(/gstatic\.com\/firebasejs/,r=>r.fulfill({contentType:'text/javascript',body:fs.readFileSync('fake-fb.js','utf8')}));await v2c.route(/jsdelivr/,r=>r.fulfill({contentType:'text/javascript',body:fs.readFileSync('qrcode.min.js','utf8')}));
+await v2c.addInitScript(w=>{window.__FAKE_UID='a';window.__FAKE_EMAIL='a@x.jp';sessionStorage.__FS=JSON.stringify(w);try{localStorage.setItem('nr-uipref','{"simple":false}')}catch(e){}},cur2);
+const v2=await v2c.newPage();await v2.goto('file://'+WORK+'/main-test.html');await v2.click('#lg-google');await v2.waitForTimeout(1200);
+const wd=await v2.evaluate(()=>window.__FS.seen.a.wd||{});console.log('端末ごとの記録:',Object.keys(wd).length,'台');ok(Object.keys(wd).length===2,'同じアカウントの2台が、端末ごとに分けて残る');
+const cur3=await v2.evaluate(()=>window.__FS);const ap=await v2c.newPage();await ap.addInitScript(w=>{window.__FAKE_UID='g1';window.__FAKE_EMAIL='kowa0371@gmail.com';sessionStorage.__FS=JSON.stringify(w)},cur3);
+await ap.goto('file://'+WORK+'/main-test.html');await ap.click('#lg-google');await ap.waitForTimeout(1000);await ap.click('button[data-tab=mem]').catch(()=>{});await ap.waitForTimeout(500);
+const line=((await ap.locator('body').innerText()).match(/今日\(17時から\)の書き込み: [^\n]*/)||[''])[0];console.log('管理者の画面:',line);ok((line.match(/回\(/g)||[]).length===2,'管理者の画面に、端末ごとの数が並ぶ');
 /* 書き込みを止める仕組み: 業者が1分に60回をこえて書くと止まり、赤い注意が出る。最終ログインの記録には止めたことが載る */
 const z=await open('a','a@x.jp');await z.click('button[data-tab=vin]').catch(()=>{});await z.waitForTimeout(300);
 const before=await z.evaluate(()=>JSON.parse(sessionStorage.__WC||'{}').vendors||0);
@@ -33,8 +43,8 @@ await z.waitForTimeout(500);const after=await z.evaluate(()=>JSON.parse(sessionS
 const br=await z.locator('.syncbad.brake').innerText().catch(()=>'なし');console.log('65回変えた: サーバーへの書き込み',after-before,'回 / 注意:',br.replace(/\s+/g,' ').slice(0,70));
 ok(after-before<=60&&after-before>=58&&/止めました/.test(br),'1分に60回をこえると、それ以上は書かず、赤い注意が出る');
 await z.evaluate(()=>window.dispatchEvent(new Event('focus')));await z.waitForTimeout(600);
-const zw=await z.evaluate(()=>(window.__FS.seen.a||{}).w);console.log('記録:',JSON.stringify({trip:zw&&zw.trip,why:zw&&zw.why,blk:zw&&zw.blk}));ok(zw&&zw.trip>=1&&zw.blk>=1,'止めたことが最終ログインの記録に載る(管理者に見える)');
+const zw=await z.evaluate(WREC);console.log('記録:',JSON.stringify({trip:zw&&zw.trip,why:zw&&zw.why,blk:zw&&zw.blk}));ok(zw&&zw.trip>=1&&zw.blk>=1,'止めたことが最終ログインの記録に載る(管理者に見える)');
 /* ルールを貼り直す前: 量を載せずに、最終ログインだけ残す */
 const d=await open('a','a@x.jp',true);await d.waitForTimeout(800);const sd=await d.evaluate(()=>window.__FS.seen&&window.__FS.seen.a);console.log('貼り直す前:',JSON.stringify(sd));
-ok(sd&&sd.at&&!sd.w,'ルールを貼り直す前でも、最終ログインは残る(書き込みの量は載せない)');
+ok(sd&&sd.at&&!sd.w&&!sd.wd,'ルールを貼り直す前でも、最終ログインは残る(書き込みの量は載せない)');
 console.log(bad?'NG '+bad+'件':'全部OK');await b.close()})();

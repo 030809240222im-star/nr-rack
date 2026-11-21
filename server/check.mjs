@@ -28,7 +28,8 @@ for (const P of ["", "scrap_"]) {
       const rows = []; s.forEach(d => { const x = d.data() || {}; rows.push([d.updateTime ? d.updateTime.toDate() : null, x.at, x.kind, typeof x.at]); });
       rows.sort((a, b) => (b[0] || 0) - (a[0] || 0));
       /* 書き込みの量(w): 端末ごとに、今日(17時から)何回・何単位書いたか。多い順。誰かは出さず、役割と端末の種類だけ */
-      const ws = []; s.forEach(d => { const x = d.data() || {}; if (x.w && typeof x.w === "object") ws.push([x.kind || "?", x.w]); });
+      const ws = []; s.forEach(d => { const x = d.data() || {}; if (x.w && typeof x.w === "object") ws.push([x.kind || "?", x.w]);
+        for (const [k, w] of Object.entries(x.wd || {})) if (w && typeof w === "object") ws.push([(x.kind || "?") + "(" + String(k).slice(-3) + ")", w]); });
       ws.sort((a, b) => (Number(b[1].u) || 0) - (Number(a[1].u) || 0));
       if (ws.length) extra += "\n  書き込みの量(端末ごと。多い順。d=上限の区切りの日・n=回数・u=単位の見込み)\n" + ws.map(([k, w]) => "    " + k + " " + String(w.dev || "?") + " / d=" + w.d + " n=" + w.n + " u=" + w.u + " / 集まり別 " + kv(w.c) + " / 時間別 " + kv(w.h, true) + " / 版 " + String(w.ver || "")).join("\n");
       extra += "\n" + rows.map(r => "    保存 " + jst(r[0]) + " / 記録の時刻 " + (r[1] ? (r[3] === "string" ? jst(new Date(r[1])) + " (" + String(r[1]).slice(0, 24) + ")" : "文字でない(" + r[3] + ")") : "なし") + " / " + (r[2] || "?")).join("\n");

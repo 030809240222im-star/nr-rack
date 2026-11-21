@@ -16,6 +16,7 @@ const app={config:{main:{evn:2,auto:2,wdFrom:'',wd:{v1:[wd(2)],v2:[wd(4)],v3:[wd
 /* 古いお知らせ(40日前)と新しいお知らせ。毎朝の自動処理が古いものだけ片づける */
 const old=new Date(Date.now()-40*864e5).toISOString();
 app.notices={v1:{items:{o1:{d:D(-40),kind:'change',msg:'古い',at:old},n1:{d:D(1),kind:'change',msg:'新しい',at:now},f1:{d:D(3),kind:'remind',msg:'先の日付',at:old}},ack:{o1:now,n1:now}}};
+app.seen={v1:{at:now,email:'a@x.jp',kind:'vendor',wd:{old111:{d:'2026-01-01',n:5},new222:{d:'2099-01-01',n:1}}}};
 app.inbox={admin:{items:{o2:{msg:'古い連絡',at:old},n2:{msg:'新しい連絡',at:now}},ack:{o2:now}}};
 const db={};for(const [c,v] of Object.entries(app)){db[c]=v;db['scrap_'+c]=c==='config'?{main:{evn:2}}:{}}
 fs.writeFileSync(X+'/db.json',JSON.stringify(db));
@@ -25,7 +26,7 @@ const run=(f,e)=>{const o=execFileSync(process.execPath,[X+'/server/'+f],{env:{.
 fs.writeFileSync(X+'/fetchstub.mjs',"globalThis.fetch=async(u)=>{console.log('偽LINE: '+u);return {ok:true,status:200,text:async()=>''}};");
 const line={LINE_CHANNEL_TOKEN:'t',NODE_OPTIONS:'--import '+X+'/fetchstub.mjs'};
 run('daily.mjs',line);run('daily.mjs',line);
-{const a=JSON.parse(fs.readFileSync(X+'/db.json'));console.log('片づけたあとのお知らせ:',Object.keys(a.notices.v1.items).sort().join(','),'/ 確認:',Object.keys(a.notices.v1.ack).join(','),'/ 連絡:',Object.keys(a.inbox.admin.items).join(','),'(o1・o2 が消え、n1・f1・n2 が残る)')}
+{const a=JSON.parse(fs.readFileSync(X+'/db.json'));console.log('片づけたあとのお知らせ:',Object.keys(a.notices.v1.items).sort().join(','),'/ 確認:',Object.keys(a.notices.v1.ack).join(','),'/ 連絡:',Object.keys(a.inbox.admin.items).join(','),'(o1・o2 が消え、n1・f1・n2 が残る)');console.log('端末ごとの記録の片づけ:',Object.keys(a.seen.v1.wd||{}).join(','),'(old111 が消え、new222 が残る)')}
 /* 使用量: 使用量を読める(モニタリング閲覧者)とき、7割を超えたら管理者に1回だけ知らせる。Google Cloud への問い合わせは偽物 */
 fs.writeFileSync(X+'/monstub.mjs',"globalThis.fetch=async(u)=>{u=String(u);const j=u.includes('metricDescriptors')?{metricDescriptors:[{type:'firestore.googleapis.com/api/billable_write_units',metricKind:'DELTA',valueType:'INT64'},{type:'firestore.googleapis.com/api/billable_read_units',metricKind:'DELTA',valueType:'INT64'}]}:{timeSeries:[{points:[{interval:{endTime:'2026-11-20T01:00:00Z'},value:{int64Value:u.includes('write')?'31000':'12000'}}]}]};return {ok:true,status:200,json:async()=>j,text:async()=>JSON.stringify(j)}};");
 const mon={FAKE_TOKEN:'1',FIREBASE_SERVICE_ACCOUNT:'{"project_id":"p"}',NODE_OPTIONS:'--import '+X+'/monstub.mjs'};

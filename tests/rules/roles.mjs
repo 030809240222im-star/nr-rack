@@ -36,6 +36,8 @@ for(const P of ["","scrap_"]){
   await t("業者はほかの人の最終ログインを読めない",getDoc(doc(v,P+"seen/c1")),false);
   const W={d:"2026-11-20",n:12,u:15,c:{vendors:10,seen:2},h:{"9":12},dev:"iPhone Safari",ver:"11/21/2026 08:00:00"};
   await t("最終ログインに書き込みの量(w)を載せられる",m(v,"seen/u1",{at:now,email:"a@x.jp",kind:"vendor",w:W}),true);
+  await t("書き込みの量を端末ごと(wd)に載せ、前の形(w)を消す",m(v,"seen/u1",{at:now,email:"a@x.jp",kind:"vendor",wd:{abc123:W,def456:W},w:deleteField()}),true);
+  await t("端末ごとの記録が10台をこえると断る",m(v,"seen/u1",{at:now,email:"a@x.jp",kind:"vendor",wd:Object.fromEntries([...Array(11)].map((_,i)=>["d"+i,W]))}),false);
   await t("書き込みの量が地図でないと断る",m(v,"seen/u1",{at:now,email:"a@x.jp",kind:"vendor",w:"x"}),false);
   await t("書き込みの量の項目が多すぎると断る",m(v,"seen/u1",{at:now,email:"a@x.jp",kind:"vendor",w:Object.fromEntries([...Array(13)].map((_,i)=>["k"+i,i]))}),false);
   await t("最終ログインにほかの項目は載せられない",m(v,"seen/u1",{at:now,email:"a@x.jp",kind:"vendor",x:1}),false);

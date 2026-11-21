@@ -1001,15 +1001,21 @@ window.nrMeter=function(p,data){
 function devName(){var u=navigator.userAgent||"",st=false;try{st=navigator.standalone||matchMedia("(display-mode: standalone)").matches}catch(e){}
   return (/iPhone/.test(u)?"iPhone":/iPad/.test(u)||(/Macintosh/.test(u)&&navigator.maxTouchPoints>1)?"iPad":/Android/.test(u)?"Android":/Windows/.test(u)?"Windows":/Mac/.test(u)?"Mac":"その他")
     +(/Line\//.test(u)?" LINE":/CriOS|Chrome/.test(u)?" Chrome":/Safari/.test(u)?" Safari":"")+(st?" ホーム画面":"")}
+/* 端末ごとの記号(この端末のブラウザに覚えておく。同じアカウントで複数の端末を使っても、端末ごとに数を分ける) */
+function devId(){var k="nr-devid",v="";try{v=localStorage.getItem(k)||""}catch(e){}if(!/^[a-z0-9]{6,12}$/.test(v)){v=Math.random().toString(36).slice(2,10);try{localStorage.setItem(k,v)}catch(e){}}return v}
 function meterRec(){var m=meterGet(),o={d:m.d,n:m.n,u:m.u,c:m.c,h:m.h,dev:devName(),ver:String(document.lastModified||"").slice(0,40)};if(m.trip){o.trip=m.trip;o.why=m.tripWhy;o.blk=m.blocked||0}return o}
 function markSeen(){
   if(ENV.mode!=="db"||ENV.preview||!ENV.uid)return;
   var sk="nr-seen-"+location.pathname+"-"+ENV.uid;try{SEEN_AT=Math.max(SEEN_AT,Number(localStorage.getItem(sk))||0)}catch(e){}
   if(Date.now()-SEEN_AT<SEEN_MS)return;SEEN_AT=Date.now();try{localStorage.setItem(sk,String(SEEN_AT))}catch(e){}
-  var rec={at:nowIso(),email:String(ENV.email||"").slice(0,200),kind:ENV.admin?"admin":ENV.crew?"crew":"vendor"};if(!METER_OFF)rec.w=meterRec();
+  var rec={at:nowIso(),email:String(ENV.email||"").slice(0,200),kind:ENV.admin?"admin":ENV.crew?"crew":"vendor"};
+  /* 書き込みの量は端末ごと(wd.{端末の記号})に載せる。前の1つだけの記録(w)は消す。3日より前の端末の記録は、管理者の端末と毎朝の自動処理が片づける */
+  if(!METER_OFF){rec.wd={};rec.wd[devId()]=meterRec();rec.w={$op:"del"};
+    var old=((D.seen||{})[ENV.uid]||{}).wd||{},lim=new Date(Date.now()+9*36e5-17*36e5-3*864e5).toISOString().slice(0,10);
+    Object.keys(old).forEach(function(k){if(k!==devId()&&!((old[k]||{}).d>=lim))rec.wd[k]={$op:"del"}})}
   try{var pr=ENV.db.doc("seen/"+ENV.uid).patch(rec);if(pr&&pr.then)pr.then(function(){SEEN_ERR="";SEEN_OK=nowIso()},function(e){
     /* ルールを貼り直す前は、書き込みの量(w)を載せると断られる。そのときは量を載せずに、最終ログインだけ残す */
-    if(rec.w&&e&&e.code==="permission-denied"){METER_OFF=true;SEEN_AT=0;markSeen();return}
+    if(rec.wd&&e&&e.code==="permission-denied"){METER_OFF=true;SEEN_AT=0;markSeen();return}
     SEEN_ERR=(e&&e.code)||"error";SEEN_AT=0;try{localStorage.removeItem(sk)}catch(x){}render(true)})}catch(e){SEEN_ERR=String(e&&e.message||e).slice(0,60)}
 }
 /* 画面に戻ったとき: スマホ(特にホーム画面に追加した iPhone)は、裏で何日も止まったままになり、戻っても知らせ(visibilitychange)が来ないことがある。
@@ -1030,9 +1036,14 @@ function wakeSetup(){
     if(gap>600000){if(!WAKE.hidden)WAKE.hidden=n-gap;wakeUp()}/* 1分ごとのはずが10分以上空いた = 裏で止まっていた */
     else if(document.visibilityState==="visible"&&n-SEEN_AT>1800000)markSeen()},60000);
 }
-function seenText(id){var s=D.seen[id],w=s&&s.w&&s.w.d===qDay()?s.w:null,many=w&&nrNum(w.u)>=1500;
-  return '<span class="hint seen" style="margin:0">最終ログイン '+(s&&s.at?esc(fmtAt(s.at)):'記録なし')
-    +(w?' ・今日(17時から)の書き込み <span'+(many?' style="color:var(--bad);font-weight:700"':'')+'>'+nrNum(w.n)+'回('+nrNum(w.u)+'単位)</span>'+(many?' ⚠多い':'')+(w.trip?' <span style="color:var(--bad);font-weight:700">⚠書き込みを止めた('+esc(w.why||"")+')</span>':''):'')+'</span>'}
+/* 最終ログインと、今日(17時から)の端末ごとの書き込み。多い端末から */
+function seenText(id){var s=D.seen[id]||{},wd=s.wd||{},q=qDay(),ws=Object.keys(wd).map(function(k){return {k:k,w:wd[k]||{}}}).filter(function(x){return x.w.d===q});
+  if(!ws.length&&s.w&&s.w.d===q)ws=[{k:"",w:s.w}];/* 前の形の記録 */
+  ws.sort(function(a,b){return nrNum(b.w.u)-nrNum(a.w.u)});
+  var h='<span class="hint seen" style="margin:0">最終ログイン '+(s.at?esc(fmtAt(s.at)):'記録なし')+'</span>';
+  if(ws.length)h+='<span class="hint seen" style="margin:0;display:block">今日(17時から)の書き込み: '+ws.map(function(x){var w=x.w,many=nrNum(w.u)>=1500;
+    return '<span style="white-space:nowrap'+(many||w.trip?';color:var(--bad);font-weight:700':'')+'">'+esc(w.dev||"端末")+(x.k?'('+esc(x.k.slice(-3))+')':'')+' '+nrNum(w.n)+'回('+nrNum(w.u)+'単位)'+(many?' ⚠多い':'')+(w.trip?' ⚠書き込みを止めた('+esc(w.why||"")+')':'')+'</span>'}).join(' / ')+'</span>';
+  return h}
 /* 回収日(days)と確定(confirmed)は、毎日1件ずつ増えていく。開くたびに全部を読むと、サーバーの1日の読み取りの上限を
    だんだん使い切るので、ふだんは「今日の35日前から先」だけを読む(今週の実績・戻し一覧・確定と再振り分けには足りる)。
    それより前の月のカレンダー・月の集計・記録・会社の統合では、needFrom で読む範囲を広げる(その画面を開いたときだけ) */

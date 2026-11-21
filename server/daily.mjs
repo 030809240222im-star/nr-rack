@@ -177,6 +177,12 @@ if (pass) {
       if (Object.keys(up).length) { await d.ref.update(up); n += Object.keys(up).length; }
     }
   }
+  /* 最終ログインの記録の、3日より前の端末ごとの書き込みの量(wd)も片づける */
+  const lim = new Date(Date.now() + 9 * 36e5 - 17 * 36e5 - 3 * 864e5).toISOString().slice(0, 10);
+  for (const app of APPS) { const snap = await DBS[app.prefix].collection(app.prefix + "seen").get();
+    for (const d of snap.docs) { const wd = (d.data() || {}).wd || {}, up = {};
+      for (const [k, w] of Object.entries(wd)) if (!(w && w.d >= lim)) up["wd." + k] = FieldValue.delete();
+      if (Object.keys(up).length) { await d.ref.update(up); n += Object.keys(up).length; } } }
   console.log("古いお知らせ・連絡の片づけ: " + n + "項目");
 }
 
