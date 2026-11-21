@@ -24,5 +24,16 @@ rep("NRボックス", "スクラップ台車")
 rep("evn:5,perTruck:4,", "evn:5,perTruck:20,", 1)
 rep('var KEY="nr-rack-planner-v3";', 'var KEY="scrap-planner-v1";', 1)
 rep("  databaseId:\"default\",", "  databaseId:\"default\",\n  prefix:\"scrap_\",", 1)
+# スクラップ搬出を別の Firebase プロジェクトに分けたら、tools/scrap-firebase.json にそのプロジェクトの「ウェブアプリの設定」を書く
+# (apiKey・authDomain・projectId・appId と、databaseId。どれも公開してよい値)。あれば、スクラップ版はそちらにつなぐ
+import json, re
+cfgp = root / "tools" / "scrap-firebase.json"
+if cfgp.exists():
+    c = json.loads(cfgp.read_text(encoding="utf-8"))
+    fb = "  firebase:{\n" + ",\n".join('    %s:%s' % (k, json.dumps(c[k])) for k in ("apiKey", "authDomain", "projectId", "appId") if k in c) + "\n  },"
+    s, n = re.subn(r"  firebase:\{\n.*?\n  \},", lambda m: fb, s, count=1, flags=re.S)
+    assert n == 1
+    rep('  databaseId:"default",\n  prefix:"scrap_",', '  databaseId:%s,\n  prefix:"scrap_",' % json.dumps(c.get("databaseId", "(default)")), 1)
+    print("scrap: separate Firebase project", c.get("projectId"))
 (root / "scrap" / "index.html").write_text(s, encoding="utf-8")
 print("wrote scrap/index.html")

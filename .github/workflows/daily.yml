@@ -26,6 +26,8 @@ jobs:
       - run: node server/daily.mjs
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          FIREBASE_SERVICE_ACCOUNT_SCRAP: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_SCRAP }}
+          FIRESTORE_DB_SCRAP: ${{ vars.FIRESTORE_DB_SCRAP }}
           LINE_CHANNEL_TOKEN: ${{ secrets.LINE_CHANNEL_TOKEN }}
           LINE_TO: ${{ secrets.LINE_TO }}
           BACKUP_PASSWORD: ${{ secrets.BACKUP_PASSWORD }}

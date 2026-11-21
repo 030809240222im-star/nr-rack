@@ -23,6 +23,8 @@ if (!sa) { console.log("FIREBASE_SERVICE_ACCOUNT がないので終了します"
 admin.initializeApp({ credential: admin.credential.cert(sa) });
 const { getFirestore, FieldValue } = await import("firebase-admin/firestore");
 const db = getFirestore(admin.app(), process.env.FIRESTORE_DB || "default");
+const { scrapDb } = await import("./scrapdb.mjs");
+const DBS = { "": db, "scrap_": scrapDb(admin, getFirestore, db) };
 
 let transport = null, FROM = "";
 if (process.env.MAIL_USER && process.env.MAIL_PASS) {
@@ -37,15 +39,15 @@ const APPS = [{ prefix: "", name: "NRボックス", url: APP_URL, crewUrl: APP_U
 /* 通知の鍵: なければ作る。公開鍵は両方のアプリの設定に書く(同じ端末の登録を2つのアプリで共有するため、鍵は1組) */
 /* 送信待ちがなければ、ほかは何も読まずに終わる(5分ごとに動くので、サーバーの1日の読み取りの上限をなるべく使わない) */
 const OUT = {};
-for (const app of APPS) OUT[app.prefix] = await db.collection(app.prefix + "outbox").get();
+for (const app of APPS) OUT[app.prefix] = await DBS[app.prefix].collection(app.prefix + "outbox").get();
 if (APPS.every(app => OUT[app.prefix].empty)) { console.log("お知らせ: 送信待ちなし"); process.exit(0); }
 const keyRef = db.doc("pushkeys/main");
 let keys = (await keyRef.get()).data();
 if (!keys || !keys.pub || !keys.priv) { const k = webpush.generateVAPIDKeys(); keys = { pub: k.publicKey, priv: k.privateKey, at: new Date().toISOString() }; await keyRef.set(keys); console.log("通知の鍵を作りました"); }
 webpush.setVapidDetails("mailto:noreply@example.com", keys.pub, keys.priv);
 for (const app of APPS) {
-  const c = (await db.doc(app.prefix + "config/main").get()).data() || {};
-  if (c.vapid !== keys.pub) await db.doc(app.prefix + "config/main").set({ vapid: keys.pub }, { merge: true });
+  const c = (await DBS[app.prefix].doc(app.prefix + "config/main").get()).data() || {};
+  if (c.vapid !== keys.pub) await DBS[app.prefix].doc(app.prefix + "config/main").set({ vapid: keys.pub }, { merge: true });
 }
 
 const okMail = e => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e || "");
@@ -55,12 +57,12 @@ async function userEmail(uid) {
   try { const u = await admin.auth().getUser(uid); emailOfUid[uid] = u.emailVerified ? String(u.email || "").toLowerCase() : ""; } catch (e) { emailOfUid[uid] = ""; }
   return emailOfUid[uid];
 }
-async function load(P, c) { const m = {}; (await db.collection(P + c).get()).forEach(d => { m[d.id] = d.data(); }); return m; }
+async function load(P, c) { const m = {}; (await DBS[P].collection(P + c).get()).forEach(d => { m[d.id] = d.data(); }); return m; }
 
 let mails = 0, pushes = 0, failed = 0, dropped = 0, gone = 0;
 const dayAgo = new Date(Date.now() - 864e5).toISOString();
 for (const app of APPS) {
-  const P = app.prefix;
+  const P = app.prefix, db = DBS[P];
   const snap = OUT[P];
   console.log(app.name + ": 送信待ち " + snap.size + "件");
   if (snap.empty) continue;

@@ -6,6 +6,8 @@ if (!sa) { console.log("FIREBASE_SERVICE_ACCOUNT がないので終了します"
 admin.initializeApp({ credential: admin.credential.cert(sa) });
 const { getFirestore } = await import("firebase-admin/firestore");
 const db = getFirestore(admin.app(), process.env.FIRESTORE_DB || "default");
+const { scrapDb } = await import("./scrapdb.mjs");
+const DBS = { "": db, "scrap_": scrapDb(admin, getFirestore, db) };
 const jst = t => t ? new Date(t.getTime() + 9 * 36e5).toISOString().slice(0, 16).replace("T", " ") : "なし";
 const COLLS = ["seen", "approved", "members", "crews", "vendors", "days", "confirmed", "notices", "inbox", "sent", "orders", "plans", "push", "outbox", "maillog", "config"];
 const now = Date.now();
@@ -14,7 +16,7 @@ const kv = (o, num) => Object.entries(o || {}).sort((a, b) => num ? Number(a[0])
 for (const P of ["", "scrap_"]) {
   console.log("===== " + (P ? "スクラップ版" : "NRボックス版") + "(データベース: " + (process.env.FIRESTORE_DB || "default") + ")");
   for (const c of COLLS) {
-    const s = await db.collection(P + c).get();
+    const s = await DBS[P].collection(P + c).get();
     let newest = null, day = 0;
     s.forEach(d => { const t = d.updateTime && d.updateTime.toDate(); if (t) { if (!newest || t > newest) newest = t; if (now - t.getTime() < 864e5) day++; } });
     let extra = "";
@@ -63,7 +65,7 @@ console.log("書き込みの試し: 終わり " + jst(new Date()));
   const since = Date.parse("2026-11-18T00:00:00+09:00"), all = [];
   const scan = (o, acc) => { if (!o || typeof o !== "object") return; for (const [k, v] of Object.entries(o)) { if (typeof v === "string" && /^20\d\d-\d\d-\d\dT\d\d:\d\d/.test(v)) { if (v > acc.v) acc.v = v; } else if (v && typeof v === "object") scan(v, acc); } };
   for (const P of ["", "scrap_"]) for (const c of COLLS) {
-    const s = await db.collection(P + c).get();
+    const s = await DBS[P].collection(P + c).get();
     s.forEach(d => { const t = d.updateTime && d.updateTime.toDate(); if (!t || t.getTime() < since) return; const acc = { v: "" }; scan(d.data(), acc); all.push([t, P + c, acc.v]); });
   }
   all.sort((a, b) => a[0] - b[0]);
@@ -74,7 +76,7 @@ console.log("書き込みの試し: 終わり " + jst(new Date()));
 /* ===== 文書の大きさ(集まりごとの件数・合計・一番大きいもの。単位は KB) */
 console.log("===== 文書の大きさ(KB)");
 for (const P of ["", "scrap_"]) for (const c of COLLS) {
-  const s = await db.collection(P + c).get(); if (!s.size) continue;
+  const s = await DBS[P].collection(P + c).get(); if (!s.size) continue;
   let tot = 0, mx = 0; s.forEach(d => { const n = Buffer.byteLength(JSON.stringify(d.data() || {})); tot += n; if (n > mx) mx = n; });
   console.log("  " + (P + c).padEnd(16) + " " + String(s.size).padStart(3) + "件  合計 " + (tot / 1024).toFixed(1) + "  最大 " + (mx / 1024).toFixed(1));
 }

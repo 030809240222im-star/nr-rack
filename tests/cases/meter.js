@@ -25,6 +25,15 @@ const cur=await v.evaluate(()=>window.__FS);const a=await v.context().newPage();
 await a.goto('file://'+WORK+'/main-test.html');await a.click('#lg-google');await a.waitForTimeout(1000);
 await a.click('button[data-tab=mem]').catch(()=>{});await a.waitForTimeout(600);
 const t=(await a.locator('body').innerText()).match(/今日\(17時から\)の書き込み \d+回\(\d+単位\)/);console.log('管理者の画面:',t&&t[0]);ok(!!t,'管理者の「登録」に、その人の今日の書き込みが出る');
+/* 書き込みを止める仕組み: 業者が1分に60回をこえて書くと止まり、赤い注意が出る。最終ログインの記録には止めたことが載る */
+const z=await open('a','a@x.jp');await z.click('button[data-tab=vin]').catch(()=>{});await z.waitForTimeout(300);
+const before=await z.evaluate(()=>JSON.parse(sessionStorage.__WC||'{}').vendors||0);
+for(let i=0;i<65;i++){await z.fill('#w-10',String(i%9+1));await z.locator('#w-10').blur()}
+await z.waitForTimeout(500);const after=await z.evaluate(()=>JSON.parse(sessionStorage.__WC||'{}').vendors||0);
+const br=await z.locator('.syncbad.brake').innerText().catch(()=>'なし');console.log('65回変えた: サーバーへの書き込み',after-before,'回 / 注意:',br.replace(/\s+/g,' ').slice(0,70));
+ok(after-before<=60&&after-before>=58&&/止めました/.test(br),'1分に60回をこえると、それ以上は書かず、赤い注意が出る');
+await z.evaluate(()=>window.dispatchEvent(new Event('focus')));await z.waitForTimeout(600);
+const zw=await z.evaluate(()=>(window.__FS.seen.a||{}).w);console.log('記録:',JSON.stringify({trip:zw&&zw.trip,why:zw&&zw.why,blk:zw&&zw.blk}));ok(zw&&zw.trip>=1&&zw.blk>=1,'止めたことが最終ログインの記録に載る(管理者に見える)');
 /* ルールを貼り直す前: 量を載せずに、最終ログインだけ残す */
 const d=await open('a','a@x.jp',true);await d.waitForTimeout(800);const sd=await d.evaluate(()=>window.__FS.seen&&window.__FS.seen.a);console.log('貼り直す前:',JSON.stringify(sd));
 ok(sd&&sd.at&&!sd.w,'ルールを貼り直す前でも、最終ログインは残る(書き込みの量は載せない)');

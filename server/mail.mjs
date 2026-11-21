@@ -36,7 +36,7 @@ if (!process.env.MAIL_FIXTURE && target && process.env.WAIT_UNTIL_TIME !== "0") 
 const today = nrDs(new Date());
 
 /* データの読み込み */
-let db = null, FieldValue = null;
+let db = null, FieldValue = null, DBS = null;
 const fixture = process.env.MAIL_FIXTURE ? JSON.parse(fs.readFileSync(process.env.MAIL_FIXTURE, "utf8")) : null;
 if (!fixture) {
   const sa = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT || "null");
@@ -45,11 +45,12 @@ if (!fixture) {
   admin.initializeApp({ credential: admin.credential.cert(sa) });
   const fsx = await import("firebase-admin/firestore");
   db = fsx.getFirestore(admin.app(), process.env.FIRESTORE_DB || "default"); FieldValue = fsx.FieldValue;
+  const { scrapDb } = await import("./scrapdb.mjs"); DBS = { "": db, "scrap_": scrapDb(admin, fsx.getFirestore, db) };
 }
 async function load(prefix) {
   if (fixture) { const D = {}; COLLS.forEach(c => { D[c] = (fixture[prefix || "nr"] || {})[c] || {}; }); return D; }
   const D = {};
-  for (const c of COLLS) { const snap = await db.collection(prefix + c).get(); D[c] = {}; snap.forEach(d => { D[c][d.id] = d.data(); }); }
+  for (const c of COLLS) { const snap = await DBS[prefix].collection(prefix + c).get(); D[c] = {}; snap.forEach(d => { D[c][d.id] = d.data(); }); }
   return D;
 }
 
@@ -83,7 +84,7 @@ function rowsText(rows, label) {
 }
 async function mark(app, d, key) {
   if (fixture) return;
-  await db.collection(app.prefix + "maillog").doc(d).set({ [key]: new Date().toISOString() }, { merge: true });
+  await DBS[app.prefix].collection(app.prefix + "maillog").doc(d).set({ [key]: new Date().toISOString() }, { merge: true });
 }
 
 for (const app of APPS) {

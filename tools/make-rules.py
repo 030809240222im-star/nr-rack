@@ -237,3 +237,9 @@ out += "  }\n}\n"
 root = pathlib.Path(__file__).resolve().parent.parent
 (root / "firestore.rules").write_text(out, encoding="utf-8")
 print("wrote firestore.rules")
+# スクラップ搬出を別の Firebase プロジェクトに分けたとき、そのプロジェクトに貼るルール(スクラップの部分だけ)
+sc = HEAD.format(admins=", ".join("'%s'" % a for a in ADMINS))
+sc += BLOCK.format(title="スクラップ搬出(scrap_ で始まるコレクション)", S="Scrap", P="scrap_")
+sc += "  }\n}\n"
+(root / "firestore-scrap.rules").write_text(sc, encoding="utf-8")
+print("wrote firestore-scrap.rules")

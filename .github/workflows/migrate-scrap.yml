@@ -1,0 +1,21 @@
+# スクラップ搬出を別の Firebase プロジェクトに分けるときに、1回だけ手で動かす(設定と業務のデータを写す)
+name: migrate-scrap
+on:
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install --no-audit --no-fund
+        working-directory: server
+      - run: node server/migrate-scrap.mjs
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          FIREBASE_SERVICE_ACCOUNT_SCRAP: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_SCRAP }}
+          FIRESTORE_DB_SCRAP: ${{ vars.FIRESTORE_DB_SCRAP }}

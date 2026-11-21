@@ -19,6 +19,8 @@ if (!sa) { console.log("FIREBASE_SERVICE_ACCOUNT がないので終了します"
 admin.initializeApp({ credential: admin.credential.cert(sa) });
 const { getFirestore, FieldValue } = await import("firebase-admin/firestore");
 const db = getFirestore(admin.app(), process.env.FIRESTORE_DB || "default");
+const { scrapDb } = await import("./scrapdb.mjs");
+const DBS = { "": db, "scrap_": scrapDb(admin, getFirestore, db) };
 
 const APPS = [{ prefix: "", name: "NRボックス" }, { prefix: "scrap_", name: "スクラップ" }];
 const COLLS = ["config", "days", "vendors", "approved", "blocked", "confirmed", "members", "plans", "orders", "notices", "crews", "crewreq", "crewblocked", "codes"];
@@ -37,7 +39,7 @@ const lines = [];
 async function load(prefix) {
   const D = {};
   for (const c of COLLS) {
-    const snap = await db.collection(prefix + c).get();
+    const snap = await DBS[prefix].collection(prefix + c).get();
     D[c] = {}; snap.forEach(d => { D[c][d.id] = d.data(); });
   }
   D.config = D.config.main || {};
@@ -56,6 +58,7 @@ const vidOf = (D, u) => (D.approved[u] && D.approved[u].vid) || u;
 const vname = (D, id) => { const ms = Object.keys(D.approved).filter(u => vidOf(D, u) === id); const m = ms.indexOf(id) >= 0 ? id : ms[0]; return (m && D.approved[m].company) || (D.vendors[id] && D.vendors[id].name) || (D.members[id] && D.members[id].company) || "名称未設定"; };
 
 for (const app of APPS) {
+  const db = DBS[app.prefix];
   const D = await load(app.prefix);
   backup[app.prefix || "nr"] = JSON.parse(JSON.stringify(D, (k, v) => (v && v.toDate ? v.toDate().toISOString() : v)));
   Object.values(D.confirmed).forEach(hydrate);
@@ -164,7 +167,7 @@ if (pass) {
   const cut = nrDs(new Date(Date.now() - 30 * 864e5)), cutAt = new Date(Date.now() - 30 * 864e5).toISOString();
   let n = 0;
   for (const app of APPS) for (const [c, sub] of [["notices", "ack"], ["inbox", "ack"], ["sent", "seen"]]) {
-    const snap = await db.collection(app.prefix + c).get();
+    const snap = await DBS[app.prefix].collection(app.prefix + c).get();
     for (const d of snap.docs) {
       const x = d.data() || {}, items = x.items || {}, up = {};
       for (const [id, it] of Object.entries(items)) {

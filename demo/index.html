@@ -980,15 +980,28 @@ var METER_KEY="nr-meter-"+location.pathname,METER_OFF=false;
 function qDay(){return new Date(Date.now()+9*36e5-17*36e5).toISOString().slice(0,10)}
 function meterGet(){var m=null;try{m=JSON.parse(localStorage.getItem(METER_KEY)||"null")}catch(e){}if(!m||m.d!==qDay())m={d:qDay(),n:0,u:0,c:{},h:{}};return m}
 function bytesOf(o){try{return unescape(encodeURIComponent(JSON.stringify(o===undefined?null:o))).length}catch(e){return 1024}}
+/* 書き込みを止める仕組み: アプリの不具合などで1台の端末が書き込み続けても、サーバーの1日の上限(全員で共有)を使い切らないよう、
+   1分に60回、または1日(17時から)に3,000単位を超えたら、この端末からの書き込みを止めて赤く知らせる(開き直すと、1分の数は戻る)。
+   管理者は、まとめて直す操作(会社の統合・全データのリセットなど)があるので、1分に300回・1日6,000単位まで。
+   最終ログインの記録(seen)は止めない(止めたことを管理者に伝えるため) */
+var BRAKE={on:"",win:[]};
 window.nrMeter=function(p,data){
-  var m=meterGet(),ps=String(p).split("/"),c=ps[0],cur=(D[c]||{})[ps[1]],b=Math.max(bytesOf(data),cur?bytesOf(cur):0),hh=String(new Date(Date.now()+9*36e5).getUTCHours());
+  var m=meterGet(),ps=String(p).split("/"),c=ps[0],cur=(D[c]||{})[ps[1]],b=Math.max(bytesOf(data),cur?bytesOf(cur):0),hh=String(new Date(Date.now()+9*36e5).getUTCHours()),now=Date.now();
+  if(c!=="seen"){
+    BRAKE.win=BRAKE.win.filter(function(t){return now-t<60000});
+    var lm=ENV.admin?300:60,ld=ENV.admin?6000:3000,why=BRAKE.on||(BRAKE.win.length>=lm?"1分に"+lm+"回をこえた":m.u>=ld?"今日の書き込みが"+ld+"単位をこえた":"");
+    if(why){if(!BRAKE.on){BRAKE.on=why;m.trip=(m.trip||0)+1;m.tripWhy=why;try{localStorage.setItem(METER_KEY,JSON.stringify(m))}catch(e){}setTimeout(function(){render(true)},0)}
+      m.blocked=(m.blocked||0)+1;try{localStorage.setItem(METER_KEY,JSON.stringify(m))}catch(e){}return false}
+    BRAKE.win.push(now);
+  }
   m.n++;m.u+=Math.max(1,Math.ceil(b/1024));m.c[c]=(m.c[c]||0)+1;m.h[hh]=(m.h[hh]||0)+1;
   try{localStorage.setItem(METER_KEY,JSON.stringify(m))}catch(e){}
+  return true;
 };
 function devName(){var u=navigator.userAgent||"",st=false;try{st=navigator.standalone||matchMedia("(display-mode: standalone)").matches}catch(e){}
   return (/iPhone/.test(u)?"iPhone":/iPad/.test(u)||(/Macintosh/.test(u)&&navigator.maxTouchPoints>1)?"iPad":/Android/.test(u)?"Android":/Windows/.test(u)?"Windows":/Mac/.test(u)?"Mac":"その他")
     +(/Line\//.test(u)?" LINE":/CriOS|Chrome/.test(u)?" Chrome":/Safari/.test(u)?" Safari":"")+(st?" ホーム画面":"")}
-function meterRec(){var m=meterGet();return {d:m.d,n:m.n,u:m.u,c:m.c,h:m.h,dev:devName(),ver:String(document.lastModified||"").slice(0,40)}}
+function meterRec(){var m=meterGet(),o={d:m.d,n:m.n,u:m.u,c:m.c,h:m.h,dev:devName(),ver:String(document.lastModified||"").slice(0,40)};if(m.trip){o.trip=m.trip;o.why=m.tripWhy;o.blk=m.blocked||0}return o}
 function markSeen(){
   if(ENV.mode!=="db"||ENV.preview||!ENV.uid)return;
   var sk="nr-seen-"+location.pathname+"-"+ENV.uid;try{SEEN_AT=Math.max(SEEN_AT,Number(localStorage.getItem(sk))||0)}catch(e){}
@@ -1017,9 +1030,9 @@ function wakeSetup(){
     if(gap>600000){if(!WAKE.hidden)WAKE.hidden=n-gap;wakeUp()}/* 1分ごとのはずが10分以上空いた = 裏で止まっていた */
     else if(document.visibilityState==="visible"&&n-SEEN_AT>1800000)markSeen()},60000);
 }
-function seenText(id){var s=D.seen[id],w=s&&s.w&&s.w.d===qDay()?s.w:null,many=w&&nrNum(w.u)>=2000;
+function seenText(id){var s=D.seen[id],w=s&&s.w&&s.w.d===qDay()?s.w:null,many=w&&nrNum(w.u)>=1500;
   return '<span class="hint seen" style="margin:0">最終ログイン '+(s&&s.at?esc(fmtAt(s.at)):'記録なし')
-    +(w?' ・今日(17時から)の書き込み <span'+(many?' style="color:var(--bad);font-weight:700"':'')+'>'+nrNum(w.n)+'回('+nrNum(w.u)+'単位)</span>'+(many?' ⚠多い':''):'')+'</span>'}
+    +(w?' ・今日(17時から)の書き込み <span'+(many?' style="color:var(--bad);font-weight:700"':'')+'>'+nrNum(w.n)+'回('+nrNum(w.u)+'単位)</span>'+(many?' ⚠多い':'')+(w.trip?' <span style="color:var(--bad);font-weight:700">⚠書き込みを止めた('+esc(w.why||"")+')</span>':''):'')+'</span>'}
 /* 回収日(days)と確定(confirmed)は、毎日1件ずつ増えていく。開くたびに全部を読むと、サーバーの1日の読み取りの上限を
    だんだん使い切るので、ふだんは「今日の35日前から先」だけを読む(今週の実績・戻し一覧・確定と再振り分けには足りる)。
    それより前の月のカレンダー・月の集計・記録・会社の統合では、needFrom で読む範囲を広げる(その画面を開いたときだけ) */
@@ -2718,6 +2731,7 @@ function render(remote){
   }else tabs=vendorOk?(ui.simple&&!ENV.admin?sVendorTabs():[["cal","カレンダー"],["vin","業者入力"]]):[["reg","登録"]];
   if(!ENV.crew){if(!ENV.admin&&!vendorOk)ui.tab="reg";else if(!ENV.admin&&ui.tab!=="cal"&&ui.tab!=="vin")ui.tab="cal";}
   h='<div class="top"><div><h1>NRボックス ラック調整<span class="role">'+(ENV.admin?'管理者':ENV.crew?(D.crews[ENV.uid]?'盛替え業者':'未登録'):ENV.preview?'業者(プレビュー)':(vendorOk?'業者':'未登録'))+'</span></h1><p>業者が入力した階別の保有・搬出希望を、回収日ごとの台数・時間・エレベーター集積に合わせて自動で配分します</p>'+(window.NR_ACCOUNT?'<p class="acct">'+esc(window.NR_ACCOUNT.email||"")+' <button class="btn sm" data-act="logout">ログアウト</button> <button class="btn sm" data-act="reload">↻ 最新にする</button>'+(ENV.mode==="noid"?'':simpleToggle()+pushBtn())+(ui.synced?' <span class="muted" style="font-size:12px">'+p2(ui.synced.getHours())+':'+p2(ui.synced.getMinutes())+' 更新</span>':'')+'</p>':'')
+   +(ENV.mode==="db"&&BRAKE.on?'<div class="note bad syncbad brake" style="margin:8px 0 0;display:block"><b>⚠ この端末からの保存を止めました(書き込みが多すぎるため:'+esc(BRAKE.on)+')。</b> アプリの不具合の可能性があります。サーバーの1日の上限をみんなで使い切らないよう、自動で止めています。'+(/今日/.test(BRAKE.on)?'この端末からは、17時(日本時間)まで保存できません。急ぎのときは、管理者に電話などで連絡してください':'アプリを一度閉じて開き直してください。続くときは管理者に連絡してください')+'(管理者の「登録」タブに記録が出ます)。</div>':'')
    +(ENV.mode==="db"&&SYNC.quota?'<div class="note bad syncbad quota" style="margin:8px 0 0;display:block"><b>⚠ サーバーの1日の利用の上限(無料の範囲)に達したため、今は保存できません。</b> 入力した内容は、ほかの人には見えていません。毎日17時(日本時間)に上限が戻ります。<b>入力はこの端末に残り、17時すぎにアプリを開いていれば自動で送ります</b>(入れ直す必要はありません)。'+(ENV.admin?'<br>管理者の方へ: Firebase の料金プランを「Blaze(従量課金)」にすると、上限で止まらなくなります(取扱説明書を参照)。':'急ぎのときは管理者に電話などで連絡してください。')+'</div>'
    :ENV.mode==="db"&&(SYNC.stuck||(navigator.onLine&&!SYNC.last&&Date.now()-SYNC.start>20000))?'<div class="note bad syncbad" style="margin:8px 0 0;display:block"><b>⚠ '+(SYNC.stuck?'この端末の入力が、まだサーバーに届いていません。':'サーバーにつながっていません(表示は端末に残っていた内容です)。')+'</b> ほかの人には見えていません。電波を確かめ、同じアプリを開いているほかの画面(ブラウザのタブ・ホーム画面のアプリ)を閉じてから、「↻ 最新にする」を押してください。直らないときは管理者に連絡してください。</div>':'')
    +(PEND.n&&(!navigator.onLine||Date.now()-PEND.since>3500)?'<div class="note warn" style="margin:8px 0 0"><span><b>未送信 '+PEND.n+'件</b> '+(navigator.onLine?'送信を待っています。':'電波がありません。')+'つながると自動で送ります(アプリを閉じても、この端末に残り、次に開いたときに送ります)。</span></div>':'')
