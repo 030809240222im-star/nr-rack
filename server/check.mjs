@@ -91,7 +91,7 @@ if (token) {
   if (dbs.ok) for (const d of (dbs.j.databases || [])) { const x = Object.assign({}, d); delete x.etag; delete x.uid; console.log("  設定の全部: " + JSON.stringify(x)); }
   for (const u of ["/collectionGroups/-/indexes", "/collectionGroups/__default__/fields/*", "/collectionGroups/-/fields?filter=indexConfig.usesAncestorConfig:false"]) {
     const r = await get("https://firestore.googleapis.com/v1/projects/" + PROJECT + "/databases/" + (process.env.FIRESTORE_DB || "default") + u);
-    console.log("===== 索引の設定 " + u + ": " + (r.ok ? JSON.stringify(r.j).slice(0, 1500) : "読めません(" + r.status + " " + String(r.t).slice(0, 200) + ")"));
+    console.log("===== 索引の設定 " + u + ": " + (r.ok ? JSON.stringify(r.j).slice(0, 3000).replace(/\{/g, "(").replace(/\}/g, ")") : "読めません(" + r.status + " " + String(r.t).slice(0, 200) + ")"));
   }
   const bill = await get("https://cloudbilling.googleapis.com/v1/projects/" + PROJECT + "/billingInfo");
   console.log("===== 請求(Blaze)の設定: " + (bill.ok ? (bill.j.billingEnabled ? "請求あり(Blaze)" : "請求なし(無料の Spark)") : "読めません(" + bill.status + ")"));
