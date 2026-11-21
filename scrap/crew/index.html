@@ -1003,7 +1003,7 @@ function devName(){var u=navigator.userAgent||"",st=false;try{st=navigator.stand
     +(/Line\//.test(u)?" LINE":/CriOS|Chrome/.test(u)?" Chrome":/Safari/.test(u)?" Safari":"")+(st?" ホーム画面":"")}
 /* 端末ごとの記号(この端末のブラウザに覚えておく。同じアカウントで複数の端末を使っても、端末ごとに数を分ける) */
 function devId(){var k="nr-devid",v="";try{v=localStorage.getItem(k)||""}catch(e){}if(!/^[a-z0-9]{6,12}$/.test(v)){v=Math.random().toString(36).slice(2,10);try{localStorage.setItem(k,v)}catch(e){}}return v}
-function meterRec(){var m=meterGet(),o={d:m.d,n:m.n,u:m.u,c:m.c,h:m.h,dev:devName(),ver:APP_SIG||""};if(m.trip){o.trip=m.trip;o.why=m.tripWhy;o.blk=m.blocked||0}return o}
+function meterRec(){var m=meterGet(),o={d:m.d,n:m.n,u:m.u,c:m.c,h:m.h,dev:devName(),ver:APP_SIG||(document.readyState!=="loading"?(APP_SIG=sigOf(document)):"")};if(m.trip){o.trip=m.trip;o.why=m.tripWhy;o.blk=m.blocked||0}return o}
 function markSeen(){
   if(ENV.mode!=="db"||ENV.preview||!ENV.uid)return;
   var sk="nr-seen-"+location.pathname+"-"+ENV.uid;try{SEEN_AT=Math.max(SEEN_AT,Number(localStorage.getItem(sk))||0)}catch(e){}

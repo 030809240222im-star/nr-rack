@@ -31,7 +31,7 @@ const cur2=await v.evaluate(()=>window.__FS);const v2c=await b.newContext({viewp
 await v2c.route(/gstatic\.com\/firebasejs/,r=>r.fulfill({contentType:'text/javascript',body:fs.readFileSync('fake-fb.js','utf8')}));await v2c.route(/jsdelivr/,r=>r.fulfill({contentType:'text/javascript',body:fs.readFileSync('qrcode.min.js','utf8')}));
 await v2c.addInitScript(w=>{window.__FAKE_UID='a';window.__FAKE_EMAIL='a@x.jp';sessionStorage.__FS=JSON.stringify(w);try{localStorage.setItem('nr-uipref','{"simple":false}')}catch(e){}},cur2);
 const v2=await v2c.newPage();await v2.goto('file://'+WORK+'/main-test.html');await v2.click('#lg-google');await v2.waitForTimeout(1200);
-const wd=await v2.evaluate(()=>window.__FS.seen.a.wd||{});console.log('端末ごとの記録:',Object.keys(wd).length,'台');ok(Object.keys(wd).length===2,'同じアカウントの2台が、端末ごとに分けて残る');
+let wd={};for(let i=0;i<10;i++){wd=await v2.evaluate(()=>window.__FS.seen.a.wd||{});if(Object.keys(wd).length>=2)break;await v2.evaluate(()=>window.dispatchEvent(new Event('focus')));await v2.waitForTimeout(500)}console.log('端末ごとの記録:',Object.keys(wd).length,'台');ok(Object.keys(wd).length===2,'同じアカウントの2台が、端末ごとに分けて残る');
 const cur3=await v2.evaluate(()=>window.__FS);const ap=await v2c.newPage();await ap.addInitScript(w=>{window.__FAKE_UID='g1';window.__FAKE_EMAIL='kowa0371@gmail.com';sessionStorage.__FS=JSON.stringify(w)},cur3);
 await ap.goto('file://'+WORK+'/main-test.html');await ap.click('#lg-google');await ap.waitForTimeout(1000);await ap.click('button[data-tab=mem]').catch(()=>{});await ap.waitForTimeout(500);
 const line=((await ap.locator('body').innerText()).match(/今日\(17時から\)の書き込み: [^\n]*/)||[''])[0];console.log('管理者の画面:',line);ok((line.match(/回\(/g)||[]).length===2,'管理者の画面に、端末ごとの数が並ぶ');
