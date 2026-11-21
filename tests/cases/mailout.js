@@ -15,6 +15,7 @@ await cx.addInitScript(w=>{window.__FAKE_UID=w.uid;window.__FAKE_EMAIL=w.email;i
 const p=await cx.newPage();p.on('pageerror',e=>console.log('ERR',e.message));await p.goto('file://'+WORK+'/'+(f||'main-test.html'));await p.click('#lg-google');await p.waitForTimeout(800);return {cx,p}};
 const box=async p=>{const S=await p.evaluate(()=>JSON.parse(sessionStorage.__FS));return S.outbox||{}};
 let {cx,p}=await open('g1','kowa0371@gmail.com');
+/* 10日後が来月のときは、カレンダーを来月にする */for(let i=0;i<2&&!(await p.locator(`[data-act=sel][data-date="${k}"]`).count());i++){await p.click('[data-act=next]');await p.waitForTimeout(300)}
 await p.click(`[data-act=sel][data-date="${k}"]`);await p.waitForTimeout(300);await p.click('[data-act=confirm]');await p.waitForTimeout(500);
 let o=await box(p);Object.keys(o).sort().forEach(id=>console.log('確定後',id,o[id].to,o[id].vid||'',JSON.stringify(o[id].msg)));
 await p.click('button[data-tab=set]');await p.waitForTimeout(300);await p.check('[data-f=mailadm][data-e="kowa0371@gmail.com"]');await p.waitForTimeout(300);

@@ -56,6 +56,15 @@ for(const P of ["","scrap_"]){
   // 盛替え業者
   await t("盛替え: 搬出確認・戻し(st)と履歴",m(c,"confirmed/"+D1,{st:{"v1|16|1":{chk:{k:"ok",at:now}}},at:now,hist:arrayUnion({at:now,by:"c",t:"確認"})}),true);
   await t("盛替え: 戻した台数を業者の台数へ",m(c,"vendors/v1",{floors:{16:{h:increment(-1),w:increment(-1)}},updated:now}),true);
+  await t("業者: 返却の記録を1件足す(まだ記録がないとき)",m(v,"plans/v1",{logs:arrayUnion({id:"r1",k:"rtn",d:D1,f:16,u:2}),at:now}),true);
+  await t("業者: 返却の記録をもう1件足す",m(v,"plans/v1",{logs:arrayUnion({id:"r2",k:"rtn",d:D1,f:16,u:1}),at:now}),true);
+  await t("業者: 記録を消すことはできない",setDoc(doc(v,P+"plans/v1"),{logs:[{id:"r1",k:"rtn",d:D1,f:16,u:2}],at:now}),false);
+  await t("業者: 一度に2件は足せない",m(v,"plans/v1",{logs:arrayUnion({id:"r3",k:"rtn",d:D1,f:16,u:1},{id:"r4",k:"rtn",d:D1,f:16,u:1}),at:now}),false);
+  await t("業者: ほかの会社の記録には足せない",m(v,"plans/v2",{logs:arrayUnion({id:"r5",k:"rtn",d:D1,f:16,u:1}),at:now}),false);
+  await t("業者: 返却で自分の会社の保有台数を減らす",m(v,"vendors/v1",{floors:{16:{h:4,w:4}},updated:now}),true);
+  await t("盛替え: 返却の記録(plans.logs)",m(c,"plans/v1",{logs:arrayUnion({id:"r9",k:"rtn",d:D1,f:16,u:1}),at:now}),true);
+  await t("盛替え: 返却で業者の台数を減らす",m(c,"vendors/v1",{floors:{16:{h:3}},updated:now}),true);
+  await t("盛替え: 返却を業者に知らせる",setDoc(doc(c,P+"outbox/rtv-1"),{to:"vendor",vid:"v1",d:D1,msg:"返却",at:now,uid:"c1"}),true);
   await t("盛替え: 追加の記録(plans.logs)",m(c,"plans/v1",{logs:arrayUnion({d:D1,f:16,u:1}),at:now}),true);
   await t("盛替え: 追加注文に「入れた」",m(c,"orders/v1",{items:{o1:{st:"done"}},at:now}),true);
   await t("盛替え: 業者への送信待ち",setDoc(doc(c,P+"outbox/ct1"),{to:"vendor",vid:"v1",d:D1,msg:"x",at:now,uid:"c1"}),true);

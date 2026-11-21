@@ -107,6 +107,12 @@ service cloud.firestore {
       allow write: if isAdmin();
       // 盛替え業者が「入れた」を付けたときの記録(logs)だけ足せる
       allow create, update: if isCrew() && request.resource.data.keys().hasOnly(['logs', 'at']);
+      // 業者は、自分の会社の記録に「返却」を1件ずつ足せる(前の記録は消せない・変えられない)
+      allow create, update: if isMember(id) && isApproved()
+        && request.resource.data.keys().hasOnly(['logs', 'at'])
+        && request.resource.data.logs is list
+        && request.resource.data.logs.hasAll(resource == null ? [] : resource.data.get('logs', []))
+        && request.resource.data.logs.size() == (resource == null ? 0 : resource.data.get('logs', []).size()) + 1;
     }
     // 追加注文: 業者が自分の分を出し、管理者が手配と上げた日を書き込む
     match /orders/{id} {
@@ -313,6 +319,12 @@ service cloud.firestore {
       allow write: if isAdmin();
       // 盛替え業者が「入れた」を付けたときの記録(logs)だけ足せる
       allow create, update: if isCrewScrap() && request.resource.data.keys().hasOnly(['logs', 'at']);
+      // 業者は、自分の会社の記録に「返却」を1件ずつ足せる(前の記録は消せない・変えられない)
+      allow create, update: if isMemberScrap(id) && isApprovedScrap()
+        && request.resource.data.keys().hasOnly(['logs', 'at'])
+        && request.resource.data.logs is list
+        && request.resource.data.logs.hasAll(resource == null ? [] : resource.data.get('logs', []))
+        && request.resource.data.logs.size() == (resource == null ? 0 : resource.data.get('logs', []).size()) + 1;
     }
     // 追加注文: 業者が自分の分を出し、管理者が手配と上げた日を書き込む
     match /scrap_orders/{id} {
