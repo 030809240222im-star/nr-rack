@@ -1129,6 +1129,9 @@ function compute(){
   var cfg=nrCfg(D.config);LIM={fmin:cfg.fmin,fmax:cfg.fmax,evn:cfg.evn};var t=today(),am=activeMap(),sim=nrSimulate(am,D.days,cfg,t,D.confirmed);
   return {cfg:cfg,t:t,am:am,sim:sim,rank:nrRank(am,sim,cfg,t)};
 }
+/* 会社名(業者の連絡先一覧 config.vdir を使わない。一覧を作るときに、一覧そのものを読まないように) */
+function vnameBase(id){var ms=companyMembers(id),mem=ms.indexOf(id)>=0?id:ms[0];
+  return (mem&&D.approved[mem].company)||(D.vendors[id]&&D.vendors[id].name)||(D.members[id]&&D.members[id].company)||ordName(id)||"名称未設定"}
 function vname(id){
   /* 会社名は、いまその会社にいる人の会社名。別の会社に移った人(approvedのidが同じでも会社IDが違う人)の名前は使わない */
   var ms=companyMembers(id),mem=ms.indexOf(id)>=0?id:ms[0];
@@ -2588,11 +2591,21 @@ function inboxView(){var l=inboxItems();if(!l.length)return "";
 function seenTell(o,id,at){if(!o||!o.fv||ENV.mode!=="db"||window.NR_DEMO||ENV.preview||ui.pv)return;var sn={};sn[id]=at;
   try{var pr=ENV.db.doc("sent/"+o.fv).patch({seen:sn});if(pr&&pr.catch)pr.catch(function(){})}catch(e){}}
 /* 業者が連絡を送れる会社の一覧(管理者のアプリが config.vdir に書く。業者は他の会社の情報を読めないため) */
+/* 一覧を書き直すのは、中身(会社IDと名前の組)がサーバーの内容と違うときだけ。並び順の違いは見ない。
+   端末に残っていた古い内容(キャッシュ)とは比べない。書き直しは1台の端末で10分に1回まで
+   (前は、管理者の画面が開いたまま、同じ一覧を1分に何百回も書き直すことがあり、サーバーの1日の書き込みの上限を使い切っていた) */
+var VDIR_KEY="nr-vdir-at-"+location.pathname;
+function vdirKey(l){return JSON.stringify((l||[]).map(function(x){return [String(x&&x.id||""),String(x&&x.n||"")]}).sort(function(a,b){return a[0]<b[0]?-1:a[0]>b[0]?1:a[1]<b[1]?-1:a[1]>b[1]?1:0}))}
 function syncDir(){
   if(!ENV.admin||ENV.mode!=="db"||window.NR_DEMO||ENV.preview||ui.pv)return;
   if(!["config","vendors","approved","members","blocked","orders"].every(function(c){return LOADED[c]}))return;
-  var l=msgVendors().map(function(v){return {id:v,n:vname(v)}}).concat(msgNoReach().map(function(x){return {id:x.id,n:x.n}})).sort(function(a,c){return a.n<c.n?-1:1});
-  if(JSON.stringify(l)===JSON.stringify((D.config||{}).vdir||[]))return;
+  if(!isFresh(["config","vendors","approved","members","blocked","orders"]))return;
+  var l=msgVendors().map(function(v){return {id:v,n:vnameBase(v)}}).concat(msgNoReach().map(function(x){return {id:x.id,n:x.n}}))
+    .sort(function(a,c){return a.n<c.n?-1:a.n>c.n?1:a.id<c.id?-1:a.id>c.id?1:0});
+  if(vdirKey(l)===vdirKey((D.config||{}).vdir))return;
+  var last=0;try{last=Number(localStorage.getItem(VDIR_KEY))||0}catch(e){}
+  if(Date.now()-last<600000)return;
+  try{localStorage.setItem(VDIR_KEY,String(Date.now()))}catch(e){}
   D.config.vdir=l;send(ENV.db.doc("config/main").patch({vdir:l}));
 }
 function dirName(id){var x=((D.config||{}).vdir||[]).filter(function(y){return y.id===id})[0];return x?x.n:"業者"}

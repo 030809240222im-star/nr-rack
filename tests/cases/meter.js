@@ -18,7 +18,7 @@ await v.evaluate(()=>window.dispatchEvent(new Event('focus')));await v.waitForTi
 const w=await v.evaluate(()=>(window.__FS.seen.a||{}).w);console.log('業者の記録:',JSON.stringify(w));
 ok(w&&w.n>=4&&w.c.vendors===3&&w.u>=w.n&&w.dev&&w.d,'業者の端末の書き込み(台数3回+最終ログイン)が数えられ、最終ログインの記録に載る');
 await v.reload();await v.waitForTimeout(1200);await v.evaluate(()=>window.dispatchEvent(new Event('focus')));await v.waitForTimeout(600);
-const w2=await v.evaluate(()=>(window.__FS.seen.a||{}).w);ok(w2&&w2.n>w.n,'開き直しても続きから数える('+w.n+'→'+w2.n+')');
+let w2=null;for(let i=0;i<10;i++){w2=await v.evaluate(()=>(window.__FS.seen.a||{}).w);if(w2&&w2.n>w.n)break;await v.evaluate(()=>window.dispatchEvent(new Event('focus')));await v.waitForTimeout(500)}ok(w2&&w2.n>w.n,'開き直しても続きから数える('+w.n+'→'+w2.n+')');
 /* 管理者の「登録」に出る */
 /* 偽の Firebase のデータは画面ごとなので、業者の画面で書いた内容を管理者の画面に渡す */
 const cur=await v.evaluate(()=>window.__FS);const a=await v.context().newPage();await a.addInitScript(w=>{window.__FAKE_UID='g1';window.__FAKE_EMAIL='kowa0371@gmail.com';sessionStorage.__FS=JSON.stringify(w)},cur);
