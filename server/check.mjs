@@ -78,6 +78,13 @@ for (const P of ["", "scrap_"]) for (const c of COLLS) {
   let tot = 0, mx = 0; s.forEach(d => { const n = Buffer.byteLength(JSON.stringify(d.data() || {})); tot += n; if (n > mx) mx = n; });
   console.log("  " + (P + c).padEnd(16) + " " + String(s.size).padStart(3) + "件  合計 " + (tot / 1024).toFixed(1) + "  最大 " + (mx / 1024).toFixed(1));
 }
+/* ===== 文書の中身の内訳(大きい集まりで、項目ごとの大きさ。KB。中身は出さない) */
+console.log("===== 項目ごとの大きさ(KB: 合計 / 一番大きい文書での値)");
+for (const c of ["confirmed", "notices", "vendors", "days", "orders", "config", "push", "approved", "members", "plans"]) {
+  const s = await db.collection(c).get(); const tot = {}, mx = {};
+  s.forEach(d => { for (const [k, v] of Object.entries(d.data() || {})) { const n = Buffer.byteLength(JSON.stringify(v)); tot[k] = (tot[k] || 0) + n; if (n > (mx[k] || 0)) mx[k] = n; } });
+  console.log("  " + c.padEnd(10) + " " + Object.keys(tot).sort((a, b) => tot[b] - tot[a]).map(k => k + "=" + (tot[k] / 1024).toFixed(1) + "/" + (mx[k] / 1024).toFixed(1)).join("  "));
+}
 /* ===== サーバー側の記録(Google Cloud の利用状況)。読むだけ。件数と結果の種類だけを出す ===== */
 const PROJECT = sa.project_id;
 let token = null;
