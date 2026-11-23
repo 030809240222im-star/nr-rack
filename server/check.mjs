@@ -14,7 +14,8 @@ const now = Date.now();
 /* GitHub のログは波かっこを伏せ字にすることがあるので、「名前=数」の並びで出す */
 const kv = (o, num) => Object.entries(o || {}).sort((a, b) => num ? Number(a[0]) - Number(b[0]) : b[1] - a[1]).map(([k, v]) => k + (num ? "時" : "") + "=" + v).join(" ");
 for (const P of ["", "scrap_"]) {
-  console.log("===== " + (P ? "スクラップ版" : "NRボックス版") + "(データベース: " + (process.env.FIRESTORE_DB || "default") + ")");
+  const { scrapSa: _ss } = await import("./scrapdb.mjs"), _s = P && _ss();
+  console.log("===== " + (P ? "スクラップ版" : "NRボックス版") + "(プロジェクト: " + (_s ? _s.project_id : sa.project_id) + "・データベース: " + (_s ? (process.env.FIRESTORE_DB_SCRAP || "(default)") : (process.env.FIRESTORE_DB || "default")) + ")");
   for (const c of COLLS) {
     const s = await DBS[P].collection(P + c).get();
     let newest = null, day = 0;
@@ -44,10 +45,13 @@ for (const P of ["", "scrap_"]) {
 
 /* ===== 書き込みの窓口に直接たずねる(やり直しなし)。すでにある文書を「なければ作る」として送るので、データは変わらない。返事の種類と文面を出す */
 {
-  let tk = null; try { tk = (await admin.credential.cert(sa).getAccessToken()).access_token; } catch (e) {}
+  const { scrapSa } = await import("./scrapdb.mjs"), ssa = scrapSa();
   for (const path of ["config/main", "scrap_config/main"]) {
-    const name = "projects/" + sa.project_id + "/databases/" + (process.env.FIRESTORE_DB || "default") + "/documents/" + path;
-    const r = await fetch("https://firestore.googleapis.com/v1/projects/" + sa.project_id + "/databases/" + (process.env.FIRESTORE_DB || "default") + "/documents:commit", { method: "POST", headers: { Authorization: "Bearer " + tk, "Content-Type": "application/json" }, body: JSON.stringify({ writes: [{ update: { name, fields: { probe: { booleanValue: true } } }, currentDocument: { exists: false } }] }) });
+    /* スクラップを別のプロジェクトに分けたあとは、スクラップの分はそのプロジェクトにたずねる */
+    const A = path.startsWith("scrap_") && ssa ? ssa : sa, DBID = A === sa ? (process.env.FIRESTORE_DB || "default") : (process.env.FIRESTORE_DB_SCRAP || "(default)");
+    let tk = null; try { tk = (await admin.credential.cert(A).getAccessToken()).access_token; } catch (e) {}
+    const name = "projects/" + A.project_id + "/databases/" + DBID + "/documents/" + path;
+    const r = await fetch("https://firestore.googleapis.com/v1/projects/" + A.project_id + "/databases/" + DBID + "/documents:commit", { method: "POST", headers: { Authorization: "Bearer " + tk, "Content-Type": "application/json" }, body: JSON.stringify({ writes: [{ update: { name, fields: { probe: { booleanValue: true } } }, currentDocument: { exists: false } }] }) });
     const t = await r.text(); let j = null; try { j = JSON.parse(t); } catch (e) {}
     console.log("書き込みの窓口(" + path + ") " + jst(new Date()) + ": HTTP " + r.status + " " + ((j && j.error && (j.error.status + " " + String(j.error.message || "").slice(0, 600) + " " + JSON.stringify(j.error.details || []).slice(0, 600))) || (r.ok ? "書けた(想定外)" : t.slice(0, 160))));
   }
@@ -56,7 +60,7 @@ for (const P of ["", "scrap_"]) {
    ALREADY_EXISTS(6) なら書き込みの窓口は動いている。RESOURCE_EXHAUSTED(8) なら1日の上限に達している */
 for (const path of ["config/main", "scrap_config/main"]) {
   const t0 = Date.now();
-  try { const r = await Promise.race([db.doc(path).create({ probe: true }).then(() => "made"), new Promise(res => setTimeout(() => res("timeout"), 25000))]);
+  try { const r = await Promise.race([DBS[path.startsWith("scrap_") ? "scrap_" : ""].doc(path).create({ probe: true }).then(() => "made"), new Promise(res => setTimeout(() => res("timeout"), 25000))]);
     console.log("書き込みの試し " + path + ": " + (r === "made" ? "作れてしまった(想定外)" : "25秒たっても返事がない(サーバーが受け付けず、やり直しを続けている)")); }
   catch (e) { console.log("書き込みの試し " + path + ": 返事 " + e.code + " " + String(e.details || e.message || "").slice(0, 120) + " (" + (Date.now() - t0) + "ms)"); }
 }
