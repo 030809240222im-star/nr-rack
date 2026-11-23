@@ -1,6 +1,6 @@
 # NRボックス ラック調整 / スクラップ搬出 調整
 
-公開先: https://030809240222im-star.github.io/nr-rack/ (GitHub Pages、main ブランチ)。データは Firebase(nr-rack、Firestore の DB ID は `default`)。
+公開先: https://030809240222im-star.github.io/nr-rack/ (GitHub Pages、main ブランチ)。データは Firebase(NRボックスは nr-rack、Firestore の DB ID は `default`。スクラップ搬出は scraps-9ccca、DB ID は `(default)`)。
 
 ## 直すのは index.html だけ
 
@@ -9,6 +9,8 @@
     python3 tools/make-scrap.py && python3 tools/make-crew.py && python3 tools/make-demo.py
 
 セキュリティルールは `tools/make-rules.py` で作る(管理者のメールアドレスもここ)。ルールを変えたら、利用者に Firebase へ貼り直してもらう必要があると必ず伝える。
+
+スクラップ搬出は別の Firebase プロジェクト(scraps-9ccca、DB は `(default)`)。つなぎ先は `tools/scrap-firebase.json`(make-scrap.py が使う)。ルールは NRボックス用 `firestore.rules`(nr-rack に貼る)とスクラップ用 `firestore-scrap.rules`(scraps-9ccca に貼る)の2つ。ルールを変えたら、どちらに貼り直すかも伝える。サーバーの自動処理は、スクラップの分に GitHub Secrets の `FIREBASE_SERVICE_ACCOUNT_SCRAP` を使う(`server/scrapdb.mjs`)。
 
 ## 取扱説明書も一緒に直す
 
