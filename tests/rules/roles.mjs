@@ -64,6 +64,12 @@ for(const P of ["","scrap_"]){
   await t("業者: 一度に2件は足せない",m(v,"plans/v1",{logs:arrayUnion({id:"r3",k:"rtn",d:D1,f:16,u:1},{id:"r4",k:"rtn",d:D1,f:16,u:1}),at:now}),false);
   await t("業者: ほかの会社の記録には足せない",m(v,"plans/v2",{logs:arrayUnion({id:"r5",k:"rtn",d:D1,f:16,u:1}),at:now}),false);
   await t("業者: 返却で自分の会社の保有台数を減らす",m(v,"vendors/v1",{floors:{16:{h:4,w:4}},updated:now}),true);
+  await env.withSecurityRulesDisabled(async cc=>{await setDoc(doc(cc.firestore(),P+"blocked/zz"),{at:now,vid:"zz"});await setDoc(doc(cc.firestore(),P+"crewblocked/zz"),{at:now})});
+  await t("停止された人: 利用の再開を申し込める(業者)",m(x,"members/zz",{company:"Z社",contact:"z",email:"z@x.jp",at:now}),true);
+  await t("停止された人: 利用の再開を申し込める(盛替え業者)",m(x,"crewreq/zz",{company:"Z社",contact:"z",email:"z@x.jp",at:now}),true);
+  await t("停止された人: 自分で利用を再開することはできない(業者)",setDoc(doc(x,P+"approved/zz"),{company:"Z社",email:"z@x.jp",at:now,vid:"zz"}),false);
+  await t("停止された人: 自分で利用を再開することはできない(盛替え業者)",setDoc(doc(x,P+"crews/zz"),{company:"Z社",email:"z@x.jp",at:now}),false);
+  await t("停止された人: 管理者に知らせられる",setDoc(doc(x,P+"outbox/rr-zz"),{to:"admin",msg:"再開の申し込み",at:now,uid:"zz"}),true);
   await t("盛替え: 返却の記録(plans.logs)",m(c,"plans/v1",{logs:arrayUnion({id:"r9",k:"rtn",d:D1,f:16,u:1}),at:now}),true);
   await t("盛替え: 返却で業者の台数を減らす",m(c,"vendors/v1",{floors:{16:{h:3}},updated:now}),true);
   await t("盛替え: 返却を業者に知らせる",setDoc(doc(c,P+"outbox/rtv-1"),{to:"vendor",vid:"v1",d:D1,msg:"返却",at:now,uid:"c1"}),true);

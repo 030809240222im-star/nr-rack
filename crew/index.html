@@ -2539,7 +2539,7 @@ function csvDownload(name,rows){
 function renderCrewReg(){
   var m=D.crewreq[ENV.uid],h='<section class="panel reg"><h2>盛替え業者の登録</h2>';
   if(!LOADED.crewreq||!LOADED.crews||!LOADED.crewblocked)return h+'<p class="empty">確認しています…</p></section>';
-  if(D.crewblocked[ENV.uid])return h+'<div class="note bad"><span>このアカウントは管理者により利用が停止されています。心当たりがない場合は管理者に連絡してください。</span></div></section>';
+  if(D.crewblocked[ENV.uid])return h+reReqForm(m,"crewrereq",D.crewblocked[ENV.uid]);
   if(m)h+='<div class="note"><span>登録を受け付けました。まもなく使えるようになります。画面が切り替わらないときは再読み込みしてください。</span></div>';
   else h+='<p class="hint">会社名とメールアドレスを登録すると、すぐに使えるようになります。</p>';
   h+='<div class="lbl"><label for="reg-company">会社名(必須)</label><input type="text" id="reg-company" data-keep value="'+esc(m?m.company:"")+'"></div>'
@@ -2563,10 +2563,18 @@ function renderRet(C){
     h+='<tr'+(r.back?' style="opacity:.6"':'')+'><td><b style="font-size:18px">'+(Array.isArray(r.rets)?esc(retLabel(r)).replace(/・/g,"<br>"):(nrNum(r.ret)||r.floor)+'階')+'</b>'+(r.ret||Array.isArray(r.rets)?'':'<div class="hint" style="margin:0">同じ階</div>')+'</td><td class="l" style="white-space:normal"><b>'+esc(rowName(r))+' '+nrNum(r.units)+'台</b><div class="hint" style="margin:0">'+fmtD(x.d)+' '+r.floor+'階から・'+evLabel(r.ev,r.to)+'</div></td><td class="l">'+backCell(x.d,r,x.i)+'</td></tr>'});
   return h+'</tbody></table></div></section>';
 }
+/* 利用を停止された人: もう一度使いたいときは、ここから申し込む(管理者が「登録」タブで「利用を再開」を押すと使えるようになる) */
+function reReqForm(m,act,bl){var sent=m&&m.at&&(m.re||(bl&&bl.at&&m.at>bl.at));/* 停止のあとに出した申し込みがあるか */
+  return '<div class="note bad"><span>このアカウントは、管理者により利用が停止されています。もう一度使いたいときは、下の内容で「利用の再開を申し込む」を押してください。管理者が確認して再開すると、使えるようになります。</span></div>'
+   +(sent?'<div class="note"><span>'+esc(fmtAt(m.at))+'に申し込みました。管理者の確認をお待ちください。再開されると、自動で画面が切り替わります。</span></div>':'')
+   +'<div class="lbl"><label for="reg-company">会社名(必須)</label><input type="text" id="reg-company" data-keep value="'+esc((m&&m.company)||"")+'"></div>'
+   +'<div class="lbl"><label for="reg-contact">お名前</label><input type="text" id="reg-contact" data-keep value="'+esc((m&&m.contact)||ENV.name||"")+'"></div>'
+   +'<div class="lbl"><label for="reg-email">メールアドレス(必須)</label><input type="email" id="reg-email" data-keep value="'+esc((m&&m.email)||ENV.email||"")+'"></div>'
+   +'<div><button class="btn primary" data-act="'+act+'">'+(sent?'もう一度申し込む':'利用の再開を申し込む')+'</button></div></section>'}
 function renderReg(){
   var m=D.members[ENV.uid],h='<section class="panel reg"><h2>業者登録</h2>';
   if(!LOADED.members||!LOADED.approved||!LOADED.blocked)return h+'<p class="empty">確認しています…</p></section>';
-  if(D.blocked[ENV.uid])return h+'<div class="note bad"><span>このアカウントは管理者により利用が停止されています。心当たりがない場合は管理者に連絡してください。</span></div></section>';
+  if(D.blocked[ENV.uid])return h+reReqForm(m,"rereq",D.blocked[ENV.uid]);
   if(m)h+='<div class="note"><span>登録を受け付けました。まもなく使えるようになります。画面が切り替わらないときは再読み込みしてください。</span></div>'
    +'<p class="hint" style="margin:0">会社名 '+esc(m.company)+' / 連絡先 '+esc(m.email)+'</p>';
   else h+='<p class="hint" style="margin:0">会社として初めて使うときは「新しく登録」、同じ会社の人がすでに使っているときは「参加コードで入る」を選びます。登録するとすぐに使えます。</p>';
@@ -2659,7 +2667,7 @@ function renderMem(C){
   var h=inboxView()+msgForm()+'<section class="panel"><h2 style="margin-bottom:6px">業者の登録</h2><p class="hint" style="margin:0 0 10px">業者はURLから会社名とメールアドレスを登録すると、すぐに使えるようになります。心当たりのない登録は「利用を停止」してください。</p><h3>利用停止中・未完了('+pend.length+')</h3>';
   if(!pend.length)h+='<p class="empty">ありません。</p>';
   else{h+='<div class="tablewrap"><table><thead><tr><th class="l">会社名</th><th class="l">担当者</th><th class="l">メールアドレス</th><th class="l">申請日時</th><th></th></tr></thead><tbody>';
-    pend.forEach(function(id){var m=D.members[id];h+='<tr><td class="l vn">'+esc(m.company)+'</td><td class="l">'+esc(m.contact||"")+'</td><td class="l">'+esc(m.email)+'</td><td class="l">'+esc(fmtAt(m.at))+'</td><td><button class="btn sm primary" data-act="approve" data-id="'+esc(id)+'">'+(D.blocked[id]?'利用を再開':'利用を許可')+'</button> <button class="btn sm danger" data-act="reject" data-id="'+esc(id)+'">却下</button></td></tr>'});
+    pend.forEach(function(id){var m=D.members[id],rr=D.blocked[id]&&m.at&&m.at>(D.blocked[id].at||"");h+='<tr><td class="l vn">'+esc(m.company)+(rr?' <span class="st warn">再開の申し込み</span>':D.blocked[id]?' <span class="st off">停止中</span>':'')+'</td><td class="l">'+esc(m.contact||"")+'</td><td class="l">'+esc(m.email)+'</td><td class="l">'+esc(fmtAt(m.at))+'</td><td><button class="btn sm primary" data-act="approve" data-id="'+esc(id)+'">'+(D.blocked[id]?'利用を再開':'利用を許可')+'</button> <button class="btn sm danger" data-act="reject" data-id="'+esc(id)+'">却下</button></td></tr>'});
     h+='</tbody></table></div>'}
   /* 会社ごとにまとめて出す。会社ID(vid)が同じ人は、同じ台数・予定を一緒に使う */
   var groups={};ap.forEach(function(id){var v=vidOf(id);(groups[v]=groups[v]||[]).push(id)});
@@ -2690,7 +2698,7 @@ function renderMem(C){
   h+='<h2 style="margin:22px 0 6px">盛替え業者</h2><p class="hint" style="margin:0 0 10px">盛替え業者は専用のURL('+esc(APP_URL)+'crew/)から会社名を登録すると、すぐに使えるようになります。全業者の搬出予定を見て、搬出の確認と戻しの完了を入力できます。心当たりのない登録は「利用を停止」してください。</p><h3>利用停止中・未完了('+cq.length+')</h3>';
   if(!cq.length)h+='<p class="empty">ありません。</p>';
   else{h+='<div class="tablewrap"><table><thead><tr><th class="l">会社名</th><th class="l">担当者</th><th class="l">メールアドレス</th><th></th></tr></thead><tbody>';
-    cq.forEach(function(id){var q=D.crewreq[id];h+='<tr><td class="l vn">'+esc(q.company)+'</td><td class="l">'+esc(q.contact||"")+'</td><td class="l">'+esc(q.email)+'</td><td><button class="btn sm primary" data-act="crewok" data-id="'+esc(id)+'">'+(D.crewblocked[id]?'利用を再開':'利用を許可')+'</button> <button class="btn sm" data-act="crewno" data-id="'+esc(id)+'">却下</button></td></tr>'});
+    cq.forEach(function(id){var q=D.crewreq[id],rr=D.crewblocked[id]&&q.at&&q.at>(D.crewblocked[id].at||"");h+='<tr><td class="l vn">'+esc(q.company)+(rr?' <span class="st warn">再開の申し込み</span>':D.crewblocked[id]?' <span class="st off">停止中</span>':'')+'</td><td class="l">'+esc(q.contact||"")+'</td><td class="l">'+esc(q.email)+'</td><td><button class="btn sm primary" data-act="crewok" data-id="'+esc(id)+'">'+(D.crewblocked[id]?'利用を再開':'利用を許可')+'</button> <button class="btn sm" data-act="crewno" data-id="'+esc(id)+'">却下</button></td></tr>'});
     h+='</tbody></table></div>'}
   h+='<h3 style="margin-top:16px">利用中の盛替え業者('+cw.length+')</h3>';
   if(!cw.length)h+='<p class="empty">まだいません。</p>';
@@ -3166,6 +3174,15 @@ function onClick(ev){
   else if(act==="crewno"){remove("crewreq",id)}
   else if(act==="crewoff"){if(ui.confirm==="co-"+id){var cw0=D.crews[id]||{};put("crewblocked",id,{company:cw0.company||"",email:cw0.email||"",at:nowIso()});remove("crews",id);ui.confirm=""}else{ui.confirm="co-"+id;keepConfirm=true}}
   else if(act==="regmode"){ui.reg=b.getAttribute("data-k")}
+  else if(act==="rereq"||act==="crewrereq"){
+    var rc=(document.getElementById("reg-company")||{}).value||"",rn=(document.getElementById("reg-contact")||{}).value||"",re=(document.getElementById("reg-email")||{}).value||"";
+    rc=rc.trim().slice(0,100);rn=rn.trim().slice(0,100);re=re.trim().slice(0,200);
+    if(!rc||!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(re)){ui.msg="会社名とメールアドレスを入れてください。";ui.msgKind="bad"}
+    else{var rcol=act==="rereq"?"members":"crewreq",ro={company:rc,contact:rn,email:re,at:nowIso()};
+      D[rcol][ENV.uid]=Object.assign({},ro,{re:1});send(ENV.db.doc(rcol+"/"+ENV.uid).set(ro));
+      mailOut("rr-"+ENV.uid,{to:"admin",msg:(act==="rereq"?"業者":"盛替え業者")+"の「"+rc+"」("+re+")から、利用の再開の申し込みがありました。「登録」タブで確認して、「利用を再開」を押してください。"});
+      ui.msg="利用の再開を申し込みました。管理者の確認をお待ちください。";ui.msgKind="ok"}
+  }
   else if(act==="regsubmit"){
     var em=document.getElementById("reg-email").value.trim(),ct=document.getElementById("reg-contact").value.trim(),okm=/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em);
     if(ui.reg==="join"){
