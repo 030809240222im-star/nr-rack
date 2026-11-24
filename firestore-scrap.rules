@@ -3,7 +3,7 @@ rules_version = '2';
 // このファイルは tools/make-rules.py で作っています。直すときはスクリプトを直して作り直してください。
 service cloud.firestore {
   match /databases/{database}/documents {
-    function adminEmails() { return ['kowa0371@gmail.com', '030809240222im@gmail.com', 'aiko.h@shimz.co.jp', 't.hiramatsu@shimz.co.jp', 'janki.onimatu@gmail.com', 'n.katou@shimz.co.jp', 'a.takada@shimz.co.jp', 'a-nagashima@shimz.co.jp', 'advance3594@shimz.co.jp', 'nakawatari.k@shimz.co.jp', 'eito.semura@shimz.co.jp', 's.kitaoka0125@shimz.co.jp', 'gotsu_y@shimz.co.jp']; }
+    function adminEmails() { return ['kowa0371@gmail.com', '030809240222im@gmail.com', 'aiko.h@shimz.co.jp', 't.hiramatsu@shimz.co.jp', 'janki.onimatu@gmail.com', 'n.katou@shimz.co.jp', 'a.takada@shimz.co.jp', 'a-nagashima@shimz.co.jp', 'advance3594@shimz.co.jp', 'nakawatari.k@shimz.co.jp', 'eito.semura@shimz.co.jp', 's.kitaoka0125@shimz.co.jp', 'gotsu_y@shimz.co.jp', 't_oyamada@shimz.co.jp']; }
 
     function signedIn() { return request.auth != null; }
     function isAdmin() {
