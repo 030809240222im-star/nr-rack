@@ -4,7 +4,7 @@
 """
 import pathlib
 
-ADMINS = ["kowa0371@gmail.com", "030809240222im@gmail.com", "aiko.h@shimz.co.jp", "t.hiramatsu@shimz.co.jp", "janki.onimatu@gmail.com", "n.katou@shimz.co.jp", "a.takada@shimz.co.jp", "a-nagashima@shimz.co.jp", "advance3594@shimz.co.jp", "nakawatari.k@shimz.co.jp", "eito.semura@shimz.co.jp", "s.kitaoka0125@shimz.co.jp"]
+ADMINS = ["kowa0371@gmail.com", "030809240222im@gmail.com", "aiko.h@shimz.co.jp", "t.hiramatsu@shimz.co.jp", "janki.onimatu@gmail.com", "n.katou@shimz.co.jp", "a.takada@shimz.co.jp", "a-nagashima@shimz.co.jp", "advance3594@shimz.co.jp", "nakawatari.k@shimz.co.jp", "eito.semura@shimz.co.jp", "s.kitaoka0125@shimz.co.jp", "gotsu_y@shimz.co.jp"]
 
 BLOCK = """
     // ===== {title} =====
