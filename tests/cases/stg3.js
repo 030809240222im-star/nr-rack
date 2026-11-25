@@ -30,7 +30,7 @@ if(n==='pc'){
  await p.locator('[data-act=stage2]').nth(idx).click();await p.waitForTimeout(400);
  const S=await p.evaluate(()=>JSON.parse(sessionStorage.__FS));console.log(' msg:',(await p.locator('.note').first().innerText()).slice(0,120));console.log(' 業者へのお知らせ:',JSON.stringify(Object.values(((JSON.parse(await p.evaluate(()=>sessionStorage.__FS)).notices||{}).v1||{}).items||{}).map(x=>x.kind+':'+x.msg.slice(0,30))));console.log(' moves saved:',JSON.stringify(S.days[k1].moves||S.days[k2].moves));
  console.log(' tab after:',(await p.locator('button[data-tab=stg]').innerText()).replace(/\n/g,''),'| current:',(await p.locator('table.rtable tbody tr').first().innerText()).replace(/\s+/g,' ').slice(0,120));
- await p.click('button[data-tab=cal]');await p.click(`[data-act=sel][data-date="${k1}"]`);await p.waitForTimeout(300);
+ await p.click('button[data-tab=cal]');/* 6日後が来月のときは、カレンダーを来月にする */for(let i=0;i<2&&!(await p.locator(`[data-act=sel][data-date="${k1}"]`).count());i++){await p.click('[data-act=next]');await p.waitForTimeout(300)}await p.click(`[data-act=sel][data-date="${k1}"]`);await p.waitForTimeout(300);
  console.log(' day panel assign:',(await p.locator('.panel table tbody tr').allInnerTexts()).slice(0,4).map(x=>x.replace(/\s+/g,' ')).join(' / '));
  await p.click('button[data-tab=stg]');await p.waitForTimeout(200);await p.fill('#sg2-d-0','2020-01-01');await p.waitForTimeout(300);
  console.log(' after unstage tab:',(await p.locator('button[data-tab=stg]').innerText()).replace(/\n/g,''));

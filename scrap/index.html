@@ -2559,10 +2559,28 @@ function renderRet(C){
   list.sort(function(a,b){return (a.d<b.d?-1:a.d>b.d?1:0)||retMain(a.r)-retMain(b.r)||a.i-b.i});
   var left=list.filter(function(x){return !x.r.back}).length;
   var h='<section class="panel"><h2 style="margin-bottom:6px">戻し一覧</h2><p class="hint" style="margin:0 0 10px">この1週間から今日までに搬出した分です。戻したら「戻した」にチェックすると完了✅になり、その業者の台数にも反映されます。未完了 '+left+'件。</p>';
-  if(!list.length)return h+'<p class="empty">戻すものはありません。</p></section>';
+  if(!list.length)return h+'<p class="empty">戻すものはありません。</p></section>'+retAdds(C);
   h+='<div class="tablewrap"><table><thead><tr><th>戻し階</th><th class="l">業者・台数</th><th class="l">完了</th></tr></thead><tbody>';
   list.forEach(function(x){var r=x.r;
     h+='<tr'+(r.back?' style="opacity:.6"':'')+'><td><b style="font-size:18px">'+(Array.isArray(r.rets)?esc(retLabel(r)).replace(/・/g,"<br>"):(nrNum(r.ret)||r.floor)+'階')+'</b>'+(r.ret||Array.isArray(r.rets)?'':'<div class="hint" style="margin:0">同じ階</div>')+'</td><td class="l" style="white-space:normal"><b>'+esc(rowName(r))+' '+nrNum(r.units)+'台</b><div class="hint" style="margin:0">'+fmtD(x.d)+' '+r.floor+'階から・'+evLabel(r.ev,r.to)+'</div></td><td class="l">'+backCell(x.d,r,x.i)+'</td></tr>'});
+  return h+'</tbody></table></div></section>'+retAdds(C);
+}
+/* 戻し一覧の下: 新しいBOXの搬入予定(管理者が手配した追加注文)。まだの分は、ここからも「入れた」を付けられる。入れた分は1週間出す */
+function retAdds(C){
+  var from=nrDs(new Date(Date.now()-7*864e5));
+  var list=orderList().filter(function(x){var o=x.o;return (o.st==="plan"&&o.plan&&o.plan.d)||(o.st==="done"&&o.done&&o.done.d>=from)})
+    .sort(function(a,b){var x=a.o.st==="plan"?a.o.plan.d:a.o.done.d,y=b.o.st==="plan"?b.o.plan.d:b.o.done.d;return (a.o.st==="done")-(b.o.st==="done")||(x<y?-1:x>y?1:0)});
+  var left=list.filter(function(x){return x.o.st==="plan"}).length;
+  var h='<section class="panel"><h2 style="margin-bottom:6px">📦 新しいBOXの搬入予定'+(left?'(あと'+left+'件)':'')+'</h2><p class="hint" style="margin:0 0 10px">管理者が手配した追加注文です。入れたら、エレベーターと台数を確かめて「入れた」を押してください(業者の台数が自動で増えます)。入れた分は1週間ここに残ります。</p>';
+  if(!list.length)return h+'<p class="empty">搬入の予定はありません。</p></section>';
+  h+='<div class="tablewrap"><table><thead><tr><th class="l">搬入日</th><th class="l">業者</th><th>階・台数</th><th class="l">入れた</th></tr></thead><tbody>';
+  list.forEach(function(x){var o=x.o,k=x.vid+"-"+x.id,done=o.st==="done",d=done?o.done.d:o.plan.d,el=((D.days[d]||{}).elev||[]),late=!done&&d<C.t;
+    h+='<tr'+(done?' style="opacity:.6"':'')+'><td class="l">'+esc(fmtD(d))+(late?' <span class="st warn">予定日を過ぎています</span>':'')+'</td><td class="l vn">'+esc(o.n||vname(x.vid))+'</td><td><b style="font-size:18px">'+o.f+'階</b> '+nrNum(o.u)+'台</td><td class="l">';
+    if(done)h+='<span class="st ok">✅ 入れた</span> EV'+(nrNum(o.done.ev)||"?")+' '+nrNum(o.done.u)+'台';
+    else h+='<div class="mvbox"><select id="ce-'+k+'" data-keep aria-label="搬入に使うエレベーター">'+evList().map(function(e){return '<option value="'+e+'"'+(e===(el[0]||1)?' selected':'')+'>EV'+e+'</option>'}).join("")+'</select>'
+      +'<input type="number" min="1" id="cu-'+k+'" data-keep value="'+nrNum(o.u)+'" aria-label="入れた台数"><span class="hint" style="margin:0">台</span>'
+      +'<button class="btn primary" data-act="crewin" data-vid="'+esc(x.vid)+'" data-id="'+esc(x.id)+'" data-d="'+d+'">入れた</button></div>'+(o.memo?'<div class="hint" style="margin:0">'+esc(o.memo)+'</div>':'');
+    h+='</td></tr>'});
   return h+'</tbody></table></div></section>';
 }
 function renderReg(){
