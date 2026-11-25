@@ -13,12 +13,20 @@ await cx.route(/gstatic\.com\/firebasejs/,r=>r.fulfill({contentType:'text/javasc
 await cx.addInitScript(w=>{window.__FAKE_UID='c1';window.__FAKE_EMAIL='c@x.jp';if(!sessionStorage.__FS)sessionStorage.__FS=JSON.stringify(w)},FS);
 const p=await cx.newPage();p.on('pageerror',e=>console.log('ERR',e.message));await p.goto('file://'+WORK+'/crew-test.html');await p.click('#lg-google');await p.waitForTimeout(800);
 await p.click('button[data-tab=ret]');await p.waitForTimeout(500);
-const sec=await p.locator('section:has-text("新しいBOXの搬入予定")').innerText().catch(()=>'');console.log(sec.replace(/\s+/g,' ').slice(0,300));
+const sec=await p.locator('#app').innerText().catch(()=>'');console.log(sec.replace(/\s+/g,' ').slice(0,300));
 ok(/あと2件/.test(sec)&&/A社/.test(sec)&&/B社/.test(sec),'戻し一覧に、手配済みの搬入予定(2件)と入れた分が出る');
 ok(!/12階 1台/.test(sec),'まだ手配していない注文は出ない');
 ok(/予定日を過ぎています/.test(sec),'予定日を過ぎた分に印が出る');
 await p.fill('#cu-a-o1','2');await p.click('[data-act=crewin][data-id=o1]');await p.waitForTimeout(600);
 const S=await p.evaluate(()=>window.__FS);console.log('入れたあと: 注文',S.orders.a.items.o1.st,'/ A社12階',S.vendors.a.floors['12'].h,'台');
 ok(S.orders.a.items.o1.st==='done'&&S.orders.a.items.o1.done.ev===2&&S.vendors.a.floors['12'].h===5,'「入れた」で注文が済みになり、業者の台数が増える(EVは回収日のEV)');
-ok(/あと1件/.test(await p.locator('section:has-text("新しいBOXの搬入予定")').innerText()),'残りの件数が減る');
+ok(/あと1件/.test(await p.locator('#app').innerText()),'残りの件数が減る');
+/* 日ごとに分かれ、開いたときは今日の日が画面の一番上に来る */
+const ids=await p.locator('section.retday').evaluateAll(x=>x.map(e=>e.id));console.log('日の並び:',ids.join(' '));
+const T=D(0);ok(ids.indexOf('retday-'+T)>0&&ids[0]<'retday-'+T&&ids[ids.length-1]>'retday-'+T,'前の日・今日・先の日が日付の順に並ぶ');
+await p.click('button[data-tab=cal]');await p.waitForTimeout(300);await p.evaluate(()=>window.scrollTo(0,0));await p.click('button[data-tab=ret]');await p.waitForTimeout(500);
+const top=await p.evaluate(T=>{const e=document.getElementById('retday-'+T);return e?Math.round(e.getBoundingClientRect().top):null},T);console.log('今日の欄の画面上の位置:',top);
+ok(top!==null&&Math.abs(top)<=5,'戻し一覧を開くと、今日の日が画面の一番上に来る');
+await p.evaluate(()=>window.scrollTo(0,0));await p.click('[data-act=rettoday]');await p.waitForTimeout(400);
+const top2=await p.evaluate(T=>Math.round(document.getElementById('retday-'+T).getBoundingClientRect().top),T);ok(Math.abs(top2)<=5,'「今日へ」で今日の日に戻る');
 console.log(bad?'NG '+bad+'件':'全部OK');await b.close()})();
