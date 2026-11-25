@@ -15,7 +15,7 @@ const FS={config:{main:{evn:3,ev:{1:[1,30],2:[1,30],3:[1,30]},ns:{1:'5,6'},auto:
  orders:{v2:{items:{o1:{f:25,u:4,st:'plan',plan:{d:D(0)},n:'日本建工',at:now},o2:{f:12,u:2,st:'new',n:'日本建工',at:now},o3:{f:11,u:1,st:'done',plan:{d:D(-3)},done:{d:D(-3),ev:1,u:1},n:'日本建工',at:now}}}},
  notices:{v1:{items:{a1:{d:D(0),kind:'confirm',msg:'確定しました',at:now},a2:{d:D(2),kind:'remind',msg:'【入力のお願い】…',at:now},a3:{d:D(0),kind:'msg',msg:'連絡です',at:now}}}},
  plans:{v1:{logs:[{id:'l1',d:D(-3),f:17,u:2,m:'追加'}]}}};
-const SKIP=/^(simple|logout|reload|resetall|sampleoff|sampleon|demoreset|push|pvon|pvoff|vdel|copyurl|csv|backup|dayoff|unconfirm)$/;
+const SKIP=/^(simple|logout|reload|resetall|sampleoff|sampleon|demoreset|push|pvon|cpvon|pvoff|vdel|copyurl|csv|backup|dayoff|unconfirm)$/;
 (async()=>{const b=await chromium.launch();let total=0,clicks=0;const problems=[];
 for(const who of [{uid:'g1',email:'kowa0371@gmail.com',f:'main-test.html',n:'管理者'},{uid:'v1',email:'a@x.jp',f:'main-test.html',n:'業者'},{uid:'c1',email:'c@x.jp',f:'crew-test.html',n:'盛替え'}])
 for(const simple of [true,false])

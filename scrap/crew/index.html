@@ -1368,6 +1368,8 @@ function doReturn(vid,d,f,u,m){
 /* 操作した人(記録用) */
 function who(){
   if(ENV.admin)return ENV.email||"管理者";
+  /* 管理者がプレビューで業者・盛替え業者の画面から操作したときは、管理者が代わりにしたと残す */
+  if(ENV.preview)return (ENV.email||"管理者")+"(代理)";
   var a=ENV.crew?(D.crews[ENV.uid]||{}):(D.approved[ENV.uid]||{}),nm=a.name||(ENV.crew?((D.crewreq[ENV.uid]||{}).contact):((D.members[ENV.uid]||{}).contact))||ENV.name||ENV.email||"";
   var co=ENV.crew?(a.company||"盛替え業者"):(vname(ENV.vid)||"");
   return co+(nm&&nm!==co?" "+nm:"");
@@ -1524,7 +1526,7 @@ function notify(vid,d,kind,msg){
    送るものを outbox/{id} に入れておき、GitHub Actions(server/notify.mjs)が10分ごとにまとめてメールで送って消す。
    同じ id で入れ直すと、まだ送っていない分は新しい文に置き換わる(同じ日の予定が何度も変わったときなど)。 */
 function mailOut(id,o){
-  if(ENV.mode!=="db"||window.NR_DEMO||ENV.preview||ui.pv)return;
+  if(ENV.mode!=="db"||window.NR_DEMO||ENV.preview||ui.pv||ui.cpv)return;
   o.at=nowIso();o.uid=ENV.realUid||ENV.uid;o.msg=String(o.msg||"").slice(0,600);
   try{var pr=ENV.db.doc("outbox/"+String(id).replace(/[^\w-]/g,"_").slice(0,120)).set(o);if(pr&&pr.catch)pr.catch(function(){})}catch(e){}
 }
@@ -1627,14 +1629,14 @@ function confirmDay(d,s,auto){
 /* 搬出日の設定日数前(初期値2日前)になった回収日を、配分どおりに確定する。書き込めるのは管理者だけなので、管理者が開いたときに行う */
 /* 入力のお願い・警告を出す(毎朝の自動処理と同じ id なので、二重には出ない) */
 function remindCheck(C){
-  if(!ENV.admin||ENV.preview||ui.pv)return;
+  if(!ENV.admin||ENV.preview||ui.pv||ui.cpv)return;
   if(ENV.mode!=="local"&&!["config","days","vendors","confirmed","notices","approved"].every(function(c){return LOADED[c]}))return;
   nrRemind(C.am,D.days,D.confirmed,C.cfg,C.t).forEach(function(x){var id="r"+x.lv+"_"+x.d,it=(D.notices[x.vid]||{}).items||{};if(it[id])return;
     var o={};o[id]={d:x.d,kind:x.lv===1?"remind":"remind2",msg:x.msg,at:nowIso(),by:"自動"};patch("notices",x.vid,{items:o});
     mailOut("rm"+x.lv+"-"+x.vid+"-"+x.d,{to:"vendor",vid:x.vid,d:x.d,msg:x.msg})});
 }
 function autoConfirm(C){
-  if(!ENV.admin||ENV.preview||ui.pv)return false;
+  if(!ENV.admin||ENV.preview||ui.pv||ui.cpv)return false;
   if(ENV.mode!=="local"&&!["config","days","vendors","confirmed","approved","blocked","members"].every(function(c){return LOADED[c]}))return false;
   /* 端末に残っていた古いデータで確定しない(すでにほかの端末や毎朝の自動処理で確定した日を、古い配分で上書きしないように) */
   if(!isFresh(["config","days","vendors","confirmed"]))return false;
@@ -2609,7 +2611,7 @@ function inboxView(){var l=inboxItems();if(!l.length)return "";
       +(ENV.admin?'<button class="btn sm" data-act="idel" data-id="'+esc(x.id)+'">削除</button>':'')+'</div></div>'}).join("")+'</section>';
 }
 /* 「見ました」を押したら、送った業者の「送った連絡」に伝える */
-function seenTell(o,id,at){if(!o||!o.fv||ENV.mode!=="db"||window.NR_DEMO||ENV.preview||ui.pv)return;var sn={};sn[id]=at;
+function seenTell(o,id,at){if(!o||!o.fv||ENV.mode!=="db"||window.NR_DEMO||ENV.preview||ui.pv||ui.cpv)return;var sn={};sn[id]=at;
   try{var pr=ENV.db.doc("sent/"+o.fv).patch({seen:sn});if(pr&&pr.catch)pr.catch(function(){})}catch(e){}}
 /* 業者が連絡を送れる会社の一覧(管理者のアプリが config.vdir に書く。業者は他の会社の情報を読めないため) */
 /* 一覧を書き直すのは、中身(会社IDと名前の組)がサーバーの内容と違うときだけ。並び順の違いは見ない。
@@ -2618,7 +2620,7 @@ function seenTell(o,id,at){if(!o||!o.fv||ENV.mode!=="db"||window.NR_DEMO||ENV.pr
 var VDIR_KEY="nr-vdir-at-"+location.pathname;
 function vdirKey(l){return JSON.stringify((l||[]).map(function(x){return [String(x&&x.id||""),String(x&&x.n||"")]}).sort(function(a,b){return a[0]<b[0]?-1:a[0]>b[0]?1:a[1]<b[1]?-1:a[1]>b[1]?1:0}))}
 function syncDir(){
-  if(!ENV.admin||ENV.mode!=="db"||window.NR_DEMO||ENV.preview||ui.pv)return;
+  if(!ENV.admin||ENV.mode!=="db"||window.NR_DEMO||ENV.preview||ui.pv||ui.cpv)return;
   if(!["config","vendors","approved","members","blocked","orders"].every(function(c){return LOADED[c]}))return;
   if(!isFresh(["config","vendors","approved","members","blocked","orders"]))return;
   var l=msgVendors().map(function(v){return {id:v,n:vnameBase(v)}}).concat(msgNoReach().map(function(x){return {id:x.id,n:x.n}}))
@@ -2778,7 +2780,7 @@ function morphNode(a,b,remote){
 var morphing=false,morphAgain=false;
 function render(remote){
   SESC=null;
-  if(ui.pv&&!ENV.preview)return asVendor(function(){render(remote)});
+  if((ui.pv||ui.cpv)&&!ENV.preview)return asVendor(function(){render(remote)});
   /* 業者のデータは会社(vid)単位。同じ会社の人は approved/{本人}.vid に会社のIDを持つ。最初に登録した人の会社IDは本人のID */
   if(!ENV.preview&&!ENV.admin)ENV.vid=(D.approved[ENV.uid]&&D.approved[ENV.uid].vid)||ENV.uid;
   if(ENV.mode==="db"&&!ENV.admin&&!ENV.crew)watchVid();
@@ -2805,10 +2807,15 @@ function render(remote){
   var simpleV=ui.simple&&!ENV.admin&&!ENV.crew&&vendorOk;
   tabs.forEach(function(t){var cur=simpleV?(ui.stab||"s-home")===t[0]:ui.tab===t[0];h+='<button role="tab" aria-selected="'+cur+'" data-act="'+(simpleV?'stab':'tab')+'" data-tab="'+t[0]+'">'+t[1]+'</button>'});
   h+='</div></div>';
-  if(ENV.preview){
+  if(ENV.preview&&ENV.crew){
+    var cids=crewIds();
+    h+='<div class="note pv"><span>盛替え業者ページのプレビュー: <select id="cpvsel" data-f="cpv" aria-label="表示する盛替え業者">'+cids.map(function(id){var c=D.crews[id]||{};return '<option value="'+esc(id)+'"'+(id===ENV.uid?' selected':'')+'>'+esc((c.company||"盛替え業者")+(c.name?" "+c.name:""))+'</option>'}).join("")+'</select> の画面です。チェックや入力は実際に保存されます。</span><button class="btn sm" data-act="pvoff">管理画面に戻る</button></div>';
+  }else if(ENV.preview){
     var pids=Object.keys(D.vendors).filter(isActive).sort(function(a,b){return vname(a)<vname(b)?-1:1});
     h+='<div class="note pv"><span>業者ページのプレビュー: <select id="pvsel" data-f="pv" aria-label="表示する業者">'+pids.map(function(id){return '<option value="'+esc(id)+'"'+(id===ENV.uid?' selected':'')+'>'+esc(vname(id))+'</option>'}).join("")+'</select> の画面です。チェックや入力は実際に保存されます。</span><button class="btn sm" data-act="pvoff">管理画面に戻る</button></div>';
-  }else if(ENV.admin&&Object.keys(D.vendors).filter(isActive).length)h+='<div style="display:flex;justify-content:flex-end;margin-top:-6px"><button class="btn sm" data-act="pvon">業者ページを確認</button></div>';
+  }else if(ENV.admin&&(Object.keys(D.vendors).filter(isActive).length||crewIds().length))h+='<div style="display:flex;justify-content:flex-end;gap:6px;flex-wrap:wrap;margin-top:-6px">'
+    +(Object.keys(D.vendors).filter(isActive).length?'<button class="btn sm" data-act="pvon">業者ページを確認</button>':'')
+    +(crewIds().length?'<button class="btn sm" data-act="cpvon">盛替え業者ページを確認</button>':'')+'</div>';
   if(ENV.mode==="local")h+='<div class="note"><span>共有保存が使えない表示です。入力はこの端末のブラウザにだけ保存され、業者とは共有されません。</span></div>';
   if(ENV.mode==="noid")h+='<div class="note bad"><span>ログイン情報を取得できません。ログインし直してください。</span></div>';
   if(ui.msg)h+='<div class="note '+ui.msgKind+'"><span>'+esc(ui.msg)+'</span></div>';
@@ -2845,15 +2852,21 @@ function render(remote){
 }
 
 /* ---- 業者ページのプレビュー(管理者が業者の画面をそのまま確認する) ---- */
+/* 盛替え業者ページのプレビュー: 登録されている盛替え業者の1人として、盛替え業者の画面を出す */
+function crewIds(){return Object.keys(D.crews||{}).sort(function(a,b){var x=(D.crews[a]||{}).company||"",y=(D.crews[b]||{}).company||"";return x<y?-1:x>y?1:0})}
 function asVendor(fn){
-  if(!ui.pv||ENV.preview||!ENV.admin)return fn();
+  if((!ui.pv&&!ui.cpv)||ENV.preview||!ENV.admin)return fn();
+  if(ui.cpv){if(!D.crews[ui.cpv]){ui.cpv=null;return fn()}
+    ENV.admin=false;ENV.crew=true;ENV.uid=ui.cpv;ENV.preview=true;
+    try{return fn()}finally{ENV.admin=true;ENV.crew=false;ENV.uid=ENV.realUid;ENV.preview=false}}
   ENV.admin=false;ENV.uid=ui.pv;ENV.vid=ui.pv;ENV.preview=true;
   try{return fn()}finally{ENV.admin=true;ENV.uid=ENV.realUid;ENV.vid=ENV.realUid;ENV.preview=false}
 }
 function onPreview(ev){
   var b=ev.target.closest&&ev.target.closest("[data-act]"),act=b&&b.getAttribute("data-act");
   if(act==="pvon"){var ids=Object.keys(D.vendors).filter(isActive).sort(function(a,c){return vname(a)<vname(c)?-1:1});ui.pv=(ui.vsel&&D.vendors[ui.vsel])?ui.vsel:ids[0]||null;ui.tab="cal";ui.msg="";render();return true}
-  if(act==="pvoff"){ui.pv=null;ui.tab="cal";ui.msg="";render();return true}
+  if(act==="cpvon"){ui.cpv=crewIds()[0]||null;ui.pv=null;ui.tab="cal";ui.msg="";render();return true}
+  if(act==="pvoff"){ui.pv=null;ui.cpv=null;ui.tab="cal";ui.msg="";render();return true}
   return false;
 }
 
@@ -3417,6 +3430,7 @@ app.addEventListener("change",function(ev){
   if(ev.target.getAttribute&&ev.target.getAttribute("data-role")==="ev"){var mb=ev.target.closest(".mvbox"),mf=mb&&Number(mb.getAttribute("data-fl")),mt=mb&&mb.querySelector('[data-role="to"]');
     if(mf&&mt){var mc=nrCfg(D.config),me=nrNum(ev.target.value),mn=nrStops(mf,me,mc)?mf:nrNearest(mf,me,mc);if(mn!==null&&mn!==undefined)mt.value=mn}}
   if(ev.target.getAttribute&&ev.target.getAttribute("data-f")==="pv"){ui.pv=ev.target.value||null;render();return}
+  if(ev.target.getAttribute&&ev.target.getAttribute("data-f")==="cpv"){ui.cpv=ev.target.value||null;render();return}
   asVendor(function(){onChange(ev)});
 });
 /* アプリの新しい版が出たら、自動で開き直す(3分ごとに、公開しているページだけを確かめる。データ(Firebase)は読まないので、1日の上限を使わない)。
