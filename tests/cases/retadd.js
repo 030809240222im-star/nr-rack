@@ -25,8 +25,9 @@ ok(/あと1件/.test(await p.locator('#app').innerText()),'残りの件数が減
 const ids=await p.locator('section.retday').evaluateAll(x=>x.map(e=>e.id));console.log('日の並び:',ids.join(' '));
 const T=D(0);ok(ids.indexOf('retday-'+T)>0&&ids[0]<'retday-'+T&&ids[ids.length-1]>'retday-'+T,'前の日・今日・先の日が日付の順に並ぶ');
 await p.click('button[data-tab=cal]');await p.waitForTimeout(300);await p.evaluate(()=>window.scrollTo(0,0));await p.click('button[data-tab=ret]');await p.waitForTimeout(500);
-const top=await p.evaluate(T=>{const e=document.getElementById('retday-'+T);return e?Math.round(e.getBoundingClientRect().top):null},T);console.log('今日の欄の画面上の位置:',top);
-ok(top!==null&&Math.abs(top)<=5,'戻し一覧を開くと、今日の日が画面の一番上に来る');
+const BAR=await p.evaluate(()=>Math.round(document.getElementById('tabbar').getBoundingClientRect().bottom));
+const top=await p.evaluate(T=>{const e=document.getElementById('retday-'+T);return e?Math.round(e.getBoundingClientRect().top):null},T);console.log('上のタブの下端:',BAR);console.log('今日の欄の画面上の位置:',top);
+ok(top!==null&&top>=BAR-1&&top<=BAR+12,'戻し一覧を開くと、今日の日が画面の一番上(上のタブのすぐ下)に来る');
 await p.evaluate(()=>window.scrollTo(0,0));await p.click('[data-act=rettoday]');await p.waitForTimeout(400);
-const top2=await p.evaluate(T=>Math.round(document.getElementById('retday-'+T).getBoundingClientRect().top),T);ok(Math.abs(top2)<=5,'「今日へ」で今日の日に戻る');
+const top2=await p.evaluate(T=>Math.round(document.getElementById('retday-'+T).getBoundingClientRect().top),T);ok(top2>=BAR-1&&top2<=BAR+12,'「今日へ」で今日の日に戻る');
 console.log(bad?'NG '+bad+'件':'全部OK');await b.close()})();

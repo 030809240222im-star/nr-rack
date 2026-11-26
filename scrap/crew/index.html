@@ -73,6 +73,11 @@ button:disabled{opacity:.45;cursor:default}
 
 /* かんたん表示 */
 .tabs:empty{display:none}
+/* 上のタブは、下までスクロールしても画面の上に残す(すぐ他のページへ移れるように) */
+.tabbar{position:sticky;top:0;z-index:30;background:var(--bg);margin:-8px 0;padding:max(8px,env(safe-area-inset-top,0px)) 0 8px;box-shadow:0 6px 6px -6px rgba(0,0,0,.25)}
+.tabbar:has(.tabs:empty){display:none}
+/* スマホの管理者は、タブが4段になって画面をふさがないよう1段にし、横にすべらせて選ぶ */
+@media (max-width:700px){.tabbar .tabs:not(.big){flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}.tabbar .tabs:not(.big)::-webkit-scrollbar{display:none}.tabbar .tabs:not(.big) button{flex:0 0 auto;white-space:nowrap}}
 .btn.pushon{border-color:var(--ok);color:var(--ok)}
 .todo.warnb{background:var(--badbg);border-color:var(--bad)}.todo.warnb .k{color:var(--bad)}
 .odraft{display:flex;flex-direction:column;gap:6px;border:2px solid var(--accent);border-radius:10px;padding:10px;background:var(--surface2)}.odrow{display:flex;justify-content:space-between;align-items:center;gap:8px}
@@ -787,7 +792,7 @@ function isFresh(cs){return ENV.mode!=="db"||cs.every(function(c){return FRESH[c
 var STALE_MSG="サーバーの最新の内容をまだ読み込めていないため、確定した予定は変えられません。電波を確かめて、少し待ってからもう一度押してください。";
 /* 全データのリセットで消す入れ物。設定(config)は残す */
 var RESET_COLLS=["days","confirmed","vendors","plans","orders","notices","members","approved","blocked","codes","crews","crewreq","crewblocked","seen","inbox"];
-var ui={tab:"cal",month:null,sel:null,vsel:null,only:false,confirm:"",msg:"",msgKind:""};
+var ui={tab:"cal",month:null,sel:null,vsel:null,only:false,confirm:"",msg:"",msgKind:"",retJump:true};
 /* 表示の好み(チェックや絞り込み)は、この端末に覚えておき、読み込み直しても戻す */
 var UIPREF=["only","mapOnly","mapMode","mapVen","simple"];
 try{var up=JSON.parse(localStorage.getItem("nr-uipref")||"{}");UIPREF.forEach(function(k){if(up[k]!==undefined)ui[k]=up[k]})}catch(e){}
@@ -2551,37 +2556,42 @@ function renderCrewReg(){
   return h+'</section>';
 }
 /* 戻し一覧(盛替え業者・管理者)。この1週間から今日までの確定分で、戻していないものを先に並べる */
+/* 戻し一覧: 1週間前から1週間先まで、日ごとに「戻し」と「新しいBOXの搬入」をまとめて並べる。
+   開いたときは今日の日が画面の一番上に来る(上へスクロールすると前の日、下へスクロールすると先の日) */
+function retRow(x){var r=x.r;
+  return '<tr'+(r.back?' style="opacity:.6"':'')+'><td><b style="font-size:18px">'+(Array.isArray(r.rets)?esc(retLabel(r)).replace(/・/g,"<br>"):(nrNum(r.ret)||r.floor)+'階')+'</b>'+(r.ret||Array.isArray(r.rets)?'':'<div class="hint" style="margin:0">同じ階</div>')+'</td><td class="l" style="white-space:normal"><b>'+esc(rowName(r))+' '+nrNum(r.units)+'台</b><div class="hint" style="margin:0">'+fmtD(x.d)+' '+r.floor+'階から・'+evLabel(r.ev,r.to)+'</div></td><td class="l">'+backCell(x.d,r,x.i)+'</td></tr>'}
+function retAddRow(x,C){var o=x.o,k=x.vid+"-"+x.id,done=o.st==="done",d=done?o.done.d:o.plan.d,el=((D.days[d]||{}).elev||[]),late=!done&&d<C.t,h;
+  h='<tr'+(done?' style="opacity:.6"':'')+'><td><b style="font-size:18px">'+o.f+'階</b>'+(late?'<div><span class="st warn">予定日を過ぎています</span></div>':'')+'</td><td class="l vn"><b>'+esc(o.n||vname(x.vid))+' '+nrNum(o.u)+'台</b>'+(o.memo?'<div class="hint" style="margin:0">'+esc(o.memo)+'</div>':'')+'</td><td class="l">';
+  if(done)h+='<span class="st ok">✅ 入れた</span> EV'+(nrNum(o.done.ev)||"?")+' '+nrNum(o.done.u)+'台';
+  else h+='<div class="mvbox"><select id="ce-'+k+'" data-keep aria-label="搬入に使うエレベーター">'+evList().map(function(e){return '<option value="'+e+'"'+(e===(el[0]||1)?' selected':'')+'>EV'+e+'</option>'}).join("")+'</select>'
+    +'<input type="number" min="1" id="cu-'+k+'" data-keep value="'+nrNum(o.u)+'" aria-label="入れた台数"><span class="hint" style="margin:0">台</span>'
+    +'<button class="btn primary" data-act="crewin" data-vid="'+esc(x.vid)+'" data-id="'+esc(x.id)+'" data-d="'+d+'">入れた</button></div>';
+  return h+'</td></tr>'}
 function renderRet(C){
-  var list=[],from=nrDs(new Date(Date.now()-7*864e5));
-  Object.keys(D.confirmed).sort().forEach(function(d){if(d<from||d>C.t)return;
-    (D.confirmed[d].rows||[]).forEach(function(r,i){if(nrNum(r.units)>0)list.push({d:d,i:i,r:r})})});
-  /* ✅を付けても行の位置は動かさない(日付・戻し階の順のまま) */
-  list.sort(function(a,b){return (a.d<b.d?-1:a.d>b.d?1:0)||retMain(a.r)-retMain(b.r)||a.i-b.i});
-  var left=list.filter(function(x){return !x.r.back}).length;
-  var h='<section class="panel"><h2 style="margin-bottom:6px">戻し一覧</h2><p class="hint" style="margin:0 0 10px">この1週間から今日までに搬出した分です。戻したら「戻した」にチェックすると完了✅になり、その業者の台数にも反映されます。未完了 '+left+'件。</p>';
-  if(!list.length)return h+'<p class="empty">戻すものはありません。</p></section>'+retAdds(C);
-  h+='<div class="tablewrap"><table><thead><tr><th>戻し階</th><th class="l">業者・台数</th><th class="l">完了</th></tr></thead><tbody>';
-  list.forEach(function(x){var r=x.r;
-    h+='<tr'+(r.back?' style="opacity:.6"':'')+'><td><b style="font-size:18px">'+(Array.isArray(r.rets)?esc(retLabel(r)).replace(/・/g,"<br>"):(nrNum(r.ret)||r.floor)+'階')+'</b>'+(r.ret||Array.isArray(r.rets)?'':'<div class="hint" style="margin:0">同じ階</div>')+'</td><td class="l" style="white-space:normal"><b>'+esc(rowName(r))+' '+nrNum(r.units)+'台</b><div class="hint" style="margin:0">'+fmtD(x.d)+' '+r.floor+'階から・'+evLabel(r.ev,r.to)+'</div></td><td class="l">'+backCell(x.d,r,x.i)+'</td></tr>'});
-  return h+'</tbody></table></div></section>'+retAdds(C);
-}
-/* 戻し一覧の下: 新しいBOXの搬入予定(管理者が手配した追加注文)。まだの分は、ここからも「入れた」を付けられる。入れた分は1週間出す */
-function retAdds(C){
-  var from=nrDs(new Date(Date.now()-7*864e5));
-  var list=orderList().filter(function(x){var o=x.o;return (o.st==="plan"&&o.plan&&o.plan.d)||(o.st==="done"&&o.done&&o.done.d>=from)})
-    .sort(function(a,b){var x=a.o.st==="plan"?a.o.plan.d:a.o.done.d,y=b.o.st==="plan"?b.o.plan.d:b.o.done.d;return (a.o.st==="done")-(b.o.st==="done")||(x<y?-1:x>y?1:0)});
-  var left=list.filter(function(x){return x.o.st==="plan"}).length;
-  var h='<section class="panel"><h2 style="margin-bottom:6px">📦 新しいBOXの搬入予定'+(left?'(あと'+left+'件)':'')+'</h2><p class="hint" style="margin:0 0 10px">管理者が手配した追加注文です。入れたら、エレベーターと台数を確かめて「入れた」を押してください(業者の台数が自動で増えます)。入れた分は1週間ここに残ります。</p>';
-  if(!list.length)return h+'<p class="empty">搬入の予定はありません。</p></section>';
-  h+='<div class="tablewrap"><table><thead><tr><th class="l">搬入日</th><th class="l">業者</th><th>階・台数</th><th class="l">入れた</th></tr></thead><tbody>';
-  list.forEach(function(x){var o=x.o,k=x.vid+"-"+x.id,done=o.st==="done",d=done?o.done.d:o.plan.d,el=((D.days[d]||{}).elev||[]),late=!done&&d<C.t;
-    h+='<tr'+(done?' style="opacity:.6"':'')+'><td class="l">'+esc(fmtD(d))+(late?' <span class="st warn">予定日を過ぎています</span>':'')+'</td><td class="l vn">'+esc(o.n||vname(x.vid))+'</td><td><b style="font-size:18px">'+o.f+'階</b> '+nrNum(o.u)+'台</td><td class="l">';
-    if(done)h+='<span class="st ok">✅ 入れた</span> EV'+(nrNum(o.done.ev)||"?")+' '+nrNum(o.done.u)+'台';
-    else h+='<div class="mvbox"><select id="ce-'+k+'" data-keep aria-label="搬入に使うエレベーター">'+evList().map(function(e){return '<option value="'+e+'"'+(e===(el[0]||1)?' selected':'')+'>EV'+e+'</option>'}).join("")+'</select>'
-      +'<input type="number" min="1" id="cu-'+k+'" data-keep value="'+nrNum(o.u)+'" aria-label="入れた台数"><span class="hint" style="margin:0">台</span>'
-      +'<button class="btn primary" data-act="crewin" data-vid="'+esc(x.vid)+'" data-id="'+esc(x.id)+'" data-d="'+d+'">入れた</button></div>'+(o.memo?'<div class="hint" style="margin:0">'+esc(o.memo)+'</div>':'');
-    h+='</td></tr>'});
-  return h+'</tbody></table></div></section>';
+  var from=nrDs(new Date(nrPd(C.t).getTime()-7*864e5)),to=nrDs(new Date(nrPd(C.t).getTime()+7*864e5)),byD={};
+  var day=function(d){return byD[d]=byD[d]||{ret:[],add:[]}};
+  Object.keys(D.confirmed).forEach(function(k){var d=nrBase(k);if(d<from||d>to)return;
+    (D.confirmed[k].rows||[]).forEach(function(r,i){if(nrNum(r.units)>0)day(d).ret.push({d:k,i:i,r:r})})});
+  /* 新しいBOX: 手配済みは予定日に(予定日が過ぎたままの分も、その日に出す)、入れた分は入れた日に(1週間) */
+  orderList().forEach(function(x){var o=x.o;
+    if(o.st==="plan"&&o.plan&&o.plan.d&&o.plan.d<=to)day(o.plan.d).add.push(x);
+    else if(o.st==="done"&&o.done&&o.done.d>=from&&o.done.d<=to)day(o.done.d).add.push(x)});
+  day(C.t);/* 今日の欄はいつも出す */
+  var ds=Object.keys(byD).sort(),leftR=0,leftA=0;
+  ds.forEach(function(d){byD[d].ret.forEach(function(x){if(!x.r.back&&d<=C.t)leftR++});byD[d].add.forEach(function(x){if(x.o.st==="plan")leftA++})});
+  var h='<section class="panel"><h2 style="margin-bottom:6px">戻し一覧</h2><p class="hint" style="margin:0 0 6px">1週間前から1週間先まで、日ごとに「戻し」と「📦 新しいBOXの搬入」を並べています。開くと今日が一番上に出ます(上へスクロールすると前の日、下へスクロールすると先の日)。戻したら「戻した」にチェック、新しいBOXを入れたら「入れた」を押すと、業者の台数にも反映されます。</p>'
+    +'<p style="margin:0">今日までの戻しの未完了 <b>'+leftR+'件</b> ・ 新しいBOXの搬入予定 <b>あと'+leftA+'件</b></p>'
+    +'<div style="margin-top:6px"><button class="btn sm" data-act="rettoday">今日へ</button></div></section>';
+  ds.forEach(function(d){var x=byD[d],isT=d===C.t;
+    h+='<section class="panel retday'+(isT?' today':'')+'" id="retday-'+d+'"'+(isT?' style="border:2px solid var(--accent)"':d<C.t?' style="opacity:.92"':'')+'><h3 style="margin:0 0 6px">'+esc(fmtD(d))+(isT?' <span class="st ok">今日</span>':d<C.t?' <span class="st off">過ぎた日</span>':' <span class="st off">先の日</span>')+'</h3>';
+    if(!x.ret.length&&!x.add.length){h+='<p class="empty" style="margin:0">この日の戻しと新しいBOXの搬入はありません。</p></section>';return}
+    if(x.ret.length){x.ret.sort(function(a,b){return retMain(a.r)-retMain(b.r)||a.i-b.i});/* ✅を付けても行の位置は動かさない */
+      h+='<div class="k" style="margin:4px 0">戻し('+(d>C.t?'搬出の予定':'搬出した分')+')</div><div class="tablewrap"><table><thead><tr><th>戻し階</th><th class="l">業者・台数</th><th class="l">完了</th></tr></thead><tbody>'+x.ret.map(retRow).join("")+'</tbody></table></div>'}
+    if(x.add.length){x.add.sort(function(a,b){return (a.o.st==="done")-(b.o.st==="done")||a.o.f-b.o.f});
+      h+='<div class="k" style="margin:10px 0 4px">📦 新しいBOXの搬入</div><div class="tablewrap"><table><thead><tr><th>階</th><th class="l">業者・台数</th><th class="l">入れた</th></tr></thead><tbody>'+x.add.map(function(a){return retAddRow(a,C)}).join("")+'</tbody></table></div>'}
+    h+='</section>'});
+  /* 先の日が少なくても、今日の日を画面の一番上まで上げられるよう、下に余白を置く */
+  return h+'<div class="hint" style="text-align:center;min-height:85vh;padding-top:8px">ここから先(1週間より先)の予定はありません</div>';
 }
 function renderReg(){
   var m=D.members[ENV.uid],h='<section class="panel reg"><h2>業者登録</h2>';
@@ -2821,7 +2831,7 @@ function render(remote){
    +(ENV.mode==="db"&&SYNC.quota?'<div class="note bad syncbad quota" style="margin:8px 0 0;display:block"><b>⚠ サーバーの1日の利用の上限(無料の範囲)に達したため、今は保存できません。</b> 入力した内容は、ほかの人には見えていません。毎日17時(日本時間)に上限が戻ります。<b>入力はこの端末に残り、17時すぎにアプリを開いていれば自動で送ります</b>(入れ直す必要はありません)。'+(ENV.admin?'<br>管理者の方へ: Firebase の料金プランを「Blaze(従量課金)」にすると、上限で止まらなくなります(取扱説明書を参照)。':'急ぎのときは管理者に電話などで連絡してください。')+'</div>'
    :ENV.mode==="db"&&(SYNC.stuck||(navigator.onLine&&!SYNC.last&&Date.now()-SYNC.start>20000))?'<div class="note bad syncbad" style="margin:8px 0 0;display:block"><b>⚠ '+(SYNC.stuck?'この端末の入力が、まだサーバーに届いていません。':'サーバーにつながっていません(表示は端末に残っていた内容です)。')+'</b> ほかの人には見えていません。電波を確かめ、同じアプリを開いているほかの画面(ブラウザのタブ・ホーム画面のアプリ)を閉じてから、「↻ 最新にする」を押してください。直らないときは管理者に連絡してください。</div>':'')
    +(PEND.n&&(!navigator.onLine||Date.now()-PEND.since>3500)?'<div class="note warn" style="margin:8px 0 0"><span><b>未送信 '+PEND.n+'件</b> '+(navigator.onLine?'送信を待っています。':'電波がありません。')+'つながると自動で送ります(アプリを閉じても、この端末に残り、次に開いたときに送ります)。</span></div>':'')
-   +(window.NR_DEMO?'<div class="note warn" style="margin:8px 0 0"><span><b>お試し版です。</b>データはこの端末のブラウザだけに保存され、本番のアプリとは関係ありません。業者・台数はすべて架空です。 <button class="btn sm" data-act="demoreset">最初からやり直す</button></span></div>':'')+'</div><div class="tabs'+(ENV.admin?'':' big')+'" role="tablist">';
+   +(window.NR_DEMO?'<div class="note warn" style="margin:8px 0 0"><span><b>お試し版です。</b>データはこの端末のブラウザだけに保存され、本番のアプリとは関係ありません。業者・台数はすべて架空です。 <button class="btn sm" data-act="demoreset">最初からやり直す</button></span></div>':'')+'</div></div><div class="tabbar" id="tabbar"><div class="tabs'+(ENV.admin?'':' big')+'" role="tablist">';
   var simpleV=ui.simple&&!ENV.admin&&!ENV.crew&&vendorOk;
   tabs.forEach(function(t){var cur=simpleV?(ui.stab||"s-home")===t[0]:ui.tab===t[0];h+='<button role="tab" aria-selected="'+cur+'" data-act="'+(simpleV?'stab':'tab')+'" data-tab="'+t[0]+'">'+t[1]+'</button>'});
   h+='</div></div>';
@@ -2867,6 +2877,12 @@ function render(remote){
   morphing=true;try{morphKids(document.getElementById("app"),box,remote)}finally{morphing=false}
   if(anc){if(!anc.isConnected)anc=ANCHOR.sel&&document.querySelector(ANCHOR.sel);if(anc){ANCHOR.el=anc;var dy=anc.getBoundingClientRect().top-ay;if(Math.abs(dy)>1)window.scrollBy(0,dy)}}
   if(morphAgain){morphAgain=false;render(remote)}
+  /* 戻し一覧を開いたとき(と「今日へ」): 今日の日を画面の一番上に */
+  /* 横にすべらせるタブでは、いま開いているタブが見える位置にする */
+  var tsel=document.querySelector('#tabbar .tabs button[aria-selected="true"]');if(tsel&&tsel.parentNode.scrollWidth>tsel.parentNode.clientWidth){var tw=tsel.parentNode;tw.scrollLeft=Math.max(0,tsel.offsetLeft-tw.offsetLeft-(tw.clientWidth-tsel.offsetWidth)/2)}
+  /* タブを切り替えたら、下までスクロールしていても新しいページの先頭(タブのすぐ下)から見せる */
+  if(ui.tabTop){ui.tabTop=false;var tp=document.querySelector("#app>.top");if(tp){var ty=tp.offsetTop+tp.offsetHeight;if(window.pageYOffset>ty)window.scrollTo(0,ty)}}
+  if(ui.retJump&&ui.tab==="ret"){var rt=document.getElementById("retday-"+today());if(rt){ui.retJump=false;var tb=document.getElementById("tabbar");window.scrollTo(0,rt.getBoundingClientRect().top+window.pageYOffset-(tb?tb.offsetHeight:0)-6)}}
 }
 
 /* ---- 業者ページのプレビュー(管理者が業者の画面をそのまま確認する) ---- */
@@ -2925,9 +2941,10 @@ function onClick(ev){
   if(act==="logout"){if(window.NR_ACCOUNT)window.NR_ACCOUNT.logout();return}
   if(act==="reload"){location.reload();return}
   if(act==="push"){if(PUSH.st==="on"){if(ui.confirm==="pushoff"){ui.confirm="";pushOff()}else{ui.confirm="pushoff";render();return}}else pushOn();return}
-  if(act==="tab"){ui.tab=b.getAttribute("data-tab")}
+  if(act==="tab"){ui.tab=b.getAttribute("data-tab");if(ui.tab==="ret")ui.retJump=true;else ui.tabTop=true}
+  else if(act==="rettoday"){ui.retJump=true}
   else if(act==="simple"){ui.simple=!ui.simple;saveUiPref();if(ENV.admin)ui.tab=ui.simple?"home":"cal";else if(!ENV.crew)ui.tab="cal";else ui.tab="cal";window.scrollTo(0,0)}
-  else if(act==="stab"){ui.stab=b.getAttribute("data-tab");window.scrollTo(0,0)}
+  else if(act==="stab"){ui.stab=b.getAttribute("data-tab");ui.tabTop=true}
   else if(act==="sfull"){ui.simple=false;saveUiPref();ui.tab=b.getAttribute("data-tab")||"cal";window.scrollTo(0,0)}
   else if(act==="sgo"){ui.tab=b.getAttribute("data-tab");var gd=b.getAttribute("data-d");if(gd&&b.getAttribute("data-seen"))cfSeenMark(gd,b.getAttribute("data-seen"));if(gd){ui.sel=gd;ui.month=new Date(nrPd(nrBase(gd)).getFullYear(),nrPd(nrBase(gd)).getMonth(),1,12)}window.scrollTo(0,0)}
   else if(act==="sday"){ui.sday=b.getAttribute("data-d")}

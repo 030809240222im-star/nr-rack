@@ -73,6 +73,11 @@ button:disabled{opacity:.45;cursor:default}
 
 /* かんたん表示 */
 .tabs:empty{display:none}
+/* 上のタブは、下までスクロールしても画面の上に残す(すぐ他のページへ移れるように) */
+.tabbar{position:sticky;top:0;z-index:30;background:var(--bg);margin:-8px 0;padding:max(8px,env(safe-area-inset-top,0px)) 0 8px;box-shadow:0 6px 6px -6px rgba(0,0,0,.25)}
+.tabbar:has(.tabs:empty){display:none}
+/* スマホの管理者は、タブが4段になって画面をふさがないよう1段にし、横にすべらせて選ぶ */
+@media (max-width:700px){.tabbar .tabs:not(.big){flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}.tabbar .tabs:not(.big)::-webkit-scrollbar{display:none}.tabbar .tabs:not(.big) button{flex:0 0 auto;white-space:nowrap}}
 .btn.pushon{border-color:var(--ok);color:var(--ok)}
 .todo.warnb{background:var(--badbg);border-color:var(--bad)}.todo.warnb .k{color:var(--bad)}
 .odraft{display:flex;flex-direction:column;gap:6px;border:2px solid var(--accent);border-radius:10px;padding:10px;background:var(--surface2)}.odrow{display:flex;justify-content:space-between;align-items:center;gap:8px}
@@ -2826,7 +2831,7 @@ function render(remote){
    +(ENV.mode==="db"&&SYNC.quota?'<div class="note bad syncbad quota" style="margin:8px 0 0;display:block"><b>⚠ サーバーの1日の利用の上限(無料の範囲)に達したため、今は保存できません。</b> 入力した内容は、ほかの人には見えていません。毎日17時(日本時間)に上限が戻ります。<b>入力はこの端末に残り、17時すぎにアプリを開いていれば自動で送ります</b>(入れ直す必要はありません)。'+(ENV.admin?'<br>管理者の方へ: Firebase の料金プランを「Blaze(従量課金)」にすると、上限で止まらなくなります(取扱説明書を参照)。':'急ぎのときは管理者に電話などで連絡してください。')+'</div>'
    :ENV.mode==="db"&&(SYNC.stuck||(navigator.onLine&&!SYNC.last&&Date.now()-SYNC.start>20000))?'<div class="note bad syncbad" style="margin:8px 0 0;display:block"><b>⚠ '+(SYNC.stuck?'この端末の入力が、まだサーバーに届いていません。':'サーバーにつながっていません(表示は端末に残っていた内容です)。')+'</b> ほかの人には見えていません。電波を確かめ、同じアプリを開いているほかの画面(ブラウザのタブ・ホーム画面のアプリ)を閉じてから、「↻ 最新にする」を押してください。直らないときは管理者に連絡してください。</div>':'')
    +(PEND.n&&(!navigator.onLine||Date.now()-PEND.since>3500)?'<div class="note warn" style="margin:8px 0 0"><span><b>未送信 '+PEND.n+'件</b> '+(navigator.onLine?'送信を待っています。':'電波がありません。')+'つながると自動で送ります(アプリを閉じても、この端末に残り、次に開いたときに送ります)。</span></div>':'')
-   +(window.NR_DEMO?'<div class="note warn" style="margin:8px 0 0"><span><b>お試し版です。</b>データはこの端末のブラウザだけに保存され、本番のアプリとは関係ありません。業者・台数はすべて架空です。 <button class="btn sm" data-act="demoreset">最初からやり直す</button></span></div>':'')+'</div><div class="tabs'+(ENV.admin?'':' big')+'" role="tablist">';
+   +(window.NR_DEMO?'<div class="note warn" style="margin:8px 0 0"><span><b>お試し版です。</b>データはこの端末のブラウザだけに保存され、本番のアプリとは関係ありません。業者・台数はすべて架空です。 <button class="btn sm" data-act="demoreset">最初からやり直す</button></span></div>':'')+'</div></div><div class="tabbar" id="tabbar"><div class="tabs'+(ENV.admin?'':' big')+'" role="tablist">';
   var simpleV=ui.simple&&!ENV.admin&&!ENV.crew&&vendorOk;
   tabs.forEach(function(t){var cur=simpleV?(ui.stab||"s-home")===t[0]:ui.tab===t[0];h+='<button role="tab" aria-selected="'+cur+'" data-act="'+(simpleV?'stab':'tab')+'" data-tab="'+t[0]+'">'+t[1]+'</button>'});
   h+='</div></div>';
@@ -2873,7 +2878,11 @@ function render(remote){
   if(anc){if(!anc.isConnected)anc=ANCHOR.sel&&document.querySelector(ANCHOR.sel);if(anc){ANCHOR.el=anc;var dy=anc.getBoundingClientRect().top-ay;if(Math.abs(dy)>1)window.scrollBy(0,dy)}}
   if(morphAgain){morphAgain=false;render(remote)}
   /* 戻し一覧を開いたとき(と「今日へ」): 今日の日を画面の一番上に */
-  if(ui.retJump&&ui.tab==="ret"){var rt=document.getElementById("retday-"+today());if(rt){ui.retJump=false;rt.scrollIntoView({block:"start"})}}
+  /* 横にすべらせるタブでは、いま開いているタブが見える位置にする */
+  var tsel=document.querySelector('#tabbar .tabs button[aria-selected="true"]');if(tsel&&tsel.parentNode.scrollWidth>tsel.parentNode.clientWidth){var tw=tsel.parentNode;tw.scrollLeft=Math.max(0,tsel.offsetLeft-tw.offsetLeft-(tw.clientWidth-tsel.offsetWidth)/2)}
+  /* タブを切り替えたら、下までスクロールしていても新しいページの先頭(タブのすぐ下)から見せる */
+  if(ui.tabTop){ui.tabTop=false;var tp=document.querySelector("#app>.top");if(tp){var ty=tp.offsetTop+tp.offsetHeight;if(window.pageYOffset>ty)window.scrollTo(0,ty)}}
+  if(ui.retJump&&ui.tab==="ret"){var rt=document.getElementById("retday-"+today());if(rt){ui.retJump=false;var tb=document.getElementById("tabbar");window.scrollTo(0,rt.getBoundingClientRect().top+window.pageYOffset-(tb?tb.offsetHeight:0)-6)}}
 }
 
 /* ---- 業者ページのプレビュー(管理者が業者の画面をそのまま確認する) ---- */
@@ -2932,10 +2941,10 @@ function onClick(ev){
   if(act==="logout"){if(window.NR_ACCOUNT)window.NR_ACCOUNT.logout();return}
   if(act==="reload"){location.reload();return}
   if(act==="push"){if(PUSH.st==="on"){if(ui.confirm==="pushoff"){ui.confirm="";pushOff()}else{ui.confirm="pushoff";render();return}}else pushOn();return}
-  if(act==="tab"){ui.tab=b.getAttribute("data-tab");if(ui.tab==="ret")ui.retJump=true}
+  if(act==="tab"){ui.tab=b.getAttribute("data-tab");if(ui.tab==="ret")ui.retJump=true;else ui.tabTop=true}
   else if(act==="rettoday"){ui.retJump=true}
   else if(act==="simple"){ui.simple=!ui.simple;saveUiPref();if(ENV.admin)ui.tab=ui.simple?"home":"cal";else if(!ENV.crew)ui.tab="cal";else ui.tab="cal";window.scrollTo(0,0)}
-  else if(act==="stab"){ui.stab=b.getAttribute("data-tab");window.scrollTo(0,0)}
+  else if(act==="stab"){ui.stab=b.getAttribute("data-tab");ui.tabTop=true}
   else if(act==="sfull"){ui.simple=false;saveUiPref();ui.tab=b.getAttribute("data-tab")||"cal";window.scrollTo(0,0)}
   else if(act==="sgo"){ui.tab=b.getAttribute("data-tab");var gd=b.getAttribute("data-d");if(gd&&b.getAttribute("data-seen"))cfSeenMark(gd,b.getAttribute("data-seen"));if(gd){ui.sel=gd;ui.month=new Date(nrPd(nrBase(gd)).getFullYear(),nrPd(nrBase(gd)).getMonth(),1,12)}window.scrollTo(0,0)}
   else if(act==="sday"){ui.sday=b.getAttribute("data-d")}
